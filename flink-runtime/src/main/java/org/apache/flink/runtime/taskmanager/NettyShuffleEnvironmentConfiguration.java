@@ -26,6 +26,7 @@ import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.core.memory.MemoryType;
+import org.apache.flink.runtime.io.network.netty.NettyBufferPool;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.io.network.partition.BoundedBlockingSubpartitionType;
 import org.apache.flink.runtime.util.ConfigurationParserUtils;
@@ -166,14 +167,14 @@ public class NettyShuffleEnvironmentConfiguration {
 	 * sanity check them.
 	 *
 	 * @param configuration configuration object
-	 * @param maxJvmHeapMemory the maximum JVM heap size (in bytes)
+	 * @param shuffleMemorySize the size of memory reserved for shuffle environment
 	 * @param localTaskManagerCommunication true, to skip initializing the network stack
 	 * @param taskManagerAddress identifying the IP address under which the TaskManager will be accessible
 	 * @return NettyShuffleEnvironmentConfiguration
 	 */
 	public static NettyShuffleEnvironmentConfiguration fromConfiguration(
 		Configuration configuration,
-		long maxJvmHeapMemory,
+		MemorySize shuffleMemorySize,
 		boolean localTaskManagerCommunication,
 		InetAddress taskManagerAddress) {
 
@@ -181,9 +182,14 @@ public class NettyShuffleEnvironmentConfiguration {
 
 		final int pageSize = ConfigurationParserUtils.getPageSize(configuration);
 
-		final int numberOfNetworkBuffers = calculateNumberOfNetworkBuffers(configuration, maxJvmHeapMemory);
-
 		final NettyConfig nettyConfig = createNettyConfig(configuration, localTaskManagerCommunication, taskManagerAddress, dataport);
+
+		final int numberOfNettyArenas = nettyConfig != null ? nettyConfig.getNumberOfArenas() : 0;
+		final int numberOfNetworkBuffers = calculateNumberOfNetworkBuffers(
+			configuration,
+			shuffleMemorySize,
+			pageSize,
+			numberOfNettyArenas);
 
 		int initialRequestBackoff = configuration.getInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_INITIAL);
 		int maxRequestBackoff = configuration.getInteger(NettyShuffleEnvironmentOptions.NETWORK_REQUEST_BACKOFF_MAX);
@@ -449,35 +455,49 @@ public class NettyShuffleEnvironmentConfiguration {
 	 * Calculates the number of network buffers based on configuration and jvm heap size.
 	 *
 	 * @param configuration configuration object
-	 * @param maxJvmHeapMemory the maximum JVM heap size (in bytes)
+	 * @param shuffleMemorySize the size of memory reserved for shuffle environment
+	 * @param pageSize size of memory segment
+	 * @param numberOfNettyArenas number of netty arenas
 	 * @return the number of network buffers
 	 */
-	@SuppressWarnings("deprecation")
-	private static int calculateNumberOfNetworkBuffers(Configuration configuration, long maxJvmHeapMemory) {
-		final int numberOfNetworkBuffers;
-		if (!hasNewNetworkConfig(configuration)) {
-			// fallback: number of network buffers
-			numberOfNetworkBuffers = configuration.getInteger(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS);
+	private static int calculateNumberOfNetworkBuffers(
+		Configuration configuration,
+		MemorySize shuffleMemorySize,
+		int pageSize,
+		int numberOfNettyArenas) {
 
-			checkOldNetworkConfig(numberOfNetworkBuffers);
-		} else {
-			if (configuration.contains(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS)) {
-				LOG.info("Ignoring old (but still present) network buffer configuration via {}.",
-					NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS.key());
-			}
+		logIfIgnoringOldConfigs(configuration);
 
-			final long networkMemorySize = calculateNewNetworkBufferMemory(configuration, maxJvmHeapMemory);
+		long networkMemorySizeByte = shuffleMemorySize.getBytes();
+		long nettyArenasSizeBytes = numberOfNettyArenas * NettyBufferPool.ARENA_SIZE;
+		Preconditions.checkArgument(
+			networkMemorySizeByte >= nettyArenasSizeBytes,
+			String.format(
+				"Provided shuffle memory %d bytes is not enough for direct allocation of %d netty arenas " +
+					"('taskmanager.network.netty.num-arenas', by default 'taskmanager.numberOfTaskSlots'). " +
+					"Each arena size is %d bytes. Total configured arenas size is %d bytes. " +
+					"Try to increase shuffle memory size by adjusting 'taskmanager.memory.shuffle.*' Flink configuration options.",
+				networkMemorySizeByte,
+				numberOfNettyArenas,
+				NettyBufferPool.ARENA_SIZE,
+				nettyArenasSizeBytes));
 
-			// tolerate offcuts between intended and allocated memory due to segmentation (will be available to the user-space memory)
-			long numberOfNetworkBuffersLong = networkMemorySize / ConfigurationParserUtils.getPageSize(configuration);
-			if (numberOfNetworkBuffersLong > Integer.MAX_VALUE) {
-				throw new IllegalArgumentException("The given number of memory bytes (" + networkMemorySize
-					+ ") corresponds to more than MAX_INT pages.");
-			}
-			numberOfNetworkBuffers = (int) numberOfNetworkBuffersLong;
+		// tolerate offcuts between intended and allocated memory due to segmentation (will be available to the user-space memory)
+		long numberOfNetworkBuffersLong = (networkMemorySizeByte - nettyArenasSizeBytes) / pageSize;
+		if (numberOfNetworkBuffersLong > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("The given number of memory bytes (" + networkMemorySizeByte
+				+ ") corresponds to more than MAX_INT pages.");
 		}
 
-		return numberOfNetworkBuffers;
+		return (int) numberOfNetworkBuffersLong;
+	}
+
+	@SuppressWarnings("deprecation")
+	private static void logIfIgnoringOldConfigs(Configuration configuration) {
+		if (configuration.contains(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS)) {
+			LOG.info("Ignoring old (but still present) network buffer configuration via {}.",
+				NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS.key());
+		}
 	}
 
 	/**

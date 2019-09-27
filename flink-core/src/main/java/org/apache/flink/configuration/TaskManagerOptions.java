@@ -326,7 +326,7 @@ public class TaskManagerOptions {
 	 */
 	public static final ConfigOption<Float> MANAGED_MEMORY_FRACTION =
 		key("taskmanager.memory.managed.fraction")
-			.defaultValue(0.5f)
+			.defaultValue(0.6f)
 			.withDescription("Fraction of Total Flink Memory to be used as Managed Memory, if Managed Memory size is not"
 				+ " explicitly specified.");
 

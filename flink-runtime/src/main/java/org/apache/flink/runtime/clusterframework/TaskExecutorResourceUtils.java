@@ -95,6 +95,14 @@ public class TaskExecutorResourceUtils {
 	//  Memory Configuration Calculations
 	// ------------------------------------------------------------------------
 
+	public static TaskExecutorResourceSpec resourceSpecFromConfig(
+			final Configuration config,
+			final MemorySize totalProcessMemory) {
+		final Configuration copiedConfig = new Configuration(config);
+		copiedConfig.setString(TaskManagerOptions.TOTAL_PROCESS_MEMORY, totalProcessMemory.toString());
+		return resourceSpecFromConfig(copiedConfig);
+	}
+
 	public static TaskExecutorResourceSpec resourceSpecFromConfig(final Configuration config) {
 		if (isTaskHeapMemorySizeExplicitlyConfigured(config) && isManagedMemorySizeExplicitlyConfigured(config)) {
 			// both task heap memory and managed memory are configured, use these to derive total flink memory
@@ -692,10 +700,16 @@ public class TaskExecutorResourceUtils {
 
 		final double shuffleFraction = getShuffleMemoryRangeFraction(configuration).fraction;
 		final double managedFraction = getManagedMemoryRangeFraction(configuration).fraction;
+		final double managedOffHeapFraction;
+		if (isManagedMemoryOffHeapFractionExplicitlyConfigured(configuration)) {
+			managedOffHeapFraction = getManagedMemoryOffHeapFraction(configuration);
+		} else {
+			final boolean legacyManagedMemoryOffHeap = configuration.getBoolean(TaskManagerOptions.MEMORY_OFF_HEAP);
+			managedOffHeapFraction = legacyManagedMemoryOffHeap ? 1.0 : 0.0;
+		}
 
-		final MemorySize estimatedShuffleMemory = totalFlinkMemoryExceptShuffleAndManaged.multiply(shuffleFraction / (1 - shuffleFraction - managedFraction));
-		final MemorySize estimatedManagedMemory = totalFlinkMemoryExceptShuffleAndManaged.multiply(managedFraction / (1 - shuffleFraction - managedFraction));
-		final MemorySize estimatedTotalFlinkMemory = totalFlinkMemoryExceptShuffleAndManaged.add(estimatedShuffleMemory).add(estimatedManagedMemory);
+		final MemorySize estimatedTotalFlinkMemory = totalFlinkMemoryExceptShuffleAndManaged
+			.multiply(1 / (1 - shuffleFraction - managedFraction * managedOffHeapFraction));
 
 		final Configuration modifiedConfig = new Configuration(configuration);
 		modifiedConfig.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, estimatedTotalFlinkMemory.toString());
