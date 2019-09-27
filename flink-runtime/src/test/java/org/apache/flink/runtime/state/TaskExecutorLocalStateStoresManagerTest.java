@@ -45,8 +45,6 @@ public class TaskExecutorLocalStateStoresManagerTest extends TestLogger {
 	@ClassRule
 	public static TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-	private static final long MEM_SIZE_PARAM = 128L * 1024 * 1024;
-
 	/**
 	 * This tests that the creation of {@link TaskManagerServices} correctly creates the local state root directory
 	 * for the {@link TaskExecutorLocalStateStoresManager} with the configured root directory.
@@ -208,8 +206,6 @@ public class TaskExecutorLocalStateStoresManagerTest extends TestLogger {
 			config,
 			ResourceID.generate(),
 			InetAddress.getLocalHost(),
-			MEM_SIZE_PARAM,
-			MEM_SIZE_PARAM,
 			true);
 	}
 

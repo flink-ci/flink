@@ -74,7 +74,7 @@ import org.apache.flink.configuration.MemorySize;
  *               └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘
  * </pre>
  */
-public class TaskExecutorResourceSpec {
+public class TaskExecutorResourceSpec implements java.io.Serializable {
 
 	private final MemorySize frameworkHeapSize;
 

@@ -166,14 +166,14 @@ public class NettyShuffleEnvironmentConfiguration {
 	 * sanity check them.
 	 *
 	 * @param configuration configuration object
-	 * @param maxJvmHeapMemory the maximum JVM heap size (in bytes)
+	 * @param shuffleMemorySize the size of memory reserved for shuffle environment
 	 * @param localTaskManagerCommunication true, to skip initializing the network stack
 	 * @param taskManagerAddress identifying the IP address under which the TaskManager will be accessible
 	 * @return NettyShuffleEnvironmentConfiguration
 	 */
 	public static NettyShuffleEnvironmentConfiguration fromConfiguration(
 		Configuration configuration,
-		long maxJvmHeapMemory,
+		MemorySize shuffleMemorySize,
 		boolean localTaskManagerCommunication,
 		InetAddress taskManagerAddress) {
 
@@ -181,7 +181,7 @@ public class NettyShuffleEnvironmentConfiguration {
 
 		final int pageSize = ConfigurationParserUtils.getPageSize(configuration);
 
-		final int numberOfNetworkBuffers = calculateNumberOfNetworkBuffers(configuration, maxJvmHeapMemory);
+		final int numberOfNetworkBuffers = calculateNumberOfNetworkBuffers(configuration, shuffleMemorySize, pageSize);
 
 		final NettyConfig nettyConfig = createNettyConfig(configuration, localTaskManagerCommunication, taskManagerAddress, dataport);
 
@@ -449,35 +449,37 @@ public class NettyShuffleEnvironmentConfiguration {
 	 * Calculates the number of network buffers based on configuration and jvm heap size.
 	 *
 	 * @param configuration configuration object
-	 * @param maxJvmHeapMemory the maximum JVM heap size (in bytes)
+	 * @param shuffleMemorySize the size of memory reserved for shuffle environment
+	 * @param pageSize size of memory segment
 	 * @return the number of network buffers
 	 */
 	@SuppressWarnings("deprecation")
-	private static int calculateNumberOfNetworkBuffers(Configuration configuration, long maxJvmHeapMemory) {
-		final int numberOfNetworkBuffers;
-		if (!hasNewNetworkConfig(configuration)) {
-			// fallback: number of network buffers
-			numberOfNetworkBuffers = configuration.getInteger(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS);
+	private static int calculateNumberOfNetworkBuffers(
+		Configuration configuration,
+		MemorySize shuffleMemorySize,
+		int pageSize) {
 
-			checkOldNetworkConfig(numberOfNetworkBuffers);
-		} else {
-			if (configuration.contains(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS)) {
-				LOG.info("Ignoring old (but still present) network buffer configuration via {}.",
-					NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS.key());
-			}
-
-			final long networkMemorySize = calculateNewNetworkBufferMemory(configuration, maxJvmHeapMemory);
-
-			// tolerate offcuts between intended and allocated memory due to segmentation (will be available to the user-space memory)
-			long numberOfNetworkBuffersLong = networkMemorySize / ConfigurationParserUtils.getPageSize(configuration);
-			if (numberOfNetworkBuffersLong > Integer.MAX_VALUE) {
-				throw new IllegalArgumentException("The given number of memory bytes (" + networkMemorySize
-					+ ") corresponds to more than MAX_INT pages.");
-			}
-			numberOfNetworkBuffers = (int) numberOfNetworkBuffersLong;
-		}
+		final int numberOfNetworkBuffers = calculateNumberOfNetworkBuffers(shuffleMemorySize.getBytes(), pageSize);
+		logIfIgnoringOldConfigs(configuration);
 
 		return numberOfNetworkBuffers;
+	}
+
+	private static void logIfIgnoringOldConfigs(Configuration configuration) {
+		if (configuration.contains(NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS)) {
+			LOG.info("Ignoring old (but still present) network buffer configuration via {}.",
+				NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS.key());
+		}
+	}
+
+	private static int calculateNumberOfNetworkBuffers(long networkMemorySizeByte, int pageSizeByte) {
+		// tolerate offcuts between intended and allocated memory due to segmentation (will be available to the user-space memory)
+		long numberOfNetworkBuffersLong = networkMemorySizeByte / pageSizeByte;
+		if (numberOfNetworkBuffersLong > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("The given number of memory bytes (" + networkMemorySizeByte
+				+ ") corresponds to more than MAX_INT pages.");
+		}
+		return (int) numberOfNetworkBuffersLong;
 	}
 
 	/**

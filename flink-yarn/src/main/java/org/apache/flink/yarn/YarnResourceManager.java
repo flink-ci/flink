@@ -21,11 +21,11 @@ package org.apache.flink.yarn;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.BootstrapTools;
 import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
+import org.apache.flink.runtime.clusterframework.TaskExecutorResourceSpec;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.FutureUtils;
@@ -129,6 +129,8 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	private final Resource resource;
 
+	private final TaskExecutorResourceSpec taskExecutorResourceSpec;
+
 	public YarnResourceManager(
 			RpcService rpcService,
 			String resourceManagerEndpointId,
@@ -176,7 +178,9 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 		this.webInterfaceUrl = webInterfaceUrl;
 		this.numberOfTaskSlots = flinkConfig.getInteger(TaskManagerOptions.NUM_TASK_SLOTS);
-		this.defaultTaskManagerMemoryMB = ConfigurationUtils.getTaskManagerHeapMemory(flinkConfig).getMebiBytes();
+
+		this.taskExecutorResourceSpec = createTaskExecutorResourceSpec(flinkConfig);
+		this.defaultTaskManagerMemoryMB = taskExecutorResourceSpec.getTotalProcessMemorySize().getMebiBytes();
 		this.defaultCpus = flinkConfig.getInteger(YarnConfigOptions.VCORES, numberOfTaskSlots);
 		this.resource = Resource.newInstance(defaultTaskManagerMemoryMB, defaultCpus);
 
@@ -403,6 +407,7 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		try {
 			// Context information used to start a TaskExecutor Java process
 			ContainerLaunchContext taskExecutorLaunchContext = createTaskExecutorLaunchContext(
+				taskExecutorResourceSpec,
 				container.getResource(),
 				containerIdStr,
 				container.getNodeId().getHost());
@@ -539,20 +544,21 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 			RM_REQUEST_PRIORITY);
 	}
 
-	private ContainerLaunchContext createTaskExecutorLaunchContext(Resource resource, String containerId, String host)
-			throws Exception {
+	private ContainerLaunchContext createTaskExecutorLaunchContext(
+		TaskExecutorResourceSpec tmResourceSpec,
+		Resource resource,
+		String containerId,
+		String host) throws Exception {
+
 		// init the ContainerLaunchContext
 		final String currDir = env.get(ApplicationConstants.Environment.PWD.key());
 
 		final ContaineredTaskManagerParameters taskManagerParameters =
-				ContaineredTaskManagerParameters.create(flinkConfig, resource.getMemory(), numberOfTaskSlots);
+				ContaineredTaskManagerParameters.create(flinkConfig, tmResourceSpec, numberOfTaskSlots);
 
-		log.debug("TaskExecutor {} will be started with container size {} MB, JVM heap size {} MB, " +
-				"JVM direct memory limit {} MB",
-				containerId,
-				taskManagerParameters.taskManagerTotalMemoryMB(),
-				taskManagerParameters.taskManagerHeapSizeMB(),
-				taskManagerParameters.taskManagerDirectMemoryLimitMB());
+		log.debug("TaskExecutor {} will be started with {}.",
+			containerId,
+			tmResourceSpec);
 
 		Configuration taskManagerConfig = BootstrapTools.cloneConfiguration(flinkConfig);
 
