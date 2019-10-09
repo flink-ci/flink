@@ -22,6 +22,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.GlobalConfiguration;
+import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.BootstrapTools;
@@ -118,8 +119,6 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 
 	private final int defaultTaskManagerMemoryMB;
 
-	private final int defaultCpus;
-
 	/** The heartbeat interval while the resource master is waiting for containers. */
 	private final int containerRequestHeartbeatIntervalMillis;
 
@@ -186,9 +185,12 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		this.webInterfaceUrl = webInterfaceUrl;
 		this.numberOfTaskSlots = flinkConfig.getInteger(TaskManagerOptions.NUM_TASK_SLOTS);
 
-		this.taskExecutorResourceSpec = TaskExecutorResourceUtils.resourceSpecFromConfig(flinkConfig);
+		int defaultCpus = getCpuCores(flinkConfig);
+		this.taskExecutorResourceSpec = TaskExecutorResourceUtils
+			.newResourceSpecBuilder(flinkConfig)
+			.withCpuCores(defaultCpus)
+			.build();
 		this.defaultTaskManagerMemoryMB = taskExecutorResourceSpec.getTotalProcessMemorySize().getMebiBytes();
-		this.defaultCpus = flinkConfig.getInteger(YarnConfigOptions.VCORES, numberOfTaskSlots);
 		this.resource = Resource.newInstance(defaultTaskManagerMemoryMB, defaultCpus);
 
 		this.slotsPerWorker = createWorkerSlotProfiles(flinkConfig);
@@ -623,5 +625,27 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		taskExecutorLaunchContext.getEnvironment()
 				.put(ENV_FLINK_NODE_ID, host);
 		return taskExecutorLaunchContext;
+	}
+
+	private int getCpuCores(final Configuration configuration) {
+		int fallback = configuration.getInteger(YarnConfigOptions.VCORES);
+		double cpuCoresDouble = TaskExecutorResourceUtils.getCpuCoresWithFallback(configuration, fallback).getValue().doubleValue();
+		@SuppressWarnings("NumericCastThatLosesPrecision")
+		long cpuCoresLong = Math.max((long) Math.ceil(cpuCoresDouble), 1L);
+		//noinspection FloatingPointEquality
+		if (cpuCoresLong != cpuCoresDouble) {
+			log.info(
+				"The amount of cpu cores must be a positive integer on Yarn. Rounding {} up to the closest positive integer {}.",
+				cpuCoresDouble,
+				cpuCoresLong);
+		}
+		if (cpuCoresLong > Integer.MAX_VALUE) {
+			throw new IllegalConfigurationException(String.format(
+				"The amount of cpu cores %d cannot exceed Integer.MAX_VALUE: %d",
+				cpuCoresLong,
+				Integer.MAX_VALUE));
+		}
+		//noinspection NumericCastThatLosesPrecision
+		return (int) cpuCoresLong;
 	}
 }

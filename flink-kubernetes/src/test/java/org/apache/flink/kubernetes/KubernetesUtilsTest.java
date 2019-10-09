@@ -18,6 +18,7 @@
 
 package org.apache.flink.kubernetes;
 
+import org.apache.flink.api.common.resources.CPUResource;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.MemorySize;
@@ -225,6 +226,7 @@ public class KubernetesUtilsTest extends TestLogger {
 			String mainClassArgs) {
 
 		final TaskExecutorResourceSpec taskExecutorResourceSpec = new TaskExecutorResourceSpec(
+			new CPUResource(1.0),
 			new MemorySize(0), // frameworkHeapSize
 			new MemorySize(0), // frameworkOffHeapSize
 			new MemorySize(111), // taskHeapSize

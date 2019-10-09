@@ -190,8 +190,25 @@ public class TaskManagerOptions {
 				.build());
 
 	// ------------------------------------------------------------------------
-	//  Memory Options
+	//  Resource Options
 	// ------------------------------------------------------------------------
+
+	/**
+	 * This config option describes number of cpu cores of task executors.
+	 * In case of Yarn or Mesos, it is used to launch a container for the task executor.
+	 * We do not expose this config option to the users, and only use it to pass the
+	 * configured cpu cores into task executors at the moment.
+	 */
+	@Documentation.ExcludeFromDocumentation
+	public static final ConfigOption<Double> CPU_CORES =
+		key("taskmanager.cpu.cores")
+			.doubleType()
+			.noDefaultValue()
+			.withDescription("CPU cores for the TaskExecutors. In case of Yarn setups, this value will be rounded to "
+				+ "the closest positive integer. If not explicitly configured, legacy config options "
+				+ "'yarn.containers.vcores' and 'mesos.resourcemanager.tasks.cpus' will be used for Yarn / Mesos setups, "
+				+ "and '" + NUM_TASK_SLOTS.key() + "' will be used for standalone setups (approximate number "
+				+ "of slots).");
 
 	/**
 	 * Total Process Memory size for the TaskExecutors.
