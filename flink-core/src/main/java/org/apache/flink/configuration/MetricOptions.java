@@ -68,7 +68,7 @@ public class MetricOptions {
 	public static final ConfigOption<String> REPORTER_SCOPE_DELIMITER =
 		key("metrics.reporter.<name>." + ConfigConstants.METRICS_REPORTER_SCOPE_DELIMITER)
 			.noDefaultValue()
-			.withDescription("The delimiter used to assemble the metric identifier the reporter named <name>.");
+			.withDescription("The delimiter used to assemble the metric identifier for the reporter named <name>.");
 
 	public static final ConfigOption<String> REPORTER_CONFIG_PARAMETER =
 		key("metrics.reporter.<name>.<parameter>")
