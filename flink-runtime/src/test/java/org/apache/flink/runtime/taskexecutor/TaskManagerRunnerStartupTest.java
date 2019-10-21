@@ -46,6 +46,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 
+import static org.apache.flink.runtime.clusterframework.TaskExecutorResourceUtils.adjustMemoryConfigurationForLocalExecution;
 import static org.junit.Assert.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -56,6 +57,8 @@ import static org.mockito.Mockito.when;
 public class TaskManagerRunnerStartupTest extends TestLogger {
 
 	private static final String LOCAL_HOST = "localhost";
+
+	private static final int TOTAL_FLINK_MEMORY_MB = 512;
 
 	@Rule
 	public final TemporaryFolder tempFolder = new TemporaryFolder();
@@ -87,7 +90,7 @@ public class TaskManagerRunnerStartupTest extends TestLogger {
 			nonWritable.setWritable(false, false));
 
 		try {
-			Configuration cfg = new Configuration();
+			Configuration cfg = adjustMemoryConfigurationForLocalExecution(new Configuration());
 			cfg.setString(CoreOptions.TMP_DIRS, nonWritable.getAbsolutePath());
 
 			try {
@@ -117,7 +120,7 @@ public class TaskManagerRunnerStartupTest extends TestLogger {
 	 */
 	@Test
 	public void testMemoryConfigWrong() throws Exception {
-		Configuration cfg = new Configuration();
+		Configuration cfg = adjustMemoryConfigurationForLocalExecution(new Configuration());
 
 		// something invalid
 		cfg.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, "-42m");
@@ -142,7 +145,7 @@ public class TaskManagerRunnerStartupTest extends TestLogger {
 		final ServerSocket blocker = new ServerSocket(0, 50, InetAddress.getByName(LOCAL_HOST));
 
 		try {
-			final Configuration cfg = new Configuration();
+			final Configuration cfg = adjustMemoryConfigurationForLocalExecution(new Configuration());
 			cfg.setInteger(NettyShuffleEnvironmentOptions.DATA_PORT, blocker.getLocalPort());
 
 			startTaskManager(

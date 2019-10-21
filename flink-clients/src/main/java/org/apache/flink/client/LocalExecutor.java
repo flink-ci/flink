@@ -26,6 +26,7 @@ import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.runtime.clusterframework.TaskExecutorResourceUtils;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.minicluster.JobExecutorService;
 import org.apache.flink.runtime.minicluster.MiniCluster;
@@ -64,6 +65,7 @@ public class LocalExecutor extends PlanExecutor {
 		if (!configuration.contains(RestOptions.BIND_PORT)) {
 			configuration.setString(RestOptions.BIND_PORT, "0");
 		}
+		TaskExecutorResourceUtils.adjustMemoryConfigurationForLocalExecution(configuration);
 
 		int numTaskManagers = configuration.getInteger(
 				ConfigConstants.LOCAL_NUMBER_TASK_MANAGER,
