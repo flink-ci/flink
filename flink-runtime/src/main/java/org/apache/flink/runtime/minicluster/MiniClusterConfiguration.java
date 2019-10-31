@@ -30,6 +30,7 @@ import org.apache.flink.util.StringUtils;
 
 import javax.annotation.Nullable;
 
+import static org.apache.flink.runtime.clusterframework.TaskExecutorResourceUtils.adjustMemoryConfigurationForLocalExecution;
 import static org.apache.flink.runtime.minicluster.RpcServiceSharing.SHARED;
 
 /**
@@ -74,7 +75,7 @@ public class MiniClusterConfiguration {
 			configuration.setString(JobManagerOptions.SCHEDULER, schedulerType);
 		}
 
-		return new UnmodifiableConfiguration(configuration);
+		return new UnmodifiableConfiguration(adjustMemoryConfigurationForLocalExecution(configuration));
 	}
 
 	// ------------------------------------------------------------------------

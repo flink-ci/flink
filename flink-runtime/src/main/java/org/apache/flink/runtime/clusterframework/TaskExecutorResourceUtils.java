@@ -24,6 +24,7 @@ import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.util.ConfigurationParserUtils;
+import org.apache.flink.runtime.util.EnvironmentInformation;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -606,5 +607,28 @@ public class TaskExecutorResourceUtils {
 		MemorySize getTotalJvmMetaspaceAndOverheadSize() {
 			return metaspace.add(overhead);
 		}
+	}
+
+	/**
+	 * Adjusts Flink TM memory configuration for local execution.
+	 *
+	 * <p>Normally Flink requires at least one memory setting after FLIP-49.
+	 * If JVM process starts for TM without e.g. explicit {@link TaskManagerOptions#TOTAL_FLINK_MEMORY},
+	 * then it will fail. In case of adhoc local execution for {@link org.apache.flink.runtime.minicluster.MiniCluster}
+	 * or tests, default flink-conf.yaml is not loaded which contains explicit {@link TaskManagerOptions#TOTAL_FLINK_MEMORY}.
+	 * We derive managed memory size from the available JVM heap size in this case.
+	 */
+	public static Configuration adjustMemoryConfigurationForLocalExecution(Configuration configuration) {
+		try {
+			resourceSpecFromConfig(configuration);
+		} catch (Throwable t) {
+			configuration.setString(TaskManagerOptions.TASK_HEAP_MEMORY, "0");
+			long freeHeapMemoryWithDefrag = EnvironmentInformation.getSizeOfFreeHeapMemoryWithDefrag();
+			float managedMemoryFraction = configuration.getFloat(TaskManagerOptions.MANAGED_MEMORY_FRACTION);
+			long managedMemorySize = (long) (freeHeapMemoryWithDefrag * managedMemoryFraction);
+			configuration.setString(TaskManagerOptions.MANAGED_MEMORY_SIZE, Long.toString(managedMemorySize));
+			configuration.setFloat(TaskManagerOptions.MANAGED_MEMORY_OFFHEAP_FRACTION, 0.0f);
+		}
+		return configuration;
 	}
 }
