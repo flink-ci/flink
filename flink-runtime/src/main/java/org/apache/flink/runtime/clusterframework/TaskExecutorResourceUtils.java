@@ -417,7 +417,9 @@ public class TaskExecutorResourceUtils {
 			return MemorySize.parse(config.getString(TaskManagerOptions.TOTAL_PROCESS_MEMORY));
 		} else {
 			@SuppressWarnings("deprecation")
-			final long legacyHeapMemoryMB = config.getInteger(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY_MB);
+			final long legacyHeapMemoryMB = config.contains(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY_MB) ?
+				config.getInteger(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY_MB) :
+				MemorySize.parse(config.getString(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY)).getBytes();
 			return new MemorySize(legacyHeapMemoryMB << 20); // megabytes to bytes
 		}
 	}
@@ -427,7 +429,8 @@ public class TaskExecutorResourceUtils {
 	}
 
 	private static boolean isManagedMemorySizeExplicitlyConfigured(final Configuration config) {
-		return config.contains(TaskManagerOptions.MANAGED_MEMORY_SIZE);
+		return config.contains(TaskManagerOptions.MANAGED_MEMORY_SIZE) ||
+			config.contains(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE);
 	}
 
 	private static boolean isManagedMemoryOffHeapFractionExplicitlyConfigured(final Configuration config) {
