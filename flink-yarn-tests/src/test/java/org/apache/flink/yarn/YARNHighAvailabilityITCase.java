@@ -288,7 +288,7 @@ public class YARNHighAvailabilityITCase extends YarnTestBase {
 	}
 
 	private RestClusterClient<ApplicationId> deploySessionCluster(YarnClusterDescriptor yarnClusterDescriptor) throws ClusterDeploymentException {
-		final int containerMemory = 256;
+		final int containerMemory = 1024;
 		final ClusterClient<ApplicationId> yarnClusterClient = yarnClusterDescriptor.deploySessionCluster(
 			new ClusterSpecification.ClusterSpecificationBuilder()
 				.setMasterMemoryMB(containerMemory)
