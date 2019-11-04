@@ -798,6 +798,20 @@ runBashJavaUtilsCmd() {
     echo ${output}
 }
 
+verifyTmResourceConfig() {
+  if [ ! -z "${FLINK_TM_HEAP_MB}" ] && [ "${FLINK_TM_HEAP}" == 0 ]; then
+	    echo "used deprecated key \`${KEY_TASKM_MEM_MB}\`, please replace with key \`${KEY_TASKM_MEM_SIZE}\`"
+    else
+	    flink_tm_heap_bytes=$(parseBytes ${FLINK_TM_HEAP})
+	    FLINK_TM_HEAP_MB=$(getMebiBytes ${flink_tm_heap_bytes})
+    fi
+
+    if [[ ! ${FLINK_TM_HEAP_MB} =~ ${IS_NUMBER} ]] || [[ "${FLINK_TM_HEAP_MB}" -lt "0" ]]; then
+        echo "[ERROR] Configured TaskManager JVM heap size is not a number. Please set '${KEY_TASKM_MEM_SIZE}' in ${FLINK_CONF_FILE}."
+        exit 1
+    fi
+}
+
 getTmResourceDynamicConfigsAndJvmParams() {
     if [[ "`echo ${FLINK_TM_ENABLE_FLIP49} | tr '[:upper:]' '[:lower:]'`" == "true" ]]; then
         echo "$(getTmResourceDynamicConfigsAndJvmParamsFlip49)"
@@ -817,18 +831,6 @@ getTmResourceDynamicConfigsAndJvmParamsFlip49() {
 }
 
 getTmResourceDynamicConfigsAndJvmParamsLegacy() {
-    if [ ! -z "${FLINK_TM_HEAP_MB}" ] && [ "${FLINK_TM_HEAP}" == 0 ]; then
-	    echo "used deprecated key \`${KEY_TASKM_MEM_MB}\`, please replace with key \`${KEY_TASKM_MEM_SIZE}\`"
-    else
-	    flink_tm_heap_bytes=$(parseBytes ${FLINK_TM_HEAP})
-	    FLINK_TM_HEAP_MB=$(getMebiBytes ${flink_tm_heap_bytes})
-    fi
-
-    if [[ ! ${FLINK_TM_HEAP_MB} =~ ${IS_NUMBER} ]] || [[ "${FLINK_TM_HEAP_MB}" -lt "0" ]]; then
-        echo "[ERROR] Configured TaskManager JVM heap size is not a number. Please set '${KEY_TASKM_MEM_SIZE}' in ${FLINK_CONF_FILE}."
-        exit 1
-    fi
-
     if [ "${FLINK_TM_HEAP_MB}" -gt "0" ]; then
 
         TM_HEAP_SIZE=$(calculateTaskManagerHeapSizeMB)

@@ -48,6 +48,7 @@ if [[ $STARTSTOP == "start" ]] || [[ $STARTSTOP == "start-foreground" ]]; then
     export FLINK_ENV_JAVA_OPTS="${FLINK_ENV_JAVA_OPTS} ${FLINK_ENV_JAVA_OPTS_TM}"
 
     # Startup parameters
+    verifyTmResourceConfig
     dynamic_configs_and_jvm_params=$(getTmResourceDynamicConfigsAndJvmParams)
     IFS=$'\n' lines=(${dynamic_configs_and_jvm_params})
 
@@ -55,7 +56,7 @@ if [[ $STARTSTOP == "start" ]] || [[ $STARTSTOP == "start-foreground" ]]; then
     export JVM_ARGS="${JVM_ARGS} ${jvm_params}"
 
     dynamic_configs=${lines[1]}
-    ARGS=(${ARGS[@]} ${dynamic_configs})
+    ARGS+=(${dynamic_configs})
     ARGS+=("--configDir" "${FLINK_CONF_DIR}")
 fi
 
