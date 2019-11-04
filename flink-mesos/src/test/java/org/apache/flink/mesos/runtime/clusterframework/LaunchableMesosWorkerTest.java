@@ -26,6 +26,7 @@ import org.apache.flink.mesos.scheduler.LaunchableTask;
 import org.apache.flink.mesos.util.MesosResourceAllocation;
 import org.apache.flink.mesos.util.MesosUtils;
 import org.apache.flink.runtime.clusterframework.ContainerSpecification;
+import org.apache.flink.runtime.clusterframework.TaskExecutorResourceUtils;
 import org.apache.flink.util.TestLogger;
 
 import org.apache.mesos.Protos;
@@ -86,6 +87,7 @@ public class LaunchableMesosWorkerTest extends TestLogger {
 		configuration.setString(MesosOptions.MASTER_URL, "foobar");
 		final MemorySize memorySize = new MemorySize(1337L);
 		configuration.setString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE, memorySize.toString());
+		TaskExecutorResourceUtils.adjustMemoryConfigurationForLocalExecution(configuration);
 
 		final LaunchableTask launchableTask = new LaunchableMesosWorker(
 			ignored -> Option.empty(),
