@@ -85,7 +85,7 @@ public class YarnConfigurationITCase extends YarnTestBase {
 			final Configuration configuration = new Configuration(flinkConfiguration);
 
 			final int masterMemory = 64;
-			final int taskManagerMemory = 128;
+			final int taskManagerMemory = 512;
 			final int slotsPerTaskManager = 3;
 
 			// disable heap cutoff min

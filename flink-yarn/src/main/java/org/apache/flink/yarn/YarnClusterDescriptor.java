@@ -835,7 +835,7 @@ public class YarnClusterDescriptor implements ClusterDescriptor<ApplicationId> {
 				clusterSpecification.getSlotsPerTaskManager());
 
 		configuration.setString(
-				TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY,
+				TaskManagerOptions.TOTAL_PROCESS_MEMORY,
 				clusterSpecification.getTaskManagerMemoryMB() + "m");
 
 		// Upload the flink configuration
