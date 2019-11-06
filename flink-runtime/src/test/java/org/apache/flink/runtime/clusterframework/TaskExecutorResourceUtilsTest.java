@@ -24,6 +24,7 @@ import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
+import org.apache.flink.runtime.io.network.netty.NettyBufferPool;
 import org.apache.flink.util.TestLogger;
 
 import org.junit.Test;
@@ -201,13 +202,16 @@ public class TaskExecutorResourceUtilsTest extends TestLogger {
 	public void testConfigShuffleMemoryLegacyNumOfBuffers() {
 		final MemorySize pageSize = MemorySize.parse("32k");
 		final int numOfBuffers = 1024;
-		final MemorySize shuffleSize = pageSize.multiply(numOfBuffers);
+		final MemorySize arenaSize = MemorySize.parse(NettyBufferPool.ARENA_SIZE + "b");
+		final int numberOfNettyArenas = 10;
+		final MemorySize shuffleSize = pageSize.multiply(numOfBuffers).add(arenaSize.multiply(numberOfNettyArenas));
 
 		@SuppressWarnings("deprecation")
 		final ConfigOption<Integer> legacyOption = NettyShuffleEnvironmentOptions.NETWORK_NUM_BUFFERS;
 
 		Configuration conf = new Configuration();
 		conf.setString(TaskManagerOptions.MEMORY_SEGMENT_SIZE, pageSize.getKibiBytes() + "k");
+		conf.setInteger(NettyShuffleEnvironmentOptions.NUM_ARENAS, numberOfNettyArenas);
 		conf.setInteger(legacyOption, numOfBuffers);
 
 		// validate in configurations without explicit total flink/process memory, otherwise explicit configured

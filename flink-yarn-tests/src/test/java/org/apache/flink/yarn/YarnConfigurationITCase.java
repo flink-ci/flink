@@ -91,8 +91,8 @@ public class YarnConfigurationITCase extends YarnTestBase {
 
 			// disable heap cutoff min
 			configuration.setInteger(ResourceManagerOptions.CONTAINERIZED_HEAP_CUTOFF_MIN, 0);
-			configuration.setString(NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MIN, String.valueOf(1L << 20));
-			configuration.setString(NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MAX, String.valueOf(4L << 20));
+			configuration.setString(NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MIN, String.valueOf(49L << 20));
+			configuration.setString(NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MAX, String.valueOf(52L << 20));
 
 			final YarnConfiguration yarnConfiguration = getYarnConfiguration();
 			final YarnClusterDescriptor clusterDescriptor = new YarnClusterDescriptor(

@@ -102,9 +102,7 @@ public class NettyConfig {
 	}
 
 	public int getNumberOfArenas() {
-		// default: number of slots
-		final int configValue = config.getInteger(NettyShuffleEnvironmentOptions.NUM_ARENAS);
-		return configValue == -1 ? numberOfSlots : configValue;
+		return getNumberOfArenas(config, numberOfSlots);
 	}
 
 	public int getServerNumThreads() {
@@ -187,5 +185,11 @@ public class NettyConfig {
 				getServerConnectBacklog(), getServerConnectBacklog() == 0 ? def : man,
 				getClientConnectTimeoutSeconds(), getSendAndReceiveBufferSize(),
 				getSendAndReceiveBufferSize() == 0 ? def : man);
+	}
+
+	public static int getNumberOfArenas(Configuration config, int numberOfSlots) {
+		// default: number of slots
+		final int configValue = config.getInteger(NettyShuffleEnvironmentOptions.NUM_ARENAS);
+		return configValue == -1 ? numberOfSlots : configValue;
 	}
 }

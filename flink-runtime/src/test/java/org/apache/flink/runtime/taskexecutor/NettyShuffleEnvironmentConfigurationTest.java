@@ -30,8 +30,10 @@ import org.junit.Test;
 import java.net.InetAddress;
 import java.util.Random;
 
+import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -41,6 +43,20 @@ import static org.junit.Assert.fail;
 public class NettyShuffleEnvironmentConfigurationTest extends TestLogger {
 
 	private static final long MEM_SIZE_PARAM = 128L * 1024 * 1024;
+
+	@Test
+	public void testNetworkBufferNumberCalculation() {
+		final Configuration config = new Configuration();
+		config.setString(TaskManagerOptions.MEMORY_SEGMENT_SIZE, "1m");
+		config.setInteger(NettyShuffleEnvironmentOptions.NUM_ARENAS, 4); // 4 x 16Mb = 64Mb
+		final int numNetworkBuffers = NettyShuffleEnvironmentConfiguration.fromConfiguration(
+			config,
+			MEM_SIZE_PARAM,
+			null,
+			true,
+			InetAddress.getLoopbackAddress()).numNetworkBuffers();
+		assertThat(numNetworkBuffers, is(64)); // 128Mb (total) - 64Mb (arenas) / 1Mb (page) = 64
+	}
 
 	/**
 	 * Verifies that {@link  NettyShuffleEnvironmentConfiguration#fromConfiguration(Configuration, long, MemorySize, boolean, InetAddress)}
