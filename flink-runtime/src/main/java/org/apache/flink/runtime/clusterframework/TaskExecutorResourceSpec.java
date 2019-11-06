@@ -156,6 +156,10 @@ public class TaskExecutorResourceSpec implements java.io.Serializable {
 		return getTotalFlinkMemorySize().add(jvmMetaspaceSize).add(jvmOverheadSize);
 	}
 
+	public MemorySize getHeapSize() {
+		return frameworkHeapSize.add(taskHeapSize).add(onHeapManagedMemorySize);
+	}
+
 	@Override
 	public String toString() {
 		return "TaskExecutorResourceSpec {"

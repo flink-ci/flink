@@ -24,13 +24,11 @@ import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.PackagedProgram;
 import org.apache.flink.client.program.PackagedProgramUtils;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.ResourceManagerOptions;
-import org.apache.flink.configuration.TaskManagerOptions;
-import org.apache.flink.runtime.clusterframework.ContaineredTaskManagerParameters;
+import org.apache.flink.runtime.clusterframework.TaskExecutorResourceSpec;
+import org.apache.flink.runtime.clusterframework.TaskExecutorResourceUtils;
 import org.apache.flink.runtime.jobgraph.JobGraph;
-import org.apache.flink.runtime.resourcemanager.ActiveResourceManagerFactory;
 import org.apache.flink.runtime.rest.RestClient;
 import org.apache.flink.runtime.rest.RestClientConfiguration;
 import org.apache.flink.runtime.rest.messages.EmptyMessageParameters;
@@ -84,8 +82,11 @@ public class YarnConfigurationITCase extends YarnTestBase {
 			final YarnClient yarnClient = getYarnClient();
 			final Configuration configuration = new Configuration(flinkConfiguration);
 
+			final TaskExecutorResourceSpec spec = TaskExecutorResourceUtils.resourceSpecFromConfig(configuration);
 			final int masterMemory = 64;
-			final int taskManagerMemory = 512;
+			final int taskManagerMemory = spec.getTotalProcessMemorySize().getMebiBytes();
+			final long expectedHeapBytes = spec.getHeapSize().getBytes();
+			final int expectedManagedMemoryMB = spec.getManagedMemorySize().getMebiBytes();
 			final int slotsPerTaskManager = 3;
 
 			// disable heap cutoff min
@@ -175,22 +176,12 @@ public class YarnConfigurationITCase extends YarnTestBase {
 
 					assertThat(taskManagerInfo.getNumberSlots(), is(slotsPerTaskManager));
 
-					final ContaineredTaskManagerParameters containeredTaskManagerParameters = ContaineredTaskManagerParameters.create(
-						configuration,
-						null,
-						taskManagerMemory,
-						slotsPerTaskManager);
-
-					final long expectedHeadSize = containeredTaskManagerParameters.taskManagerHeapSizeMB() << 20L;
-
 					// We compare here physical memory assigned to a container with the heap memory that we should pass to
 					// jvm as Xmx parameter. Those value might differ significantly due to system page size or jvm
 					// implementation therefore we use 15% threshold here.
 					assertThat(
-						(double) taskManagerInfo.getHardwareDescription().getSizeOfJvmHeap() / (double) expectedHeadSize,
+						(double) taskManagerInfo.getHardwareDescription().getSizeOfJvmHeap() / expectedHeapBytes,
 						is(closeTo(1.0, 0.15)));
-
-					final int expectedManagedMemoryMB = calculateManagedMemorySizeMB(configuration);
 
 					assertThat((int) (taskManagerInfo.getHardwareDescription().getSizeOfManagedMemory() >> 20), is(expectedManagedMemoryMB));
 				} finally {
@@ -213,10 +204,5 @@ public class YarnConfigurationITCase extends YarnTestBase {
 			final TaskManagerInfo taskManagerInfo = taskManagerInfos.iterator().next();
 			return taskManagerInfo.getNumberSlots() > 0;
 		}
-	}
-
-	private static int calculateManagedMemorySizeMB(Configuration configuration) {
-		Configuration resourceManagerConfig = ActiveResourceManagerFactory.createActiveResourceManagerConfiguration(configuration);
-		return MemorySize.parse(resourceManagerConfig.getString(TaskManagerOptions.LEGACY_MANAGED_MEMORY_SIZE)).getMebiBytes();
 	}
 }

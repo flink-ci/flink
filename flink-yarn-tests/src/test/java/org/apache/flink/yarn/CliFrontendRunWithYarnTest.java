@@ -38,6 +38,7 @@ import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import static org.apache.flink.client.cli.CliFrontendRunTest.verifyCliFrontend;
+import static org.apache.flink.runtime.clusterframework.TaskExecutorResourceUtils.adjustMemoryConfigurationForLocalExecution;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.yarn.util.YarnTestUtils.getTestJarPath;
 
@@ -66,7 +67,7 @@ public class CliFrontendRunWithYarnTest extends CliFrontendTestBase {
 	public void testRun() throws Exception {
 		String testJarPath = getTestJarPath("BatchWordCount.jar").getAbsolutePath();
 
-		Configuration configuration = new Configuration();
+		Configuration configuration = adjustMemoryConfigurationForLocalExecution(new Configuration());
 		configuration.setString(JobManagerOptions.ADDRESS, "localhost");
 		configuration.setInteger(JobManagerOptions.PORT, 8081);
 
