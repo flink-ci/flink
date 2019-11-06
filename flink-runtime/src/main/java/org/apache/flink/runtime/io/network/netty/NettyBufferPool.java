@@ -67,6 +67,8 @@ public class NettyBufferPool extends PooledByteBufAllocator {
 	 */
 	private static final int MAX_ORDER = 11;
 
+	public static final long ARENA_SIZE = PAGE_SIZE << MAX_ORDER;
+
 	/**
 	 * Creates Netty's buffer pool with the specified number of direct arenas.
 	 *

@@ -47,7 +47,6 @@ public class NettyConnectionManagerTest {
 	 */
 	@Test
 	public void testMatchingNumberOfArenasAndThreadsAsDefault() throws Exception {
-		// Expected number of arenas and threads
 		int numberOfSlots = 2;
 
 		NettyConfig config = new NettyConfig(
@@ -60,7 +59,7 @@ public class NettyConnectionManagerTest {
 		NettyConnectionManager connectionManager = createNettyConnectionManager(config);
 		connectionManager.start();
 
-		assertEquals(numberOfSlots, connectionManager.getBufferPool().getNumberOfArenas());
+		assertEquals(1, connectionManager.getBufferPool().getNumberOfArenas());
 
 		{
 			// Client event loop group
