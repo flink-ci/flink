@@ -241,9 +241,9 @@ public class TaskExecutorResourceUtilsTest extends TestLogger {
 	@Test
 	public void testConfigShuffleMemoryLegacyNumOfBuffers() {
 		final MemorySize pageSize = MemorySize.parse("32k");
-		final int numOfBuffers = 1024;
+		final int numOfBuffers = 10;
 		final MemorySize arenaSize = MemorySize.parse(NettyBufferPool.ARENA_SIZE + "b");
-		final int numberOfNettyArenas = 10;
+		final int numberOfNettyArenas = 1;
 		final MemorySize shuffleSize = pageSize.multiply(numOfBuffers).add(arenaSize.multiply(numberOfNettyArenas));
 
 		@SuppressWarnings("deprecation")
@@ -257,6 +257,8 @@ public class TaskExecutorResourceUtilsTest extends TestLogger {
 		// validate in configurations without explicit total flink/process memory, otherwise explicit configured
 		// shuffle memory size might conflict with total flink/process memory minus other memory sizes
 		validateInConfigWithExplicitTaskHeapAndManagedMem(conf, taskExecutorResourceSpec ->
+			assertThat(taskExecutorResourceSpec.getShuffleMemSize(), is(shuffleSize)));
+		validateInConfigurationsWithoutExplicitTaskHeapMem(conf, taskExecutorResourceSpec ->
 			assertThat(taskExecutorResourceSpec.getShuffleMemSize(), is(shuffleSize)));
 	}
 
