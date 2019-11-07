@@ -26,6 +26,7 @@ import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.runtime.io.network.netty.NettyBufferPool;
 import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.util.ConfigurationParserUtils;
+import org.apache.flink.runtime.util.EnvironmentInformation;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -102,6 +103,12 @@ public class TaskExecutorResourceUtils {
 			throw new IllegalConfigurationException("Either Task Heap Memory size and Managed Memory size, or Total Flink"
 				+ " Memory size, or Total Process Memory size need to be configured explicitly.");
 		}
+	}
+
+	public static boolean isTaskExecutorResourceExplicitlyConfigured(final Configuration config) {
+		return (isTaskHeapMemorySizeExplicitlyConfigured(config) && isManagedMemorySizeExplicitlyConfigured(config))
+			|| isTotalFlinkMemorySizeExplicitlyConfigured(config)
+			|| isTotalProcessMemorySizeExplicitlyConfigured(config);
 	}
 
 	private static TaskExecutorResourceSpec deriveResourceSpecWithExplicitTaskAndManagedMemory(final Configuration config) {
@@ -628,5 +635,27 @@ public class TaskExecutorResourceUtils {
 		MemorySize getTotalJvmMetaspaceAndOverheadSize() {
 			return metaspace.add(overhead);
 		}
+	}
+
+	public static Configuration adjustConfigurationForLocalExecution(final Configuration configuration, int numberOfTaskExecutors) {
+
+		final long jvmFreeHeapMemBytesPerTm = EnvironmentInformation.getSizeOfFreeHeapMemoryWithDefrag() / numberOfTaskExecutors;
+		final MemorySize totalHeapMemory = new MemorySize(jvmFreeHeapMemBytesPerTm);
+
+		final MemorySize frameworkOffHeap = getFrameworkOffHeapMemorySize(configuration);
+		final MemorySize taskOffHeap = getTaskOffHeapMemorySize(configuration);
+		final MemorySize totalFlinkMemoryExceptShuffleAndManaged = totalHeapMemory.add(frameworkOffHeap).add(taskOffHeap);
+
+		final double shuffleFraction = getShuffleMemoryRangeFraction(configuration).fraction;
+		final double managedFraction = getManagedMemoryRangeFraction(configuration).fraction;
+
+		final MemorySize estimatedShuffleMemory = totalFlinkMemoryExceptShuffleAndManaged.multiply(shuffleFraction / (1 - shuffleFraction - managedFraction));
+		final MemorySize estimatedManagedMemory = totalFlinkMemoryExceptShuffleAndManaged.multiply(managedFraction / (1 - shuffleFraction - managedFraction));
+		final MemorySize estimatedTotalFlinkMemory = totalFlinkMemoryExceptShuffleAndManaged.add(estimatedShuffleMemory).add(estimatedManagedMemory);
+
+		final Configuration modifiedConfig = new Configuration(configuration);
+		modifiedConfig.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, estimatedTotalFlinkMemory.toString());
+
+		return modifiedConfig;
 	}
 }
