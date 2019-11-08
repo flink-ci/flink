@@ -122,6 +122,16 @@ public class TaskExecutorResourceUtilsTest extends TestLogger {
 	}
 
 	@Test
+	public void testConfigFrameworkOffHeapMemory() {
+		final MemorySize frameworkOffHeapSize = MemorySize.parse("10m");
+
+		Configuration conf = new Configuration();
+		conf.setString(TaskManagerOptions.FRAMEWORK_OFF_HEAP_MEMORY, frameworkOffHeapSize.getMebiBytes() + "m");
+
+		validateInAllConfigurations(conf, taskExecutorResourceSpec -> assertThat(taskExecutorResourceSpec.getFrameworkOffHeapMemorySize(), is(frameworkOffHeapSize)));
+	}
+
+	@Test
 	public void testConfigTaskHeapMemory() {
 		final MemorySize taskHeapSize = MemorySize.parse("50m");
 
