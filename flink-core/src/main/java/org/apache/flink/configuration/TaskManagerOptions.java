@@ -279,6 +279,16 @@ public class TaskManagerOptions {
 				+ " for TaskExecutor framework, which will not be allocated to task slots.");
 
 	/**
+	 * Framework Off-Heap Memory size for TaskExecutors.
+	 */
+	public static final ConfigOption<String> FRAMEWORK_OFF_HEAP_MEMORY =
+		key("taskmanager.memory.framework.off-heap.size")
+			.defaultValue("16m")
+			.withDescription("Framework Off-Heap Memory size for TaskExecutors. This is the size of off-heap memory"
+				+ " (JVM direct memory or native memory) reserved for TaskExecutor framework, which will not be"
+				+ " allocated to task slots.");
+
+	/**
 	 * Task Heap Memory size for TaskExecutors.
 	 */
 	public static final ConfigOption<String> TASK_HEAP_MEMORY =
