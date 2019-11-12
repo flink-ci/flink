@@ -191,7 +191,7 @@ public class UtilsTest extends TestLogger {
 		amCredentials.writeTokenStorageFile(new org.apache.hadoop.fs.Path(credentialFile.getAbsolutePath()), yarnConf);
 
 		Configuration copiedConfig = new Configuration(flinkConf);
-		copiedConfig.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "512m");
+		copiedConfig.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "1g");
 		TaskExecutorResourceSpec spec = TaskExecutorResourceUtils.resourceSpecFromConfig(copiedConfig);
 		ContaineredTaskManagerParameters tmParams = new ContaineredTaskManagerParameters(spec, 1, new HashMap<>(1));
 		Configuration taskManagerConf = new Configuration();

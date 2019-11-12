@@ -70,7 +70,7 @@ public class CliFrontendRunWithYarnTest extends CliFrontendTestBase {
 		Configuration configuration = new Configuration();
 		configuration.setString(JobManagerOptions.ADDRESS, "localhost");
 		configuration.setInteger(JobManagerOptions.PORT, 8081);
-		configuration.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "512m");
+		configuration.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "1g");
 
 		final ClusterClientServiceLoader testServiceLoader =
 			new TestingYarnClusterClientServiceLoader(new FakeClusterClient());

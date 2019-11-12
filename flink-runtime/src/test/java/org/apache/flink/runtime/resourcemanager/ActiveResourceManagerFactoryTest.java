@@ -55,7 +55,7 @@ public class ActiveResourceManagerFactoryTest extends TestLogger {
 	@Test
 	public void createResourceManager_WithDefaultConfiguration_ShouldSetManagedMemory() throws Exception {
 		final Configuration configuration = new Configuration();
-		configuration.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "512m");
+		configuration.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "1g");
 
 		final TestingActiveResourceManagerFactory resourceManagerFactory = new TestingActiveResourceManagerFactory();
 

@@ -46,7 +46,7 @@ public class TaskExecutorLocalStateStoresManagerTest extends TestLogger {
 	@ClassRule
 	public static TemporaryFolder temporaryFolder = new TemporaryFolder();
 
-	private static final int TOTAL_FLINK_MEMORY_MB = 512;
+	private static final int TOTAL_FLINK_MEMORY_MB = 1024;
 
 	/**
 	 * This tests that the creation of {@link TaskManagerServices} correctly creates the local state root directory

@@ -133,7 +133,7 @@ public class YarnResourceManagerTest extends TestLogger {
 
 		flinkConfig = new Configuration();
 		flinkConfig.setInteger(ResourceManagerOptions.CONTAINERIZED_HEAP_CUTOFF_MIN, 100);
-		flinkConfig.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "512m");
+		flinkConfig.setString(TaskManagerOptions.TOTAL_FLINK_MEMORY, "1g");
 
 		File root = folder.getRoot();
 		File home = new File(root, "home");
