@@ -119,7 +119,7 @@ public class TaskExecutorResourceUtilsTest extends TestLogger {
 
 	@Test
 	public void testConfigTaskOffheapMemory() {
-		final MemorySize taskOffHeapSize = MemorySize.parse("50m");
+		final MemorySize taskOffHeapSize = MemorySize.parse("10m");
 
 		Configuration conf = new Configuration();
 		conf.setString(TaskManagerOptions.TASK_OFF_HEAP_MEMORY, taskOffHeapSize.getMebiBytes() + "m");
