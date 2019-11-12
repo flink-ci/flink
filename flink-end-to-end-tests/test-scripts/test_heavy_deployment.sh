@@ -31,8 +31,8 @@ set_config_key "web.timeout" "60000"
 set_config_key "taskmanager.heap.size" "512m" # 512Mb x 10TMs = 5Gb total heap
 
 set_config_key "taskmanager.memory.size" "8" # 8Mb
-set_config_key "taskmanager.network.memory.min" "8mb"
-set_config_key "taskmanager.network.memory.max" "8mb"
+set_config_key "taskmanager.network.memory.min" "32mb"
+set_config_key "taskmanager.network.memory.max" "32mb"
 set_config_key "taskmanager.network.request-backoff.max" "60000"
 set_config_key "taskmanager.memory.segment-size" "8kb"
 
