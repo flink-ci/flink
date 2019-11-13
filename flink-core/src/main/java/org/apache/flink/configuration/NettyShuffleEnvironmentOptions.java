@@ -175,7 +175,8 @@ public class NettyShuffleEnvironmentOptions {
 
 	public static final ConfigOption<Integer> NUM_ARENAS =
 		key("taskmanager.network.netty.num-arenas")
-			.defaultValue(-1)
+			.intType()
+			.defaultValue(1)
 			.withDeprecatedKeys("taskmanager.net.num-arenas")
 			.withDescription("The number of Netty arenas.");
 
