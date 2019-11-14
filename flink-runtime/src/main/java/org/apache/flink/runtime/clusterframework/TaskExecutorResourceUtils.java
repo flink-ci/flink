@@ -535,7 +535,7 @@ public class TaskExecutorResourceUtils {
 		// only when they are explicitly configured by the user
 		@SuppressWarnings("deprecation")
 		final boolean legacyConfigured =
-			config.contains(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY_MB) || config.contains(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY);
+			config.contains(TaskManagerOptions.TASK_MANAGER_HEAP_MEMORY_MB);
 		final boolean configuredWithEnv = System.getenv("FLINK_TM_HEAP") != null;
 		return config.contains(TaskManagerOptions.TOTAL_PROCESS_MEMORY) || legacyConfigured || configuredWithEnv;
 	}
