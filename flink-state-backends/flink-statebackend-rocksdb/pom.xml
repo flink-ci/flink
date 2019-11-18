@@ -55,9 +55,9 @@ under the License.
 		</dependency>
 
 		<dependency>
-			<groupId>com.data-artisans</groupId>
+			<groupId>io.github.myasuka</groupId>
 			<artifactId>frocksdbjni</artifactId>
-			<version>5.17.2-artisans-1.0</version>
+			<version>5.17.2-artisans-3.0</version>
 		</dependency>
 
 		<!-- test dependencies -->
