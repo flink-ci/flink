@@ -357,7 +357,7 @@ public class TaskManagerOptions {
 	 */
 	public static final ConfigOption<String> SHUFFLE_MEMORY_MIN =
 		key("taskmanager.memory.shuffle.min")
-			.defaultValue("64m")
+			.defaultValue("128m")
 			.withDeprecatedKeys(NettyShuffleEnvironmentOptions.NETWORK_BUFFERS_MEMORY_MIN.key())
 			.withDescription("Min Shuffle Memory size for TaskExecutors. Shuffle Memory is off-heap memory reserved for"
 				+ " ShuffleEnvironment (e.g., network buffers). Shuffle Memory size is derived to make up the configured"
