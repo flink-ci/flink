@@ -29,6 +29,9 @@ import org.apache.flink.runtime.io.network.netty.NettyConfig;
 import org.apache.flink.runtime.util.ConfigurationParserUtils;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -41,6 +44,10 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <p>See {@link TaskExecutorResourceSpec} for details about memory components of TaskExecutor and their relationships.
  */
 public class TaskExecutorResourceUtils {
+
+	private static final Logger LOG = LoggerFactory.getLogger(TaskExecutorResourceUtils.class);
+
+	private static final String LEGACY_MANAGED_MEMORY_FRACTION_CONFIG_KEY = "taskmanager.memory.fraction";
 
 	private TaskExecutorResourceUtils() {}
 
@@ -371,12 +378,27 @@ public class TaskExecutorResourceUtils {
 	private static RangeFraction getManagedMemoryRangeFraction(final Configuration config) {
 		final MemorySize minSize = MemorySize.ZERO;
 		final MemorySize maxSize = MemorySize.MAX_VALUE;
+		logIfLegacyManagedMemoryFractionIsConfigured(config);
 		final double fraction = config.getFloat(TaskManagerOptions.MANAGED_MEMORY_FRACTION);
 		if (fraction >= 1 || fraction < 0) {
 			throw new IllegalConfigurationException("Configured Managed Memory fraction ("
 				+ fraction + ") must be in [0, 1).");
 		}
 		return new RangeFraction(minSize, maxSize, fraction);
+	}
+
+	private static void logIfLegacyManagedMemoryFractionIsConfigured(final Configuration config) {
+		if (config.containsKey(LEGACY_MANAGED_MEMORY_FRACTION_CONFIG_KEY)) {
+			LOG.warn("Ignoring managed memory fraction configured with legacy key (" +
+				LEGACY_MANAGED_MEMORY_FRACTION_CONFIG_KEY + ": " +
+				config.getFloat(LEGACY_MANAGED_MEMORY_FRACTION_CONFIG_KEY, 0.0f) +
+				"). Please use '" + TaskManagerOptions.MANAGED_MEMORY_FRACTION.key() + "' instead. " +
+				"The new managed memory fraction has different semantics than the original one. " +
+				"The new config option is defined as the fraction of managed memory within total flink memeory, " +
+				"while the original one is the fraction of managed memory within free memory (total task executor " +
+				"memory minus cut-off and network buffers). Thus, backwards compatibility of the original config key " +
+				"is not supported.");
+		}
 	}
 
 	private static double getManagedMemoryOffHeapFraction(final Configuration config) {
