@@ -193,7 +193,8 @@ public class YarnResourceManager extends ResourceManager<YarnWorkerNode> impleme
 		this.defaultTaskManagerMemoryMB = taskExecutorResourceSpec.getTotalProcessMemorySize().getMebiBytes();
 		this.resource = Resource.newInstance(defaultTaskManagerMemoryMB, defaultCpus);
 
-		this.slotsPerWorker = createWorkerSlotProfiles(flinkConfig);
+		this.slotsPerWorker = TaskExecutorResourceUtils
+			.createDefaultWorkerSlotProfiles(taskExecutorResourceSpec, numberOfTaskSlots);
 
 		// Load the flink config uploaded by flink client
 		this.flinkClientConfig = GlobalConfiguration.loadConfiguration(env.get(ApplicationConstants.Environment.PWD.key()));
