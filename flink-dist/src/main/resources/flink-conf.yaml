@@ -55,6 +55,7 @@ taskmanager.numberOfTaskSlots: 1
 
 parallelism.default: 1
 
+akka.ask.timeout: 120 s
 # The default file system scheme and authority.
 # 
 # By default file paths without scheme are interpreted relative to the local
