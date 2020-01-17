@@ -229,7 +229,8 @@ public class SQLClientKafkaITCase extends TestLogger {
 					// 2018-03-12 09:00:00.000,Bob,This was another warning.,1,Success constant folding.
 					// 2018-03-12 09:00:00.000,Steve,This was another info.,2,Success constant folding.
 					// 2018-03-12 09:00:00.000,Alice,This was a info.,1,Success constant folding.
-					Assert.assertEquals("MD5 checksum mismatch", "1303e3aa1d7aeb63024d539f15e42dd1", getMd5Sum(bytes));
+					System.out.println(lines);
+					Assert.assertEquals("MD5 checksum mismatch", "9b06d1f8c8b8dd4ce3341786897c8993", getMd5Sum(bytes));
 					break;
 				}
 			} else {
