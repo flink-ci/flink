@@ -241,7 +241,7 @@ public final class FlinkDistribution implements ExternalResource {
 		final List<String> commands = new ArrayList<>();
 		commands.add(bin.resolve("sql-client.sh").toAbsolutePath().toString());
 		commands.add("embedded");
-		job.getDefaultEnvFile().ifPresent(defaultEnvFile-> {
+		job.getDefaultEnvFile().ifPresent(defaultEnvFile -> {
 			commands.add("--defaults");
 			commands.add(defaultEnvFile);
 		});
