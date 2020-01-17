@@ -690,6 +690,15 @@ under the License.
 
 	<profiles>
 		<profile>
+			<id>zk-3.5</id>
+			<properties>
+				<zookeeper.version>${zookeeper.3-5.version}</zookeeper.version>
+				<zookeeper.optional.version>${zookeeper.3-4.version}</zookeeper.optional.version>
+				<curator.version>4.2.0</curator.version>
+			</properties>
+		</profile>
+
+		<profile>
 			<id>legacy-scheduler</id>
 			<properties>
 				<test.scheduler.type>legacy</test.scheduler.type>
