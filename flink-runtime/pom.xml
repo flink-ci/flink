@@ -99,6 +99,11 @@ under the License.
 		</dependency>
 
 		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-shaded-zookeeper-3</artifactId>
+		</dependency>
+
+		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-lang3</artifactId>
 		</dependency>
@@ -238,20 +243,6 @@ under the License.
 					<artifactId>scala-library</artifactId>
 				</exclusion>
 			</exclusions>
-		</dependency>
-
-		<!-- Curator and ZooKeeper - we explicitly add ZooKeeper here as
-			well to make sure our managed version is used -->
-
-		<dependency>
-			<groupId>org.apache.zookeeper</groupId>
-			<artifactId>zookeeper</artifactId>
-		</dependency>
-
-		<dependency>
-			<groupId>org.apache.flink</groupId>
-			<artifactId>flink-shaded-curator</artifactId>
-			<version>${project.version}</version>
 		</dependency>
 
 		<!-- Lz4 compression library -->
