@@ -18,16 +18,16 @@
 
 package org.apache.flink.runtime.zookeeper;
 
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.test.TestingCluster;
-import org.apache.curator.test.TestingServer;
-import org.apache.curator.utils.ZKPaths;
-
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 
-import org.apache.zookeeper.KeeperException;
+import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
+import org.apache.flink.shaded.curator4.org.apache.curator.utils.ZKPaths;
+import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
+
+import org.apache.curator.test.TestingCluster;
+import org.apache.curator.test.TestingServer;
 
 import java.util.List;
 

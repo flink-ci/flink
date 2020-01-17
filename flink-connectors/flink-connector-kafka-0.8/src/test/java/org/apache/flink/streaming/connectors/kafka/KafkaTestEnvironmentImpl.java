@@ -30,6 +30,11 @@ import org.apache.flink.streaming.connectors.kafka.testutils.ZooKeeperStringSeri
 import org.apache.flink.streaming.util.serialization.KeyedSerializationSchema;
 import org.apache.flink.util.NetUtils;
 
+import org.apache.flink.shaded.curator4.org.apache.curator.RetryPolicy;
+import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
+import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.flink.shaded.curator4.org.apache.curator.retry.ExponentialBackoffRetry;
+
 import kafka.admin.AdminUtils;
 import kafka.api.PartitionMetadata;
 import kafka.common.KafkaException;
@@ -40,10 +45,6 @@ import kafka.utils.SystemTime$;
 import org.I0Itec.zkclient.ZkClient;
 import org.apache.commons.collections.list.UnmodifiableList;
 import org.apache.commons.io.FileUtils;
-import org.apache.curator.RetryPolicy;
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.curator.test.TestingServer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
