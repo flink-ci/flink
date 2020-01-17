@@ -104,11 +104,11 @@ public class SQLClientKafkaITCase extends TestLogger {
 	}
 
 	@Before
-	public void before() throws IOException {
+	public void before() {
 		Path tmpPath = tmp.getRoot().toPath();
 		LOG.info("The current temporary path: {}", tmpPath);
 		this.sqlClientSessionConf = tmpPath.resolve("sql-client-session.conf");
-		this.result = tmp.newFolder("result").toPath();
+		this.result = tmpPath.resolve("result");
 	}
 
 	@Test
