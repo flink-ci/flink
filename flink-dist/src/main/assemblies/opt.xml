@@ -168,6 +168,12 @@
 			<destName>flink-python_${scala.binary.version}-${project.version}.jar</destName>
 			<fileMode>0644</fileMode>
 		</file>
+
+		<file>
+			<source>target/temporary/zookeeper-${zookeeper.optional.version}.jar</source>
+			<outputDirectory>opt</outputDirectory>
+			<fileMode>0644</fileMode>
+		</file>
 	</files>
 	<dependencySets>
 		<dependencySet>
