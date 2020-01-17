@@ -73,7 +73,7 @@ public class SQLClientKafkaITCase extends TestLogger {
 	public static Collection<Object[]> data() {
 		return Arrays.asList(new Object[][]{
 				{"0.10.2.0", "0.10", ".*kafka-0.10.jar"},
-				{"0.11.0.2", "0.11", ".*kafka-0.10.jar"},
+				{"0.11.0.2", "0.11", ".*kafka-0.11.jar"},
 				{"2.2.0", "universal", ".*kafka.jar"}
 		});
 	}
