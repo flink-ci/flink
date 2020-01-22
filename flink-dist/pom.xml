@@ -616,7 +616,7 @@ under the License.
 						</configuration>
 					</execution>
 					<execution>
-						<id>copy-zk-${zookeeper.version}-jars</id>
+						<id>copy-zk-jars</id>
 						<phase>process-resources</phase>
 						<goals>
 							<goal>copy</goal>
