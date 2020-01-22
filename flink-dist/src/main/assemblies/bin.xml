@@ -40,7 +40,6 @@ under the License.
 			<includes>
 				<include>org.slf4j:slf4j-log4j12</include>
 				<include>log4j:log4j</include>
-				<include>org.apache.flink:flink-shaded-zookeeper-3</include>
 			</includes>
 		</dependencySet>
 	</dependencySets>
@@ -50,6 +49,13 @@ under the License.
 		<file>
 			<source>target/flink-dist_${scala.binary.version}-${project.version}.jar</source>
 			<outputDirectory>lib/</outputDirectory>
+			<fileMode>0644</fileMode>
+		</file>
+
+		<file>
+			<source>target/temporary/flink-shaded-zookeeper-3-${zookeeper.version}-${flink.shaded.version}.jar</source>
+			<outputDirectory>lib</outputDirectory>
+			<destName>flink-shaded-zookeeper-${zookeeper.version}.jar</destName>
 			<fileMode>0644</fileMode>
 		</file>
 
