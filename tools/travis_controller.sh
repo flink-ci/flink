@@ -83,6 +83,12 @@ function deleteOldCaches() {
 # delete leftover caches from previous builds; except the most recent
 find "$CACHE_DIR" -mindepth 1 -maxdepth 1 | grep -v "$TRAVIS_BUILD_NUMBER" | sort -Vr | tail -n +2 | deleteOldCaches
 
+git clone https://github.com/zentol/flink-shaded.git
+cd flink-shaded
+git checkout zk
+mvn clean install
+cd ..
+
 STAGE=$1
 echo "Current stage: \"$STAGE\""
 
