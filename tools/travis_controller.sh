@@ -86,10 +86,10 @@ find "$CACHE_DIR" -mindepth 1 -maxdepth 1 | grep -v "$TRAVIS_BUILD_NUMBER" | sor
 git clone https://github.com/zentol/flink-shaded.git
 cd flink-shaded
 git checkout zk
-mvn clean install -Dhadoop.version=2.4.1
-mvn clean install -Dhadoop.version=2.6.5
-mvn clean install -Dhadoop.version=2.7.5
-mvn clean install -Dhadoop.version=2.8.3
+mvn clean install -Dhadoop.version=2.4.1 -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
+mvn clean install -Dhadoop.version=2.6.5 -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
+mvn clean install -Dhadoop.version=2.7.5 -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
+mvn clean install -Dhadoop.version=2.8.3 -Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn
 cd ..
 
 STAGE=$1
