@@ -410,23 +410,7 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 		try {
 			client = spy(ZooKeeperUtils.startCuratorFramework(configuration));
 
-			Answer<CreateBuilder> answer = new Answer<CreateBuilder>() {
-				private int counter = 0;
-
-				@Override
-				public CreateBuilder answer(InvocationOnMock invocation) throws Throwable {
-					counter++;
-
-					// at first we have to create the leader latch, there it mustn't fail yet
-					if (counter < 2) {
-						return (CreateBuilder) invocation.callRealMethod();
-					} else {
-						return mockCreateBuilder;
-					}
-				}
-			};
-
-			doAnswer(answer).when(client).create();
+			doAnswer(invocation -> mockCreateBuilder).when(client).create();
 
 			when(
 				mockCreateBuilder
