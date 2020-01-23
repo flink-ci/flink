@@ -86,7 +86,7 @@ find "$CACHE_DIR" -mindepth 1 -maxdepth 1 | grep -v "$TRAVIS_BUILD_NUMBER" | sor
 git clone https://github.com/zentol/flink-shaded.git
 cd flink-shaded
 git checkout zk
-mvn clean install
+mvn clean install -Dhadoop.version=2.8.3
 cd ..
 
 STAGE=$1
