@@ -17,9 +17,11 @@
 ################################################################################
 from abc import ABC, abstractmethod
 
-from typing import TypeVar, Generic
+from typing import TypeVar, Generic, Iterable, List, Iterator, Dict, Tuple
 
 T = TypeVar('T')
+K = TypeVar('K')
+V = TypeVar('V')
 
 
 class State(ABC):
@@ -63,3 +65,139 @@ class ValueState(State, Generic[T]):
         key will be removed and the default value is returned on the next access.
         """
         pass
+
+
+class ListState(State, Generic[T]):
+    """
+    :class:`State` interface for partitioned list state in Operations.
+    The state is accessed and modified by user functions, and checkpointed consistently
+    by the system as part of the distributed snapshots.
+
+    Currently only keyed list state is supported.
+
+    When it is a keyed list state, the state key is automatically supplied by the system, so the
+    user function always sees the value mapped to the key of the current element. That way, the
+    system can handle stream and state partitioning consistently together.
+    """
+
+    @abstractmethod
+    def get(self) -> Iterable[T]:
+        """
+        Returns the elements under the current key.
+        """
+        pass
+
+    @abstractmethod
+    def add(self, value: T) -> None:
+        """
+        Adding the given value to the tail of this list state.
+        """
+        pass
+
+    @abstractmethod
+    def update(self, values: List[T]) -> None:
+        """
+        Updating existing values to to the given list of values.
+        """
+        pass
+
+    @abstractmethod
+    def add_all(self, values: List[T]) -> None:
+        """
+        Adding the given values to the tail of this list state.
+        """
+        pass
+
+    def __iter__(self) -> Iterator[T]:
+        return iter(self.get())
+
+
+class MapState(State, Generic[K, V]):
+    """
+    :class:`State` interface for partitioned key-value state. The key-value pair can be added,
+    updated and retrieved.
+    The state is accessed and modified by user functions, and checkpointed consistently by the
+    system as part of the distributed snapshots.
+
+    The state key is automatically supplied by the system, so the function always sees the value
+    mapped to the key of the current element. That way, the system can handle stream and state
+    partitioning consistently together.
+    """
+
+    @abstractmethod
+    def get(self, key: K) -> V:
+        """
+        Returns the current value associated with the given key.
+        """
+        pass
+
+    @abstractmethod
+    def put(self, key: K, value: V) -> None:
+        """
+        Associates a new value with the given key.
+        """
+        pass
+
+    @abstractmethod
+    def put_all(self, dict_value: Dict[K, V]) -> None:
+        """
+        Copies all of the mappings from the given map into the state.
+        """
+        pass
+
+    @abstractmethod
+    def remove(self, key: K) -> None:
+        """
+        Deletes the mapping of the given key.
+        """
+        pass
+
+    @abstractmethod
+    def contains(self, key: K) -> bool:
+        """
+        Returns whether there exists the given mapping.
+        """
+        pass
+
+    @abstractmethod
+    def items(self) -> Iterable[Tuple[K, V]]:
+        """
+        Returns all the mappings in the state.
+        """
+        pass
+
+    @abstractmethod
+    def keys(self) -> Iterable[K]:
+        """
+        Returns all the keys in the state.
+        """
+        pass
+
+    @abstractmethod
+    def values(self) -> Iterable[V]:
+        """
+        Returns all the values in the state.
+        """
+        pass
+
+    @abstractmethod
+    def is_empty(self) -> bool:
+        """
+        Returns true if this state contains no key-value mappings, otherwise false.
+        """
+        pass
+
+    def __getitem__(self, key: K) -> V:
+        return self.get(key)
+
+    def __setitem__(self, key: K, value: V) -> None:
+        self.put(key, value)
+
+    def __delitem__(self, key: K) -> None:
+        self.remove(key)
+
+    def __contains__(self, key: K) -> bool:
+        return self.contains(key)
+
+    def __iter__(self) -> Iterator[K]:
+        return iter(self.keys())

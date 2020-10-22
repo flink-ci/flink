@@ -83,7 +83,9 @@ flink-formats/flink-json,\
 flink-formats/flink-csv,\
 flink-formats/flink-orc,\
 flink-formats/flink-orc-nohive,\
-flink-connectors/flink-connector-hbase,\
+flink-connectors/flink-connector-hbase-base,\
+flink-connectors/flink-connector-hbase-1.4,\
+flink-connectors/flink-connector-hbase-2.2,\
 flink-connectors/flink-hcatalog,\
 flink-connectors/flink-hadoop-compatibility,\
 flink-connectors,\
@@ -115,7 +117,6 @@ MODULES_KAFKA_GELLY="\
 flink-libraries/flink-gelly,\
 flink-libraries/flink-gelly-scala,\
 flink-libraries/flink-gelly-examples,\
-flink-connectors/flink-connector-kafka-base,\
 flink-connectors/flink-connector-kafka,\
 flink-connectors/flink-sql-connector-kafka,"
 

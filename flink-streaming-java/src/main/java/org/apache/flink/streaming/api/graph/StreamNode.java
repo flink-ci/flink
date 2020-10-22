@@ -35,7 +35,6 @@ import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 
 import javax.annotation.Nullable;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -51,9 +50,7 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  * Class representing the operators in the streaming programs, with all their properties.
  */
 @Internal
-public class StreamNode implements Serializable {
-
-	private static final long serialVersionUID = 1L;
+public class StreamNode {
 
 	private final int id;
 	private int parallelism;
@@ -73,7 +70,7 @@ public class StreamNode implements Serializable {
 	private KeySelector<?, ?>[] statePartitioners = new KeySelector[0];
 	private TypeSerializer<?> stateKeySerializer;
 
-	private transient StreamOperatorFactory<?> operatorFactory;
+	private StreamOperatorFactory<?> operatorFactory;
 	private TypeSerializer<?>[] typeSerializersIn = new TypeSerializer[0];
 	private TypeSerializer<?> typeSerializerOut;
 
@@ -87,6 +84,7 @@ public class StreamNode implements Serializable {
 
 	private String transformationUID;
 	private String userHash;
+	private boolean sortedInputs = false;
 
 	@VisibleForTesting
 	public StreamNode(
@@ -336,6 +334,14 @@ public class StreamNode implements Serializable {
 
 	public void setUserHash(String userHash) {
 		this.userHash = userHash;
+	}
+
+	public void setSortedInputs(boolean sortedInputs) {
+		this.sortedInputs = sortedInputs;
+	}
+
+	public boolean getSortedInputs() {
+		return sortedInputs;
 	}
 
 	public Optional<OperatorCoordinator.Provider> getCoordinatorProvider(

@@ -28,9 +28,8 @@ import org.apache.flink.runtime.io.network.buffer.BufferBuilder;
 import org.apache.flink.runtime.io.network.buffer.BufferCompressor;
 import org.apache.flink.runtime.io.network.buffer.BufferConsumer;
 import org.apache.flink.runtime.io.network.buffer.BufferPool;
-import org.apache.flink.runtime.io.network.buffer.BufferPoolOwner;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
-import org.apache.flink.util.function.FunctionWithException;
+import org.apache.flink.util.function.SupplierWithException;
 
 import javax.annotation.Nullable;
 
@@ -73,7 +72,7 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		int numTargetKeyGroups,
 		ResultPartitionManager partitionManager,
 		@Nullable BufferCompressor bufferCompressor,
-		FunctionWithException<BufferPoolOwner, BufferPool, IOException> bufferPoolFactory) {
+		SupplierWithException<BufferPool, IOException> bufferPoolFactory) {
 
 		super(
 			owningTaskName,
@@ -90,6 +89,7 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		this.subpartitionBufferBuilders = new BufferBuilder[subpartitions.length];
 	}
 
+	@Override
 	public int getNumberOfQueuedBuffers() {
 		int totalBuffers = 0;
 
@@ -100,6 +100,7 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		return totalBuffers;
 	}
 
+	@Override
 	public int getNumberOfQueuedBuffers(int targetSubpartition) {
 		checkArgument(targetSubpartition >= 0 && targetSubpartition < numSubpartitions);
 		return subpartitions[targetSubpartition].unsynchronizedGetNumberOfQueuedBuffers();
@@ -125,6 +126,7 @@ public abstract class BufferWritingResultPartition extends ResultPartition {
 		}
 	}
 
+	@Override
 	public void emitRecord(ByteBuffer record, int targetSubpartition) throws IOException {
 		do {
 			final BufferBuilder bufferBuilder = getSubpartitionBufferBuilder(targetSubpartition);

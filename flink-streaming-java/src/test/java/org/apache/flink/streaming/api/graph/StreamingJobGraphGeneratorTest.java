@@ -686,26 +686,13 @@ public class StreamingJobGraphGeneratorTest extends TestLogger {
 		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
 
 		// use eager schedule mode by default
-		StreamGraph streamGraph = new StreamGraphGenerator(Collections.emptyList(),
-			env.getConfig(), env.getCheckpointConfig())
+		StreamGraph streamGraph = new StreamGraphGenerator(
+				Collections.emptyList(),
+				env.getConfig(),
+				env.getCheckpointConfig())
 			.generate();
 		JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
 		assertEquals(ScheduleMode.EAGER, jobGraph.getScheduleMode());
-	}
-
-	/**
-	 * Test schedule mode is configurable or not.
-	 */
-	@Test
-	public void testSetScheduleMode() {
-		StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-
-		StreamGraph streamGraph = new StreamGraphGenerator(Collections.emptyList(),
-			env.getConfig(), env.getCheckpointConfig())
-			.setScheduleMode(ScheduleMode.LAZY_FROM_SOURCES)
-			.generate();
-		JobGraph jobGraph = StreamingJobGraphGenerator.createJobGraph(streamGraph);
-		assertEquals(ScheduleMode.LAZY_FROM_SOURCES, jobGraph.getScheduleMode());
 	}
 
 	@Test
@@ -913,20 +900,20 @@ public class StreamingJobGraphGeneratorTest extends TestLogger {
 			StreamConfig streamConfig,
 			double expectedBatchFrac,
 			double expectedPythonFrac,
-			double expectedRocksdbFrac,
+			double expectedStateBackendFrac,
 			Configuration tmConfig) {
 		final double delta = 0.000001;
 		assertEquals(
-			expectedRocksdbFrac,
-			streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(ManagedMemoryUseCase.ROCKSDB, tmConfig),
+			expectedStateBackendFrac,
+			streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(ManagedMemoryUseCase.STATE_BACKEND, tmConfig, ClassLoader.getSystemClassLoader()),
 			delta);
 		assertEquals(
 			expectedPythonFrac,
-			streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(ManagedMemoryUseCase.PYTHON, tmConfig),
+			streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(ManagedMemoryUseCase.PYTHON, tmConfig, ClassLoader.getSystemClassLoader()),
 			delta);
 		assertEquals(
 			expectedBatchFrac,
-			streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(ManagedMemoryUseCase.BATCH_OP, tmConfig),
+			streamConfig.getManagedMemoryFractionOperatorUseCaseOfSlot(ManagedMemoryUseCase.BATCH_OP, tmConfig, ClassLoader.getSystemClassLoader()),
 			delta);
 	}
 
