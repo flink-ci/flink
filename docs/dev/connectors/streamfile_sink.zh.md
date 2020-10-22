@@ -190,7 +190,7 @@ input.addSink(sink)
 </div>
 </div>
 
-#### Avro 格式
+#### Avro格式
 
 Flink 也提供了将数据写入 Avro 文件的内置支持。对于创建 AvroWriterFactory 的快捷方法，更多信息可以参考 
 [AvroWriters]({{ site.javadocs_baseurl }}/api/java/org/apache/flink/formats/avro/AvroWriters.html).
