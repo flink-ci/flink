@@ -695,6 +695,27 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         // close all operators in a chain effect way
         operatorChain.closeOperators(actionExecutor);
 
+        // If checkpoints are enabled, waits for all the records get processed by the downstream
+        // tasks. During this process, this task could coordinate with its downstream tasks to
+        // continue perform checkpoints.
+        if (configuration.isCheckpointingEnabled()) {
+            LOG.debug("Waiting for all the records processed by the downstream tasks.");
+
+            List<CompletableFuture<Void>> allRecordsProcessedFutures = new ArrayList<>();
+            for (ResultPartitionWriter partitionWriter : getEnvironment().getAllWriters()) {
+                partitionWriter.notifyEndOfUserRecords();
+                allRecordsProcessedFutures.add(partitionWriter.getAllRecordsProcessedFuture());
+            }
+            CompletableFuture<Void> combineFuture =
+                    FutureUtils.waitForAll(allRecordsProcessedFutures);
+
+            MailboxExecutor mailboxExecutor =
+                    mailboxProcessor.getMailboxExecutor(TaskMailbox.MIN_PRIORITY);
+            while (!combineFuture.isDone()) {
+                mailboxExecutor.tryYield();
+            }
+        }
+
         // make sure no further checkpoint and notification actions happen.
         // at the same time, this makes sure that during any "regular" exit where still
         actionExecutor.runThrowing(
@@ -705,13 +726,19 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
 
                     // let mailbox execution reject all new letters from this point
                     mailboxProcessor.prepareClose();
+                });
 
+        // processes the remaining mails; no new mails can be enqueued
+        mailboxProcessor.drain();
+
+        // Set isRunning to false after all the mails are drained so that
+        // the queued checkpoint requirements could be triggered normally.
+        actionExecutor.runThrowing(
+                () -> {
                     // only set the StreamTask to not running after all operators have been closed!
                     // See FLINK-7430
                     isRunning = false;
                 });
-        // processes the remaining mails; no new mails can be enqueued
-        mailboxProcessor.drain();
 
         // make sure all timers finish
         timersFinishedFuture.get();
