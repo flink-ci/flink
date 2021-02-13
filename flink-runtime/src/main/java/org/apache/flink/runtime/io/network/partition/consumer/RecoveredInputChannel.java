@@ -206,6 +206,12 @@ public abstract class RecoveredInputChannel extends InputChannel implements Chan
     }
 
     @Override
+    public void acknowledgeAllRecordsProcessed() throws IOException {
+        throw new UnsupportedOperationException(
+                "RecoveredInputChannel should not need acknowledge all records processed.");
+    }
+
+    @Override
     final void requestSubpartition(int subpartitionIndex) {
         throw new UnsupportedOperationException(
                 "RecoveredInputChannel should never request partition.");
