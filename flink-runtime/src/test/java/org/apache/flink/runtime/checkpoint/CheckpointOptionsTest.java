@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.checkpoint;
 
 import org.apache.flink.core.testutils.CommonTestUtils;
+import org.apache.flink.runtime.checkpoint.CheckpointOptions.AlignmentType;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
 
 import org.junit.Test;
@@ -66,7 +67,10 @@ public class CheckpointOptionsTest {
     @Test(expected = IllegalArgumentException.class)
     public void testSavepointNeedsAlignment() {
         new CheckpointOptions(
-                SAVEPOINT, CheckpointStorageLocationReference.getDefault(), true, true, 0);
+                SAVEPOINT,
+                CheckpointStorageLocationReference.getDefault(),
+                AlignmentType.ALIGNED,
+                0);
     }
 
     @Test
@@ -74,16 +78,18 @@ public class CheckpointOptionsTest {
         CheckpointStorageLocationReference location =
                 CheckpointStorageLocationReference.getDefault();
         assertFalse(
-                new CheckpointOptions(CHECKPOINT, location, true, true, Long.MAX_VALUE)
+                new CheckpointOptions(CHECKPOINT, location, AlignmentType.UNALIGNED, Long.MAX_VALUE)
                         .needsAlignment());
         assertTrue(
-                new CheckpointOptions(CHECKPOINT, location, true, false, Long.MAX_VALUE)
+                new CheckpointOptions(CHECKPOINT, location, AlignmentType.ALIGNED, Long.MAX_VALUE)
+                        .needsAlignment());
+        assertTrue(
+                new CheckpointOptions(
+                                CHECKPOINT, location, AlignmentType.FORCED_ALIGNED, Long.MAX_VALUE)
                         .needsAlignment());
         assertFalse(
-                new CheckpointOptions(CHECKPOINT, location, false, true, Long.MAX_VALUE)
-                        .needsAlignment());
-        assertFalse(
-                new CheckpointOptions(CHECKPOINT, location, false, false, Long.MAX_VALUE)
+                new CheckpointOptions(
+                                CHECKPOINT, location, AlignmentType.AT_LEAST_ONCE, Long.MAX_VALUE)
                         .needsAlignment());
     }
 
