@@ -49,4 +49,9 @@ public class ForwardPartitioner<T> extends StreamPartitioner<T> {
     public SubtaskStateMapper getDownstreamSubtaskStateMapper() {
         return SubtaskStateMapper.ROUND_ROBIN;
     }
+
+    @Override
+    public boolean isPointwise() {
+        return true;
+    }
 }
