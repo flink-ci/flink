@@ -400,32 +400,31 @@ public class PendingCheckpoint implements Checkpoint {
             int subtaskIndex = vertex.getParallelSubtaskIndex();
             long ackTimestamp = System.currentTimeMillis();
 
-            if (operatorSubtaskStates != null) {
-                for (OperatorIDPair operatorID : operatorIDs) {
+            for (OperatorIDPair operatorID : operatorIDs) {
+                OperatorSubtaskState operatorSubtaskState =
+                        operatorSubtaskStates == null
+                                ? null
+                                : operatorSubtaskStates.getSubtaskStateByOperatorID(
+                                        operatorID.getGeneratedOperatorID());
 
-                    OperatorSubtaskState operatorSubtaskState =
-                            operatorSubtaskStates.getSubtaskStateByOperatorID(
-                                    operatorID.getGeneratedOperatorID());
-
-                    // if no real operatorSubtaskState was reported, we insert an empty state
-                    if (operatorSubtaskState == null) {
-                        operatorSubtaskState = OperatorSubtaskState.builder().build();
-                    }
-
-                    OperatorState operatorState =
-                            operatorStates.get(operatorID.getGeneratedOperatorID());
-
-                    if (operatorState == null) {
-                        operatorState =
-                                new OperatorState(
-                                        operatorID.getGeneratedOperatorID(),
-                                        vertex.getTotalNumberOfParallelSubtasks(),
-                                        vertex.getMaxParallelism());
-                        operatorStates.put(operatorID.getGeneratedOperatorID(), operatorState);
-                    }
-
-                    operatorState.putState(subtaskIndex, operatorSubtaskState);
+                // if no real operatorSubtaskState was reported, we insert an empty state
+                if (operatorSubtaskState == null) {
+                    operatorSubtaskState = OperatorSubtaskState.builder().build();
                 }
+
+                OperatorState operatorState =
+                        operatorStates.get(operatorID.getGeneratedOperatorID());
+
+                if (operatorState == null) {
+                    operatorState =
+                            new OperatorState(
+                                    operatorID.getGeneratedOperatorID(),
+                                    vertex.getTotalNumberOfParallelSubtasks(),
+                                    vertex.getMaxParallelism());
+                    operatorStates.put(operatorID.getGeneratedOperatorID(), operatorState);
+                }
+
+                operatorState.putState(subtaskIndex, operatorSubtaskState);
             }
 
             ++numAcknowledgedTasks;
@@ -487,15 +486,15 @@ public class PendingCheckpoint implements Checkpoint {
                         : TaskAcknowledgeResult.UNKNOWN;
             }
 
+            if (operatorState == null) {
+                operatorState =
+                        new OperatorState(
+                                operatorId,
+                                coordinatorInfo.currentParallelism(),
+                                coordinatorInfo.maxParallelism());
+                operatorStates.put(operatorId, operatorState);
+            }
             if (stateHandle != null) {
-                if (operatorState == null) {
-                    operatorState =
-                            new OperatorState(
-                                    operatorId,
-                                    coordinatorInfo.currentParallelism(),
-                                    coordinatorInfo.maxParallelism());
-                    operatorStates.put(operatorId, operatorState);
-                }
                 operatorState.setCoordinatorState(stateHandle);
             }
 
