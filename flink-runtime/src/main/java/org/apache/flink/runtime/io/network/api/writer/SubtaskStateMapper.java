@@ -183,6 +183,15 @@ public enum SubtaskStateMapper {
             }
             return subtasks.toArray();
         }
+    },
+
+    UNSUPPORTED {
+        @Override
+        public int[] getOldSubtasks(
+                int newSubtaskIndex, int oldNumberOfSubtasks, int newNumberOfSubtasks) {
+            throw new UnsupportedOperationException(
+                    "Cannot rescale the given pointwise partitioner. Did you change the partitioner to forward or rescale? It may also help to add an explicit shuffle().");
+        }
     };
 
     private static final int[] EMPTY = new int[0];
