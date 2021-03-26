@@ -18,6 +18,7 @@
 package org.apache.flink.runtime.executiongraph;
 
 import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.scheduler.MutableVertexAttemptNumberStore;
 import org.apache.flink.util.Preconditions;
 
 import java.util.ArrayList;
