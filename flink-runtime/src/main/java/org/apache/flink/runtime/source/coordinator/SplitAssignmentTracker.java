@@ -28,6 +28,7 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -71,7 +72,10 @@ public class SplitAssignmentTracker<SplitT extends SourceSplit> {
         // Include the uncheckpointed assignments to the snapshot.
         assignmentsByCheckpointId.put(checkpointId, uncheckpointedAssignments);
         uncheckpointedAssignments = new HashMap<>();
-        writeAssignmentsByCheckpointId(assignmentsByCheckpointId, splitSerializer, out);
+
+        // FLINK-21817: The mapping of subtask id to split assignment might change at rescaling, so
+        // we just write an empty map here for forward compatibility.
+        writeAssignmentsByCheckpointId(Collections.emptyMap(), splitSerializer, out);
     }
 
     /**
@@ -83,10 +87,9 @@ public class SplitAssignmentTracker<SplitT extends SourceSplit> {
      */
     public void restoreState(SimpleVersionedSerializer<SplitT> splitSerializer, DataInputStream in)
             throws Exception {
-        // Read the split assignments by checkpoint id.
-        Map<Long, Map<Integer, LinkedHashSet<SplitT>>> deserializedAssignments =
-                readAssignmentsByCheckpointId(in, splitSerializer);
-        assignmentsByCheckpointId.putAll(deserializedAssignments);
+        // FLINK-21817: Deserialize the assignment map for compatibility and discard it because the
+        // mapping might change at job rescaling
+        readAssignmentsByCheckpointId(in, splitSerializer);
     }
 
     /**

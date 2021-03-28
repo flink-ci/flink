@@ -174,12 +174,10 @@ public class SourceCoordinatorContextTest extends SourceCoordinatorTestBase {
         }
         // FLINK-21452: do not (re)store registered readers
         assertEquals(0, restoredContext.registeredReaders().size());
-        assertEquals(
-                splitSplitAssignmentTracker.uncheckpointedAssignments(),
-                restoredTracker.uncheckpointedAssignments());
-        assertEquals(
-                splitSplitAssignmentTracker.assignmentsByCheckpointId(),
-                restoredTracker.assignmentsByCheckpointId());
+
+        // FLINK-21817: do not (re)store split assignment tracker
+        assertEquals(0, restoredTracker.assignmentsByCheckpointId().size());
+        assertEquals(0, restoredTracker.uncheckpointedAssignments().size());
     }
 
     // ------------------------

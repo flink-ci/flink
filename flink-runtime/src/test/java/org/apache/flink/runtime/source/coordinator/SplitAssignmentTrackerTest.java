@@ -94,13 +94,12 @@ public class SplitAssignmentTrackerTest {
 
         // Deserialize
         SplitAssignmentTracker<MockSourceSplit> deserializedTracker = restoreSnapshot(bytes);
+
         // Verify the restore was successful.
-        assertEquals(
-                deserializedTracker.assignmentsByCheckpointId(),
-                tracker.assignmentsByCheckpointId());
-        assertEquals(
-                deserializedTracker.uncheckpointedAssignments(),
-                tracker.uncheckpointedAssignments());
+        // FLINK-21817 removes split assignment tracker from snapshot state, so the deserialized
+        // tracker should have empty assignments and uncheckpointed assignments.
+        assertEquals(0, deserializedTracker.assignmentsByCheckpointId().size());
+        assertEquals(0, deserializedTracker.uncheckpointedAssignments().size());
     }
 
     @Test
