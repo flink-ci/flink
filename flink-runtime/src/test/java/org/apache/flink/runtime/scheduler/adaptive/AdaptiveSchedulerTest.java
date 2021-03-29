@@ -914,7 +914,7 @@ public class AdaptiveSchedulerTest extends TestLogger {
 
     /**
      * A {@link SimpleAckingTaskManagerGateway} that buffers all the task submissions into a
-     * blocking queue, allowing
+     * blocking queue, allowing one to wait for an arbitrary number of submissions.
      */
     private static class SubmissionBufferingTaskManagerGateway
             extends SimpleAckingTaskManagerGateway {

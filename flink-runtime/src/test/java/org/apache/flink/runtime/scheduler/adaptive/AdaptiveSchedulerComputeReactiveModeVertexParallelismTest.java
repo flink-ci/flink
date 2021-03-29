@@ -34,6 +34,7 @@ import java.util.Optional;
 import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.createNoOpVertex;
 import static org.apache.flink.runtime.state.KeyGroupRangeAssignment.UPPER_BOUND_MAX_PARALLELISM;
 
+/** Test vertex parallelism configuration for the {@link AdaptiveScheduler} in Reactive mode. */
 @RunWith(Parameterized.class)
 public class AdaptiveSchedulerComputeReactiveModeVertexParallelismTest extends TestLogger {
     @Parameterized.Parameters(

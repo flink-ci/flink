@@ -779,7 +779,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
             Optional<VertexParallelismInformation> parallelismInfo =
                     parallelismStore.getParallelismInfo(jobVertex.getID());
-            if (parallelismInfo.isEmpty()) {
+            if (!parallelismInfo.isPresent()) {
                 throw new JobException(
                         String.format(
                                 "No vertex parallelism information is set for vertex with ID %s",
