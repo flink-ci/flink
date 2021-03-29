@@ -35,7 +35,7 @@ import java.util.Set;
 public class KafkaSourceEnumStateSerializer
         implements SimpleVersionedSerializer<KafkaSourceEnumState> {
 
-    private static final int CURRENT_VERSION = 0;
+    private static final int CURRENT_VERSION = 1;
 
     @Override
     public int getVersion() {
@@ -44,8 +44,8 @@ public class KafkaSourceEnumStateSerializer
 
     @Override
     public byte[] serialize(KafkaSourceEnumState enumState) throws IOException {
-        return SerdeUtils.serializeSplitAssignments(
-                enumState.getCurrentAssignment(), new KafkaPartitionSplitSerializer());
+        return SerdeUtils.serializeSplitCollection(
+                enumState.assignedSplits(), new KafkaPartitionSplitSerializer());
     }
 
     @Override
@@ -54,8 +54,18 @@ public class KafkaSourceEnumStateSerializer
             Map<Integer, Set<KafkaPartitionSplit>> currentPartitionAssignment =
                     SerdeUtils.deserializeSplitAssignments(
                             serialized, new KafkaPartitionSplitSerializer(), HashSet::new);
-            return new KafkaSourceEnumState(currentPartitionAssignment);
+            Set<KafkaPartitionSplit> currentAssignedSplits = new HashSet<>();
+            currentPartitionAssignment.forEach(
+                    (reader, splits) -> currentAssignedSplits.addAll(splits));
+            return new KafkaSourceEnumState(currentAssignedSplits);
         }
+        if (version == 1) {
+            final HashSet<KafkaPartitionSplit> currentAssignedSplits =
+                    SerdeUtils.deserializeSplitCollection(
+                            serialized, new KafkaPartitionSplitSerializer(), HashSet::new);
+            return new KafkaSourceEnumState(currentAssignedSplits);
+        }
+
         throw new IOException(
                 String.format(
                         "The bytes are serialized with version %d, "
