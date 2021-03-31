@@ -54,6 +54,15 @@ def copy_files(src_paths, output_directory):
             os.chmod(dst_path, file_mode)
 
 
+def has_unsupported_tag(file_element):
+    unsupported_tags = ['includes', 'exclueds']
+    for unsupported_tag in unsupported_tags:
+        if file_element.getElementsByTagName(unsupported_tag):
+            print('Unsupported <{0}></{1}> tag'.format(unsupported_tag, unsupported_tag))
+            return True
+    return False
+
+
 def extracted_output_files(base_dir, file_path, output_directory):
     extracted_file_paths = []
     from xml.dom.minidom import parse
@@ -64,10 +73,11 @@ def extracted_output_files(base_dir, file_path, output_directory):
     for file_element in file_elements:
         source = ((file_element.getElementsByTagName('source')[0]).childNodes[0]).data
         file_mode = int(((file_element.getElementsByTagName('fileMode')[0]).childNodes[0]).data, 8)
-        print(source + '\t' + str(file_mode))
         try:
             dst = ((file_element.getElementsByTagName('outputDirectory')[0]).childNodes[0]).data
             if dst == output_directory:
+                if has_unsupported_tag(file_element):
+                    sys.exit(-1)
                 extracted_file_paths.append((os.path.join(base_dir, source), file_mode))
         except IndexError:
             pass
@@ -79,6 +89,8 @@ def extracted_output_files(base_dir, file_path, output_directory):
         try:
             dst = ((file_element.getElementsByTagName('outputDirectory')[0]).childNodes[0]).data
             if dst == output_directory:
+                if has_unsupported_tag(file_element):
+                    sys.exit(-1)
                 extracted_file_paths.append((os.path.join(base_dir, source), file_mode))
         except IndexError:
             pass
@@ -183,6 +195,8 @@ SCRIPTS_TEMP_PATH = os.path.join(TEMP_PATH, "bin")
 LICENSE_FILE_TEMP_PATH = os.path.join(this_directory, "LICENSE")
 NOTICE_FILE_TEMP_PATH = os.path.join(this_directory, "NOTICE")
 README_FILE_TEMP_PATH = os.path.join("pyflink", "README.txt")
+PYFLINK_UDF_RUNNER_SH = "pyflink-udf-runner.sh"
+PYFLINK_UDF_RUNNER_BAT = "pyflink-udf-runner.bat"
 
 in_flink_source = os.path.isfile("../flink-java/src/main/java/org/apache/flink/api/java/"
                                  "ExecutionEnvironment.java")
@@ -224,6 +238,10 @@ try:
         os.mkdir(SCRIPTS_TEMP_PATH)
         script_paths = extracted_output_files(FLINK_DIST, FLINK_BIN_XML_FILE, 'bin')
         copy_files(script_paths, SCRIPTS_TEMP_PATH)
+        copy(os.path.join(this_directory, "pyflink", "bin", PYFLINK_UDF_RUNNER_SH),
+             os.path.join(SCRIPTS_TEMP_PATH, PYFLINK_UDF_RUNNER_SH))
+        copy(os.path.join(this_directory, "pyflink", "bin", PYFLINK_UDF_RUNNER_BAT),
+             os.path.join(SCRIPTS_TEMP_PATH, PYFLINK_UDF_RUNNER_BAT))
 
         try:
             os.symlink(EXAMPLES_PATH, EXAMPLES_TEMP_PATH)

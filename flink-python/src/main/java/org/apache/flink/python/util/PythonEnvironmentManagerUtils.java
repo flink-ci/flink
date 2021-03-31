@@ -18,7 +18,6 @@
 package org.apache.flink.python.util;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.util.OperatingSystem;
 
 import org.slf4j.Logger;
@@ -49,8 +48,6 @@ public class PythonEnvironmentManagerUtils {
 
     private static final String PYFLINK_UDF_RUNNER_SH = "pyflink-udf-runner.sh";
     private static final String PYFLINK_UDF_RUNNER_BAT = "pyflink-udf-runner.bat";
-
-    @VisibleForTesting public static final String PYFLINK_UDF_RUNNER_DIR = "PYFLINK_UDF_RUNNER_DIR";
 
     private static final String GET_SITE_PACKAGES_PATH_SCRIPT =
             "import sys;"
@@ -147,13 +144,9 @@ public class PythonEnvironmentManagerUtils {
     public static String getPythonUdfRunnerScript(
             String pythonExecutable, Map<String, String> environmentVariables) throws IOException {
         String runnerDir;
-        if (environmentVariables.containsKey(PYFLINK_UDF_RUNNER_DIR)) {
-            runnerDir = environmentVariables.get(PYFLINK_UDF_RUNNER_DIR);
-        } else {
-            String[] commands = new String[] {pythonExecutable, "-c", GET_RUNNER_DIR_SCRIPT};
-            String out = execute(commands, environmentVariables, false);
-            runnerDir = out.trim();
-        }
+        String[] commands = new String[] {pythonExecutable, "-c", GET_RUNNER_DIR_SCRIPT};
+        String out = execute(commands, environmentVariables, false);
+        runnerDir = out.trim();
         String runnerScriptPath;
         if (OperatingSystem.isWindows()) {
             runnerScriptPath = String.join(File.separator, runnerDir, PYFLINK_UDF_RUNNER_BAT);
