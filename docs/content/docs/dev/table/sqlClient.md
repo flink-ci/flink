@@ -389,14 +389,17 @@ SET table.exec.spill-compression.block-size = 128kb;
 This configuration:
 
 - connects to Hive catalogs and uses `MyCatalog` as the current catalog with `MyDatabase` as the current database of the catalog,
-- defines an environment with a table source `MyTableSource` that reads from a CSV file,
+- defines a table `MyTableSource` that can read data from a CSV file,
 - defines a view `MyCustomView` that declares a virtual table using a SQL query,
-- defines a user-defined function `myUDF` that can be instantiated using the class name and two constructor parameters,
+- defines a user-defined function `myUDF` that can be instantiated using the class name,
 - uses the blink planner in streaming mode for running statements and a parallelism of 1,
 - runs exploratory queries in the `table` result mode,
 - and makes some planner adjustments around join reordering and spilling via configuration options.
 
-When using -i option to submit SQL file, the type of the statement is limited. It only allow users to execute statement:
+When using `-i <init.sql>` option to initialize SQL Client session, the following statements are not allowed in an initialization SQL file:
+ - INSERT INTO/OVERWRITE
+ - STATEMENT SET
+ - SELECT queries
 - DDL(CREATE/DROP/ALTER)
 - USE CATALOG/DATABASE
 - LOAD/UNLOAD MODULE
@@ -412,21 +415,20 @@ When execute queries or insert statement, please enter the interactive mode or u
 Use SQL Client to submit job
 ----------------------------
 
-SQL Client allows users to submit jobs either within the CLI session or using -f option to submit sql file.
+SQL Client allows users to submit jobs either within the interactive command line or using `-f` option to execute sql file.
 
 In both modes, SQL Client supports to parse and execute all types of the Flink supported SQL statements.
 
 ### Interactive Mode
 
-In interactive mode, the SQL Client reads user inputs and executes the statement when meets the statement splitter.
+In interactive mode, the SQL Client reads user inputs and executes the statement when meeting semicolon (`;`).
 
-When execute the statement succeeds, the SQL Client will print the message to inform. Otherwise, the SQL Client will
-print the causes why the execution fails. For detailed exception stack, please set the `sql-client.verbose` true.
+
+In interactive mode, SQL Client will print success message when statement is executed successfully. On the other hand, SQL Client will print error message if the execution is failed. By default, the error message only contains a cause. In order to print the full exception stack for debugging, please set the `sql-client.verbose` to true through `SET sql-client.verbose = true;`.
 
 ### Execute SQL Files
 
-When start up the SQL Client with -f option, the SQL Client will split the content of the specified file into multiple statements and submit them line by line.
-The SQL Client will print all the messages as the message printed in the interactive mode.
+SQL Client supports to execute a SQL script file with the `-f` option. SQL Client will execute statements one by one in the SQL script file and print execution messages for each executed statements. Once a statement is failed, the SQL Client will exist and all the remaining statements will not be executed. 
 An example of such a file is presented below.
 
 ```sql
@@ -536,7 +538,7 @@ Flink SQL> INSERT INTO MyTableSink SELECT * FROM MyTableSource;
 Compatibility
 -------------
 
-To be compatible with before, SQL Client still supports to import the YAML file and allows to SET the key in YAML file.
+To be compatible with before, SQL Client still supports to initialize with environment YAML file and allows to SET the key in YAML file.
 When set the key defined in YAML file, the SQL Client will print the warning messages to inform.
 
 ```text
@@ -546,7 +548,7 @@ Flink SQL> SET execution.type = batch;
 ```
 
 When using `SET` command to print the properties, the SQL Client will also print all the properties.
-To distinguish the deprecated key, the sql client use the '[DEPRECATED]' as the identifier.deprecated
+To distinguish the deprecated key, the sql client use the '[DEPRECATED]' as the identifier is deprecated.
 
 ```text
 Flink SQL>SET;
