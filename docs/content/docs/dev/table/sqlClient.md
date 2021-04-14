@@ -396,10 +396,7 @@ This configuration:
 - runs exploratory queries in the `table` result mode,
 - and makes some planner adjustments around join reordering and spilling via configuration options.
 
-When using `-i <init.sql>` option to initialize SQL Client session, the following statements are not allowed in an initialization SQL file:
- - INSERT INTO/OVERWRITE
- - STATEMENT SET
- - SELECT queries
+When using `-i <init.sql>` option to initialize SQL Client session, the following statements are allowed in an initialization SQL file:
 - DDL(CREATE/DROP/ALTER)
 - USE CATALOG/DATABASE
 - LOAD/UNLOAD MODULE
@@ -428,7 +425,7 @@ In interactive mode, SQL Client will print success message when statement is exe
 
 ### Execute SQL Files
 
-SQL Client supports to execute a SQL script file with the `-f` option. SQL Client will execute statements one by one in the SQL script file and print execution messages for each executed statements. Once a statement is failed, the SQL Client will exist and all the remaining statements will not be executed. 
+SQL Client supports to execute a SQL script file with the `-f` option. SQL Client will execute statements one by one in the SQL script file and print execution messages for each executed statements. Once a statement is failed, the SQL Client will exist and all the remaining statements will not be executed.
 An example of such a file is presented below.
 
 ```sql
