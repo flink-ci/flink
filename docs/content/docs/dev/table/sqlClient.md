@@ -31,7 +31,7 @@ Flink’s Table & SQL API makes it possible to work with queries written in the 
 
 The *SQL Client* aims to provide an easy way of writing, debugging, and submitting table programs to a Flink cluster without a single line of Java or Scala code. The *SQL Client CLI* allows for retrieving and visualizing real-time results from the running distributed application on the command line.
 
-<a href="/fig/sql_client_demo.gif"><img class="offset" src="/fig/sql_client_demo.gif" alt="Animated demo of the Flink SQL Client CLI running table programs on a cluster" width="80%" /></a>
+{{< img width="80%" src="/fig/sql_client_demo.gif" alt="Animated demo of the Flink SQL Client CLI running table programs on a cluster" >}}
 
 
 
@@ -48,7 +48,7 @@ The SQL Client is bundled in the regular Flink distribution and thus runnable ou
 
 ### Starting the SQL Client CLI
 
-The SQL Client scripts are also located in the binary directory of Flink. [In the future](sqlClient.html#limitations--future), a user will have two possibilities of starting the SQL Client CLI either by starting an embedded standalone process or by connecting to a remote SQL Client Gateway. At the moment only the `embedded` mode is supported, and default mode is `embedded`. You can start the CLI by calling:
+The SQL Client scripts are also located in the binary directory of Flink. [In the future](#limitations--future), a user will have two possibilities of starting the SQL Client CLI either by starting an embedded standalone process or by connecting to a remote SQL Client Gateway. At the moment only the `embedded` mode is supported, and default mode is `embedded`. You can start the CLI by calling:
 
 ```bash
 ./bin/sql-client.sh
@@ -62,23 +62,27 @@ or explicitly use `embedded` mode:
 
 ### Running SQL Queries
 
-Once the CLI has been started, you can use the `HELP` command to list all available SQL statements. For validating your setup and cluster connection, you can enter your first SQL query and press the `Enter` key to execute it:
+Once the CLI has been started, you can use the `HELP` command to list all available SQL statements.
+For validating your setup and cluster connection, you can enter your first SQL query and press the `Enter` key to execute it:
 
 ```sql
 SELECT 'Hello World';
 ```
 
-This query requires no table source and produces a single row result. The CLI will retrieve results from the cluster and visualize them. You can close the result view by pressing the `Q` key.
+This query requires no table source and produces a single row result. The CLI will retrieve results
+from the cluster and visualize them. You can close the result view by pressing the `Q` key.
 
 The CLI supports **three modes** for maintaining and visualizing results.
 
-The **table mode** materializes results in memory and visualizes them in a regular, paginated table representation. It can be enabled by executing the following command in the CLI:
+The **table mode** materializes results in memory and visualizes them in a regular, paginated table representation.
+It can be enabled by executing the following command in the CLI:
 
 ```text
 SET sql-client.execution.result-mode=table;
 ```
 
-The **changelog mode** does not materialize results and visualizes the result stream that is produced by a [continuous query](streaming/dynamic_tables.html#continuous-queries) consisting of insertions (`+`) and retractions (`-`).
+The **changelog mode** does not materialize results and visualizes the result stream that is produced
+by a [continuous query]({{< ref "docs/dev/table/concepts/dynamic_tables" >}}#continuous-queries) consisting of insertions (`+`) and retractions (`-`).
 
 ```text
 SET sql-client.execution.result-mode=changelog;
@@ -147,11 +151,15 @@ And if you ran the query in batch mode, the displayed result would be:
 3 rows in set
 ```
 
-All these result modes can be useful during the prototyping of SQL queries. In all these modes, results are stored in the Java heap memory of the SQL Client. In order to keep the CLI interface responsive, the changelog mode only shows the latest 1000 changes. The table mode allows for navigating through bigger results that are only limited by the available main memory and the configured [maximum number of rows](sqlClient.html#configuration) (`max-table-result-rows`).
+All these result modes can be useful during the prototyping of SQL queries. In all these modes,
+results are stored in the Java heap memory of the SQL Client. In order to keep the CLI interface responsive,
+the changelog mode only shows the latest 1000 changes. The table mode allows for navigating through
+bigger results that are only limited by the available main memory and the configured
+[maximum number of rows](#sql-client-execution-max-table-result-rows) (`sql-client.execution.max-table-result.rows`).
 
 <span class="label label-danger">Attention</span> Queries that are executed in a batch environment, can only be retrieved using the `table` or `tableau` result mode.
 
-After a query is defined, it can be submitted to the cluster as a long-running, detached Flink job. For this, a target system that stores the results needs to be specified using the [INSERT INTO statement](sqlClient.html#detached-sql-queries). The [configuration section](sqlClient.html#configuration) explains how to declare table sources for reading data, how to declare table sinks for writing data, and how to configure other table program properties.
+After a query is defined, it can be submitted to the cluster as a long-running, detached Flink job. The [configuration section](#configuration) explains how to declare table sources for reading data, how to declare table sinks for writing data, and how to configure other table program properties.
 
 {{< top >}}
 
@@ -287,48 +295,16 @@ Mode "embedded" (default) submits Flink jobs from the local machine.
                                                option -f to submit update statement.
 ```
 
-### SQL Client Options
+### SQL Client Configuration
 
-<table class="table table-bordered">
-    <thead>
-      <tr>
-        <th class="text-left" style="width: 25%">Option</th>
-        <th class="text-center" style="width: 8%">Required</th>
-        <th class="text-center" style="width: 7%">Default</th>
-        <th class="text-center" style="width: 10%">Type</th>
-        <th class="text-center" style="width: 50%">Description</th>
-      </tr>
-    </thead>
-    <tr>
-      <td><h5>sql-client.execution.max-table-result.rows</h5></td>
-      <td>optional</td>
-      <td style="word-wrap: break-word;">1000_000</td>
-      <td>Integer</td>
-      <td>The number of rows to cache when in the table mode. If the number of rows exceeds the specified value, it retries the row in the FIFO style.</td>
-    </tr>
-    <tr>
-      <td><h5>sql-client.execution.result-mode</h5></td>
-      <td>optional</td>
-      <td style="word-wrap: break-word;">table</td>
-      <td>String</td>
-      <td>Determine the mode when display the query result. The available values are ['table', 'tableau', 'changelog'].
-      The 'table' mode materializes results in memory and visualizes them in a regular, paginated table representation.
-      The 'changelog' mode does not materialize results and visualizes the result stream that is produced by a continuous query.
-      The 'tableau' mode is more like a traditional way which will display the results in the screen directly with a tableau format.
-      </td>
-    </tr>
-    <tr>
-      <td><h5>sql-client.verbose</h5></td>
-      <td>optional</td>
-      <td style="word-wrap: break-word;">false</td>
-      <td>Boolean</td>
-      <td>Determine whether to output the verbose output to the console. If set the option true, it will print the exception stack. Otherwise, it only output the cause.</td>
-    </tr>
-</table>
+{{< generated/sql_client_configuration >}}
 
-### Use SQL Files to initialize session
+### Initialize Session Using SQL Files
 
-A SQL query needs a configuration environment in which it is executed. Using -i option to import the SQL file to initialize the environment when start up.
+A SQL query needs a configuration environment in which it is executed. SQL Client supports the `-i`
+startup option to execute an initialization SQL file to setup environment when starting up the SQL Client.
+The so-called *initialization SQL file* can use DDLs to define available catalogs, table sources and sinks,
+user-defined functions, and other properties required for execution and deployment.
 
 An example of such a file is presented below.
 
@@ -397,17 +373,26 @@ This configuration:
 - and makes some planner adjustments around join reordering and spilling via configuration options.
 
 When using `-i <init.sql>` option to initialize SQL Client session, the following statements are allowed in an initialization SQL file:
-- DDL(CREATE/DROP/ALTER)
-- USE CATALOG/DATABASE
-- LOAD/UNLOAD MODULE
-- SET command
-- RESET command
+- DDL(CREATE/DROP/ALTER),
+- USE CATALOG/DATABASE,
+- LOAD/UNLOAD MODULE,
+- SET command,
+- RESET command.
 
-to build the execution environment.
+When execute queries or insert statements, please enter the interactive mode or use the -f option to submit the SQL statements.
 
-When execute queries or insert statement, please enter the interactive mode or use the -f option to submit the SQL statements.
+<span class="label label-danger">Attention</span> If SQL Client meets errors in initialization, SQL Client will exit with error messages.
 
-<span class="label label-danger">Attention</span> If SQL Client meets errors when execute initialization file, SQL Client will exit with error messages.
+### Dependencies
+
+The SQL Client does not require to setup a Java project using Maven or SBT. Instead, you can pass the
+dependencies as regular JAR files that get submitted to the cluster. You can either specify each JAR
+file separately (using `--jar`) or define entire library directories (using `--library`). For
+connectors to external systems (such as Apache Kafka) and corresponding data formats (such as JSON),
+Flink provides **ready-to-use JAR bundles**. These JAR files can be downloaded for each release from
+the Maven central repository.
+
+The full list of offered SQL JARs and documentation about how to use them can be found on the [connection to external systems page]({{< ref "docs/connectors/table/overview" >}}).
 
 Use SQL Client to submit job
 ----------------------------
@@ -416,16 +401,20 @@ SQL Client allows users to submit jobs either within the interactive command lin
 
 In both modes, SQL Client supports to parse and execute all types of the Flink supported SQL statements.
 
-### Interactive Mode
+### Interactive Command Line
 
-In interactive mode, the SQL Client reads user inputs and executes the statement when meeting semicolon (`;`).
+In interactive Command Line, the SQL Client reads user inputs and executes the statement when getting semicolon (`;`).
 
-
-In interactive mode, SQL Client will print success message when statement is executed successfully. On the other hand, SQL Client will print error message if the execution is failed. By default, the error message only contains a cause. In order to print the full exception stack for debugging, please set the `sql-client.verbose` to true through `SET sql-client.verbose = true;`.
+SQL Client will print success message if the statement is executed successfully. When getting errors, SQL Client will also print error messages.
+By default, the error message only contains the error cause. In order to print the full exception stack for debugging, please set the
+`sql-client.verbose` to true through command `SET sql-client.verbose = true;`.
 
 ### Execute SQL Files
 
-SQL Client supports to execute a SQL script file with the `-f` option. SQL Client will execute statements one by one in the SQL script file and print execution messages for each executed statements. Once a statement is failed, the SQL Client will exist and all the remaining statements will not be executed.
+SQL Client supports to execute a SQL script file with the `-f` option. SQL Client will execute
+statements one by one in the SQL script file and print execution messages for each executed statements.
+Once a statement is failed, the SQL Client will exist and all the remaining statements will not be executed.
+
 An example of such a file is presented below.
 
 ```sql
@@ -473,18 +462,145 @@ This configuration:
 
 <span class="label label-danger">Attention</span> Comparing to interactive mode, SQL Client will stop execution and exits when meets errors.
 
-Build pipelines with SQL Client
------------------------------
+### Execute a set of SQL statements
 
-By default the SQL Client submit the `INSERT INTO` statement to a Flink cluster in detached mode. These queries produce their results into an external system instead of the SQL Client. This allows for dealing with higher parallelism and larger amounts of data. The CLI itself does not have any control over a detached query after submission.
+SQL Client execute each INSERT INTO statement as a single Flink job. However, this is sometimes not
+optimal because some part of the pipeline can be reused. SQL Client supports STATEMENT SET syntax to
+execute a set of SQL statements. This is an equivalent feature with StatementSet in Table API. The
+`STATEMENT SET` syntax encloses one or more `INSERT INTO` statements. All statements in a `STATEMENT SET`
+block are holistically optimized and executed as a single Flink job. Joint optimization and execution
+allows for reusing common intermediate results and can therefore significantly improve the efficiency
+of executing multiple queries.
 
+#### Syntax
 ```sql
-INSERT INTO MyTableSink SELECT * FROM MyTableSource
+BEGIN STATEMENT SET;
+  -- one or more INSERT INTO statements
+  { INSERT INTO|OVERWRITE <select_statement>; }+
+END;
 ```
 
-The SQL Client makes sure that a statement is successfully submitted to the cluster. Once the query is submitted, the CLI will show information about the Flink job.
+<span class="label label-danger">Attention</span> The statements of enclosed in the `STATEMENT SET` must be separated by a semicolon (;).
 
-```text
+{{< tabs "statement set" >}}
+
+{{< tab "SQL CLI" >}}
+```sql
+Flink SQL> CREATE TABLE pageviews (
+>   user_id BIGINT,
+>   page_id BIGINT,
+>   viewtime TIMESTAMP,
+>   proctime AS PROCTIME()
+> ) WITH (
+>   'connector' = 'kafka',
+>   'topic' = 'pageviews',
+>   'properties.bootstrap.servers' = '...',
+>   'format' = 'avro'
+> );
+[INFO] Execute statement succeed.
+
+Flink SQL> CREATE TABLE pageview (
+>   page_id BIGINT,
+>   cnt BIGINT
+> ) WITH (
+>   'connector' = 'jdbc',
+>   'url' = 'jdbc:mysql://localhost:3306/mydatabase',
+>   'table-name' = 'pageview'
+> );
+[INFO] Execute statement succeed.
+
+Flink SQL> CREATE TABLE uniqueview (
+>   page_id BIGINT,
+>   cnt BIGINT
+> ) WITH (
+>   'connector' = 'jdbc',
+>   'url' = 'jdbc:mysql://localhost:3306/mydatabase',
+>   'table-name' = 'uniqueview'
+> );
+[INFO] Execute statement succeed.
+
+Flink SQL> BEGIN STATEMENT SET;
+[INFO] Begin a statement set.
+
+Flink SQL> INSERT INTO pageviews
+> SELECT page_id, count(1)
+> FROM pageviews
+> GROUP BY page_id;
+[INFO] Add SQL update statement to the statement set.
+
+Flink SQL> INSERT INTO uniqueview
+> SELECT page_id, count(distinct user_id)
+> FROM pageviews
+> GROUP BY page_id;
+[INFO] Add SQL update statement to the statement set.
+
+Flink SQL> END;
+[INFO] Submitting SQL update statement to the cluster...
+[INFO] SQL update statement has been successfully submitted to the cluster:
+Job ID: 6b1af540c0c0bb3fcfcad50ac037c862
+```
+{{< /tab >}}
+
+{{< tab "SQL File" >}}
+```sql
+CREATE TABLE pageviews (
+  user_id BIGINT,
+  page_id BIGINT,
+  viewtime TIMESTAMP,
+  proctime AS PROCTIME()
+) WITH (
+  'connector' = 'kafka',
+  'topic' = 'pageviews',
+  'properties.bootstrap.servers' = '...',
+  'format' = 'avro'
+);
+
+CREATE TABLE pageview (
+  page_id BIGINT,
+  cnt BIGINT
+) WITH (
+  'connector' = 'jdbc',
+  'url' = 'jdbc:mysql://localhost:3306/mydatabase',
+  'table-name' = 'pageview'
+);
+
+CREATE TABLE uniqueview (
+  page_id BIGINT,
+  cnt BIGINT
+) WITH (
+  'connector' = 'jdbc',
+  'url' = 'jdbc:mysql://localhost:3306/mydatabase',
+  'table-name' = 'uniqueview'
+);
+
+BEGIN STATEMENT SET;
+
+INSERT INTO pageviews
+SELECT page_id, count(1)
+FROM pageviews
+GROUP BY page_id;
+
+INSERT INTO uniqueview
+SELECT page_id, count(distinct user_id)
+FROM pageviews
+GROUP BY page_id;
+
+END;
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+### Execute DML statements sync/async
+
+By default, SQL Client executes DML statements asynchronously. That means, SQL Client will submit a
+job for the DML statement to a Flink cluster, and not wait for the job to finish.
+So SQL Client can submit multiple jobs at the same time. This is useful for streaming jobs, which are long-running in general.
+
+SQL Client makes sure that a statement is successfully submitted to the cluster. Once the statement
+is submitted, the CLI will show information about the Flink job.
+
+```sql
+Flink SQL> INSERT INTO MyTableSink SELECT * FROM MyTableSource;
 [INFO] Table update statement has been successfully submitted to the cluster:
 Cluster ID: StandaloneClusterId
 Job ID: 6f922fe5cba87406ff23ae4a7bb79044
@@ -492,33 +608,11 @@ Job ID: 6f922fe5cba87406ff23ae4a7bb79044
 
 <span class="label label-danger">Attention</span> The SQL Client does not track the status of the running Flink job after submission. The CLI process can be shutdown after the submission without affecting the detached query. Flink's `restart strategy` takes care of the fault-tolerance. A query can be cancelled using Flink's web interface, command-line, or REST API.
 
-### Execute a batch of SQL statements
+However, for batch users, it's more common that the next DML statement requires to wait util the
+previous DML statement finishes. In order to execute DML statements synchronously, you can set
+`table.dml-sync` option true in SQL Client.
 
-Sometimes it's prefer to batch insert statements and optimize/execute the batched statements together. In SQL Client, it supports to parse and execute statement set in SQL.
-
-```text
-Flink SQL> BEGIN STATEMENT SET;
-[INFO] Begin a statement set.
-
-Flink SQL> INSERT INTO MySink1 SELECT * FROM MySource1;
-[INFO] Add SQL update statement to the statement set.
-
-Flink SQL> INSERT INTO MySink2 SELECT * FROM MySource1;
-[INFO] Add SQL update statement to the statement set.
-
-Flink SQL> END;
-[INFO] Submitting SQL update statement to the cluster...
-[INFO] Execute statement in sync mode. Please wait for the execution finish...
-[INFO] Complete execution of the SQL update statement.
-```
-
-<span class="label label-danger">Attention</span> It's allowed to add `INSERT` statements into the statement set only.
-
-### Execute DML Statements one by one
-
-Sometimes it's better to execute statements one by one. In SQL Client, it can use the option `table.dml-sync` to wait for the job finishes.
-
-```text
+```sql
 Flink SQL> SET table.dml-sync = true;
 [INFO] Session property has been set.
 
@@ -528,17 +622,59 @@ Flink SQL> INSERT INTO MyTableSink SELECT * FROM MyTableSource;
 [INFO] Complete execution of the SQL update statement.
 ```
 
-<span class="label label-danger">Attention</span> It's supported to cancel the running job by CTRL + C;
+<span class="label label-danger">Attention</span>  If you want to terminate the job, just type `CTRL-C` to cancel the execution.
+
+### Start a SQL Job from a savepoint
+
+Flink supports to start the job with specified savepoints. In SQL Client, it's allow to use `SET` command
+to specify the path to the savepoints.
+
+```sql
+Flink SQL> SET execution.savepoint.path=/tmp/flink-savepoints/savepoint-cca7bc-bb1e257f0dab;
+[INFO] Session property has been set.
+```
+
+When the path is specified, Flink will try to restore the state from the savepoint when execute statements.
+
+SQL Client also supports to disable restore from the savepoint by `RESET` command.
+
+```sql
+Flink SQL> RESET execution.savepoint.path;
+[INFO] Session property has been reset.
+```
+
+For more details about creating and managing savepoints, please refer to [Job Lifecycle Management]({{< ref "docs/deployment/cli" >}}#job-lifecycle-management).
+
+### Define a Custom Job Name
+
+SQL Client supports to name every submitted job through `SET` command.
+
+```sql
+Flink SQL> SET pipeline.name=SqlJob;;
+[INFO] Session property has been set.
+```
+
+<span class="label label-danger">Attention</span> Please set the name before submitting the job.
+
+If the name is not specified, SQL Client uses the default name for the submitted job, e.g. use 'collect'
+for the query job.
+
+If you want to use the default strategy to name jobs, please use the `RESET` command to clear the value of the option `pipeline.name`.
+
+```sql
+Flink SQL> RESET pipeline.name;
+[INFO] Session property has been reset.
+```
 
 {{< top >}}
 
 Compatibility
 -------------
 
-To be compatible with before, SQL Client still supports to initialize with environment YAML file and allows to SET the key in YAML file.
+To be compatible with before, SQL Client still supports to initialize with environment YAML file and allows to `SET` the key in YAML file.
 When set the key defined in YAML file, the SQL Client will print the warning messages to inform.
 
-```text
+```sql
 Flink SQL> SET execution.type = batch;
 [WARNING] The specified key 'execution.type' is deprecated. Please use 'execution.runtime-mode' instead.
 [INFO] Session property has been set.
@@ -547,7 +683,7 @@ Flink SQL> SET execution.type = batch;
 When using `SET` command to print the properties, the SQL Client will also print all the properties.
 To distinguish the deprecated key, the sql client use the '[DEPRECATED]' as the identifier is deprecated.
 
-```text
+```sql
 Flink SQL>SET;
 execution.runtime-mode=batch
 sql-client.execution.result-mode=table
@@ -556,6 +692,8 @@ table.planner=blink
 [DEPRECATED] execution.result-mode=table
 [DEPRECATED] execution.type=batch
 ```
+
+If you want to see more information about environment files, please refer to [previous docs version](https://ci.apache.org/projects/flink/flink-docs-release-1.12/dev/table/sqlClient.html#environment-files)
 
 {{< top >}}
 
