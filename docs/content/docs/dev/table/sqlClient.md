@@ -634,9 +634,9 @@ Flink SQL> SET execution.savepoint.path=/tmp/flink-savepoints/savepoint-cca7bc-b
 [INFO] Session property has been set.
 ```
 
-When the path is specified, Flink will try to restore the state from the savepoint when execute statements.
+When the savepoint path is specified, Flink will try to restore the state from the savepoint when executing all the following DML statements.
 
-SQL Client also supports to disable restore from the savepoint by `RESET` command.
+Because the savepoint path configuration will affect all the following DML statements, you can also use `RESET` command to reset this configuraiton, i.e. disable restoring from savepoint. 
 
 ```sql
 Flink SQL> RESET execution.savepoint.path;
@@ -647,16 +647,19 @@ For more details about creating and managing savepoints, please refer to [Job Li
 
 ### Define a Custom Job Name
 
-SQL Client supports to name every submitted job through `SET` command.
+SQL Client supports to define job name for queries and DML statements through `SET` command.
 
 ```sql
-Flink SQL> SET pipeline.name=SqlJob;;
+Flink SQL> SET pipeline.name= 'kafka-to-hive' ;
 [INFO] Session property has been set.
+
+-- all the following DML statements be defined to the specified job name.
+Flink SQL> INSERT INTO ...
 ```
 
-<span class="label label-danger">Attention</span> Please set the name before submitting the job.
+Because the job name configuration will affect all the following DML statements, you can also use `RESET` command to reset this configuraiton, i.e. use default job names. 
 
-If the name is not specified, SQL Client uses the default name for the submitted job, e.g. use 'collect'
+If the `pipeline.name` configuraiton is not specified, SQL Client will generate a default name for the submitted job, e.g. 'insert-into_<sink_table_name>' for `INSERT INTO` statements. 
 for the query job.
 
 If you want to use the default strategy to name jobs, please use the `RESET` command to clear the value of the option `pipeline.name`.

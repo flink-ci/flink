@@ -28,7 +28,7 @@ under the License.
 
 `RESET` statements are used to reset the configuration to the default.
 
-## Run a LOAD statement
+## Run a RESET statement
 
 {{< tabs "reset statement" >}}
 {{< tab "SQL CLI" >}}
