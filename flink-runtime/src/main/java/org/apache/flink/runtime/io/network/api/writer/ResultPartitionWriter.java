@@ -23,7 +23,7 @@ import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.io.network.partition.BufferAvailabilityListener;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.ResultSubpartitionView;
-import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
+import org.apache.flink.runtime.metrics.groups.InternalTaskIOMetricGroup;
 
 import javax.annotation.Nullable;
 
@@ -66,7 +66,7 @@ public interface ResultPartitionWriter extends AutoCloseable, AvailabilityProvid
     void broadcastEvent(AbstractEvent event, boolean isPriorityEvent) throws IOException;
 
     /** Sets the metric group for the {@link ResultPartitionWriter}. */
-    void setMetricGroup(TaskIOMetricGroup metrics);
+    void setMetricGroup(InternalTaskIOMetricGroup metrics);
 
     /** Returns a reader for the subpartition with the given index. */
     ResultSubpartitionView createSubpartitionView(
