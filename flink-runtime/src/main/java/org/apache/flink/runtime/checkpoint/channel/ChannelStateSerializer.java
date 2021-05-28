@@ -61,7 +61,7 @@ interface ChannelStateByteBuffer {
 
     boolean isWritable();
 
-    void recycle();
+    void close();
 
     /**
      * Read up to <code>bytesToRead</code> bytes into this buffer from the given {@link
@@ -82,7 +82,7 @@ interface ChannelStateByteBuffer {
             }
 
             @Override
-            public void recycle() {
+            public void close() {
                 buffer.recycleBuffer();
             }
 
@@ -102,8 +102,8 @@ interface ChannelStateByteBuffer {
             }
 
             @Override
-            public void recycle() {
-                bufferBuilder.recycle();
+            public void close() {
+                bufferBuilder.close();
             }
 
             @Override
@@ -135,7 +135,7 @@ interface ChannelStateByteBuffer {
             }
 
             @Override
-            public void recycle() {}
+            public void close() {}
 
             @Override
             public int writeBytes(InputStream input, int bytesToRead) throws IOException {
