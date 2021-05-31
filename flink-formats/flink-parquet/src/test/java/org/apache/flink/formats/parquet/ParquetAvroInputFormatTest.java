@@ -27,12 +27,12 @@ import org.apache.flink.types.Row;
 import org.apache.avro.AvroRuntimeException;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.specific.SpecificRecord;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.parquet.avro.AvroSchemaConverter;
 import org.apache.parquet.schema.MessageType;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -42,28 +42,25 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 /** Test cases for reading Parquet files and convert parquet records to Avro GenericRecords. */
-@RunWith(Parameterized.class)
-public class ParquetAvroInputFormatTest extends TestUtil {
+public class ParquetAvroInputFormatTest {
 
-    @ClassRule public static TemporaryFolder tempRoot = new TemporaryFolder();
+    @ClassRule
+    public static TemporaryFolder tempRoot = new TemporaryFolder();
+    private final Configuration configuration = new Configuration();
+    private final AvroSchemaConverter schemaConverter = new AvroSchemaConverter(configuration);
 
-    public ParquetAvroInputFormatTest(boolean useLegacyMode) {
-        // AvroRowSerializationSchema does not work with parquet.avro.write-old-list-structure set
-        // to false
-        super(true);
-    }
 
     @Test
     public void testReadFromSimpleRecord() throws IOException {
         Tuple3<Class<? extends SpecificRecord>, SpecificRecord, Row> testData =
-                getSimpleRecordTestData();
-        MessageType messageType = getSchemaConverter().convert(SIMPLE_SCHEMA);
+                TestUtil.getSimpleRecordTestData();
+        MessageType messageType = schemaConverter.convert(TestUtil.SIMPLE_SCHEMA);
         Path path =
-                createTempParquetFile(
+                TestUtil.createTempParquetFile(
                         tempRoot.getRoot(),
-                        SIMPLE_SCHEMA,
+                        TestUtil.SIMPLE_SCHEMA,
                         Collections.singletonList(testData.f1),
-                        getConfiguration());
+                        configuration);
 
         ParquetAvroInputFormat inputFormat = new ParquetAvroInputFormat(path, messageType);
         inputFormat.setRuntimeContext(TestUtil.getMockRuntimeContext());
@@ -85,16 +82,16 @@ public class ParquetAvroInputFormatTest extends TestUtil {
             throws IOException, NoSuchFieldError, AvroRuntimeException {
         Tuple3<Class<? extends SpecificRecord>, SpecificRecord, Row> testData =
                 TestUtil.getSimpleRecordTestData();
-        MessageType messageType = getSchemaConverter().convert(SIMPLE_SCHEMA);
+        MessageType messageType = schemaConverter.convert(TestUtil.SIMPLE_SCHEMA);
         Path path =
-                createTempParquetFile(
+                TestUtil.createTempParquetFile(
                         tempRoot.getRoot(),
-                        SIMPLE_SCHEMA,
+                        TestUtil.SIMPLE_SCHEMA,
                         Collections.singletonList(testData.f1),
-                        getConfiguration());
+                        configuration);
 
         ParquetAvroInputFormat inputFormat = new ParquetAvroInputFormat(path, messageType);
-        inputFormat.setRuntimeContext(getMockRuntimeContext());
+        inputFormat.setRuntimeContext(TestUtil.getMockRuntimeContext());
 
         FileInputSplit[] splits = inputFormat.createInputSplits(1);
         assertEquals(1, splits.length);
