@@ -21,6 +21,7 @@ package org.apache.flink.formats.parquet;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.avro.AvroRowSerializationSchema;
+import org.apache.flink.formats.avro.typeutils.AvroConversions;
 import org.apache.flink.formats.avro.typeutils.GenericRecordAvroTypeInfo;
 import org.apache.flink.types.Row;
 
@@ -50,20 +51,17 @@ public class ParquetAvroInputFormat extends ParquetInputFormat<GenericRecord>
 
     private transient Schema avroSchema;
     private String avroSchemaString;
-    private AvroRowSerializationSchema avroRowSerializationSchema;
 
     public ParquetAvroInputFormat(Path filePath, MessageType messageType) {
         super(filePath, messageType);
         avroSchema = new AvroSchemaConverter().convert(messageType);
         avroSchemaString = avroSchema.toString();
-        avroRowSerializationSchema = new AvroRowSerializationSchema(avroSchemaString);
     }
 
     @Override
     public void selectFields(String[] fieldNames) {
         avroSchema = getProjectedSchema(fieldNames, avroSchema);
         avroSchemaString = avroSchema.toString();
-        avroRowSerializationSchema = new AvroRowSerializationSchema(avroSchemaString);
         super.selectFields(fieldNames);
     }
 
@@ -73,7 +71,7 @@ public class ParquetAvroInputFormat extends ParquetInputFormat<GenericRecord>
         if (avroSchema == null) {
             avroSchema = new Schema.Parser().parse(avroSchemaString);
         }
-        return avroRowSerializationSchema.convertRowToAvroRecord(avroSchema, row);
+        return AvroConversions.convertRowToAvroRecord(avroSchema, row);
     }
 
     @Override
