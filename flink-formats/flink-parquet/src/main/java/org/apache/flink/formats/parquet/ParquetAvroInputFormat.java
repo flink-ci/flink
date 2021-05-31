@@ -20,7 +20,6 @@ package org.apache.flink.formats.parquet;
 
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.core.fs.Path;
-import org.apache.flink.formats.avro.AvroRowSerializationSchema;
 import org.apache.flink.formats.avro.typeutils.AvroConversions;
 import org.apache.flink.formats.avro.typeutils.GenericRecordAvroTypeInfo;
 import org.apache.flink.types.Row;

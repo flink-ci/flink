@@ -44,11 +44,9 @@ import static org.junit.Assert.assertEquals;
 /** Test cases for reading Parquet files and convert parquet records to Avro GenericRecords. */
 public class ParquetAvroInputFormatTest {
 
-    @ClassRule
-    public static TemporaryFolder tempRoot = new TemporaryFolder();
+    @ClassRule public static TemporaryFolder tempRoot = new TemporaryFolder();
     private final Configuration configuration = new Configuration();
     private final AvroSchemaConverter schemaConverter = new AvroSchemaConverter(configuration);
-
 
     @Test
     public void testReadFromSimpleRecord() throws IOException {
