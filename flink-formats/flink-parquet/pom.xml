@@ -51,10 +51,24 @@ under the License.
 			<scope>provided</scope>
 		</dependency>
 
+<!--		jackson-databind is big and in a compile transitive dep of flink-avro, exclude it and import it in runtime classpath-->
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-avro</artifactId>
 			<version>${project.version}</version>
+			<optional>true</optional>
+			<exclusions>
+				<exclusion>
+					<groupId>com.fasterxml.jackson.core</groupId>
+					<artifactId>jackson-databind</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<scope>runtime</scope>
 		</dependency>
 
 		<!-- Table ecosystem -->
