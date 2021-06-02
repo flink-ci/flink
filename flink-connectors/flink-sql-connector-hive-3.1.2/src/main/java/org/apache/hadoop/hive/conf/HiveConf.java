@@ -177,7 +177,7 @@ public class HiveConf extends Configuration {
           }
           // From the jar file, the parent is /lib folder
           File parent = null;
-          if (!jarUri.isOpaque()) {
+          if (jarUri != null && !jarUri.isOpaque()) {
             parent = new File(jarUri).getParentFile();
           }
           if (parent != null) {
