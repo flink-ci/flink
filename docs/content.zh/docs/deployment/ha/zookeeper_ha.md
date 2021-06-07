@@ -26,13 +26,13 @@ under the License.
 
 # ZooKeeper 高可用服务
 
-Flink 的 ZooKeeper 高可用服务使用 [ZooKeeper](http://zookeeper.apache.org) 提供高可用服务。
+Flink 的 ZooKeeper 高可用模式使用 [ZooKeeper](http://zookeeper.apache.org) 提供高可用服务。
 
 Flink 利用 **[ZooKeeper](http://zookeeper.apache.org)** 在所有运行的 JobManager 实例之间进行 *分布式协调*。ZooKeeper 是一个独立于 Flink 的服务，它通过 leader 选举和轻量级的一致性状态存储来提供高可靠的分布式协调。查看 [ZooKeeper入门指南](http://zookeeper.apache.org/doc/current/zookeeperStarted.html)，了解更多关于 ZooKeeper 的信息。Flink 包含 [启动一个简单的ZooKeeper](#bootstrap-zookeeper) 的安装脚本。
 
 ## 配置
 
-为了启用高可用集群（HA-cluster），您必须设置以下配置项:
+为了启用高可用集群（HA-cluster），你必须设置以下配置项:
 
 - [high-availability]({{< ref "docs/deployment/config" >}}#high-availability-1) (必要的):
   `high-availability` 配置项必须设置为 `zookeeper`。
@@ -64,7 +64,7 @@ Flink 利用 **[ZooKeeper](http://zookeeper.apache.org)** 在所有运行的 Job
   <pre>high-availability.cluster-id: /default_ns # important: customize per cluster</pre>
 
   **重要**:
-  在 YARN、原生 Kubernetes 或其他集群管理器上运行时，不应该手动设置此值。在这些情况下，将自动生成一个集群id。如果在未使用集群管理器的机器上运行多个 Flink 高可用（HA）集群，则必须为每个集群手动配置单独的集群 ID（cluster-ids）。
+  在 YARN、原生 Kubernetes 或其他集群管理器上运行时，不应该手动设置此值。在这些情况下，将自动生成一个集群 ID。如果在未使用集群管理器的机器上运行多个 Flink 高可用集群，则必须为每个集群手动配置单独的集群 ID（cluster-ids）。
 
 ### 配置示例
 
@@ -94,7 +94,7 @@ zookeeper.sasl.service-name: zookeeper
 zookeeper.sasl.login-context-name: Client  
 ```
 
-有关用于 Kerberos 安全性的 Flink 配置的更多信息，请参阅 [Flink 配置页面的安全性部分]({{< ref "docs/deployment/config" >}}#security)。您还可以找到关于 [Flink 如何在内部设置基于 kerberos 的安全性]({{< ref "docs/deployment/security/security-kerberos" >}}) 的详细信息。
+有关用于 Kerberos 安全性的 Flink 配置的更多信息，请参阅 [Flink 配置页面的安全性部分]({{< ref "docs/deployment/config" >}}#security)。你还可以找到关于 [Flink 如何在内部设置基于 kerberos 的安全性]({{< ref "docs/deployment/security/security-kerberos" >}}) 的详细信息。
 
 {{< top >}}
 
@@ -102,9 +102,9 @@ zookeeper.sasl.login-context-name: Client
 
 Flink 附带了 3.4 和 3.5 的单独的 ZooKeeper 客户端，其中 3.4 位于发行版的 `lib` 目录中，为默认使用版本，而 3.5 位于 opt 目录中。
 
-3.5 客户端允许您通过 SSL 保护 ZooKeeper 连接，但 _可能_ 不适用于 3.4 版本的 ZooKeeper 安装。
+3.5 客户端允许你通过 SSL 保护 ZooKeeper 连接，但 _可能_ 不适用于 3.4 版本的 ZooKeeper 安装。
 
-您可以通过在 `lib` 目录中放置任意一个 jar 来控制 Flink 使用哪个版本。
+你可以通过在 `lib` 目录中放置任意一个 jar 来控制 Flink 使用哪个版本。
 
 {{< top >}}
 
@@ -114,7 +114,7 @@ Flink 附带了 3.4 和 3.5 的单独的 ZooKeeper 客户端，其中 3.4 位于
 
 如果你没有安装 ZooKeeper，可以使用 Flink 附带的帮助脚本。
 
-在 `conf/zoo.cfg` 文件中有 ZooKeeper 的配置模板。您可以在 `server.X` 配置项中配置主机来运行 ZooKeeper。其中 X 是每个服务器的唯一 ID:
+在 `conf/zoo.cfg` 文件中有 ZooKeeper 的配置模板。你可以在 `server.X` 配置项中配置主机来运行 ZooKeeper。其中 X 是每个服务器的唯一 ID:
 
 ```bash
 server.X=addressX:peerPort:leaderPort
@@ -122,6 +122,8 @@ server.X=addressX:peerPort:leaderPort
 server.Y=addressY:peerPort:leaderPort
 ```
 
-脚本 `bin/start-zookeeper-quorum.sh` 将在每个配置的主机上启动一个 ZooKeeper 服务器。该进程是通过 Flink 包装器来启动的 ZooKeeper 服务器，该包装器从 `conf/zoo.cfg` 读取配置，并确保设置一些必要的配置值以方便使用。在生产设置中，建议您管理自己的 ZooKeeper 安装。
+脚本 `bin/start-zookeeper-quorum.sh` 将在每个配置的主机上启动一个 ZooKeeper 服务。该进程是通过 Flink 包装器来启动的，该包装器从 `conf/zoo.cfg` 读取配置，并确保设置一些必要的配置值以方便使用。
+
+在生产环境中，建议你自行管理 ZooKeeper 的安装与部署。
 
 {{< top >}}
