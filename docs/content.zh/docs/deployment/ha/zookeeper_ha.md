@@ -88,7 +88,7 @@ high-availability.storageDir: hdfs:///flink/recovery
 # 默认配置为 "zookeeper". 如果 ZooKeeper quorum 配置了不同的服务名称，
 # 那么可以替换到这里。
 
-zookeeper.sasl.service-name: zookeeper
+zookeeper.sasl.service-name: zookeeper 
 
 # 默认配置为 "Client". 该值必须为 "security.kerberos.login.contexts" 项中配置的某一个值。
 zookeeper.sasl.login-context-name: Client  
