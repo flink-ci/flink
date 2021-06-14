@@ -29,6 +29,8 @@ import org.apache.flink.connector.base.source.reader.fetcher.SplitFetcherManager
 import org.apache.flink.connector.base.source.reader.splitreader.SplitReader;
 import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.core.io.InputStatus;
+import org.apache.flink.metrics.Counter;
+import org.apache.flink.metrics.groups.OperatorIOMetricGroup;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,6 +50,12 @@ import static org.apache.flink.util.Preconditions.checkState;
  * An abstract implementation of {@link SourceReader} which provides some synchronization between
  * the mail box main thread and the SourceReader internal threads. This class allows user to just
  * provide a {@link SplitReader} and snapshot the split state.
+ *
+ * <p>This implementation provides the following metrics out of the box:
+ *
+ * <ul>
+ *   <li>{@link OperatorIOMetricGroup#getNumRecordsInCounter()}
+ * </ul>
  *
  * @param <E> The rich element type that contains information for split state update or timestamp
  *     extraction.
@@ -77,6 +85,8 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
     /** The raw configurations that may be used by subclasses. */
     protected final Configuration config;
 
+    private final Counter numRecordsInCounter;
+
     /** The context of this source reader. */
     protected SourceReaderContext context;
 
@@ -103,6 +113,8 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
         this.config = config;
         this.context = context;
         this.noMoreSplitsAssignment = false;
+
+        numRecordsInCounter = context.metricGroup().getIOMetricGroup().getNumRecordsInCounter();
     }
 
     @Override
@@ -126,6 +138,7 @@ public abstract class SourceReaderBase<E, T, SplitT extends SourceSplit, SplitSt
             if (record != null) {
                 // emit the record.
                 recordEmitter.emitRecord(record, currentSplitOutput, currentSplitContext.state);
+                numRecordsInCounter.inc(1);
                 LOG.trace("Emitted record: {}", record);
 
                 // We always emit MORE_AVAILABLE here, even though we do not strictly know whether
