@@ -1790,6 +1790,11 @@ public class StreamTaskTest extends TestLogger {
                         .getStreamTask()
                         .getCheckpointCoordinator()
                         .setEnableCheckpointAfterTasksFinished(true);
+                testHarness
+                        .getStreamTask()
+                        .getCheckpointBarrierHandler()
+                        .get()
+                        .setEnableCheckpointAfterTasksFinished(true);
 
                 // Tests triggering checkpoint when all the inputs are alive.
                 Future<Boolean> checkpointFuture = triggerCheckpoint(testHarness, 2);

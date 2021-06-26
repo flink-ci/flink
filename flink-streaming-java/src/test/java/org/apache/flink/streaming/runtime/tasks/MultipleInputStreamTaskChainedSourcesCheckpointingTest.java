@@ -280,14 +280,23 @@ public class MultipleInputStreamTaskChainedSourcesCheckpointingTest {
                         .getStreamTask()
                         .getCheckpointCoordinator()
                         .setEnableCheckpointAfterTasksFinished(true);
+                testHarness
+                        .getStreamTask()
+                        .getCheckpointBarrierHandler()
+                        .get()
+                        .setEnableCheckpointAfterTasksFinished(true);
 
-                // TODO: Would add the test of part of channel finished after we are able to
-                // complement pending checkpoints when received EndOfPartitionEvent.
+                Future<Boolean> checkpointFuture = triggerCheckpoint(testHarness, 2);
+                testHarness.processAll();
 
-                // Tests triggering checkpoint after all the inputs have received EndOfPartition.
+                // The checkpoint 2 would be aligned after received all the EndOfPartitionEvent.
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 0, 0);
                 testHarness.processEvent(EndOfPartitionEvent.INSTANCE, 1, 0);
-                Future<Boolean> checkpointFuture = triggerCheckpoint(testHarness, 4);
+                testHarness.getTaskStateManager().getWaitForReportLatch().await();
+                assertEquals(2, testHarness.getTaskStateManager().getReportedCheckpointId());
+
+                // Tests triggering checkpoint after all the inputs have received EndOfPartition.
+                checkpointFuture = triggerCheckpoint(testHarness, 4);
 
                 // Notifies the result partition that all records are processed after the
                 // last checkpoint is triggered.
@@ -310,7 +319,7 @@ public class MultipleInputStreamTaskChainedSourcesCheckpointingTest {
 
                 // Each result partition should have emitted 2 barriers and 1 EndOfUserRecordsEvent.
                 for (ResultPartition resultPartition : partitionWriters) {
-                    assertEquals(2, resultPartition.getNumberOfQueuedBuffers());
+                    assertEquals(3, resultPartition.getNumberOfQueuedBuffers());
                 }
             }
         } finally {
