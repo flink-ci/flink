@@ -430,7 +430,12 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
             return;
         }
         if (status == InputStatus.END_OF_INPUT) {
-            controller.allActionsCompleted();
+            // Suspend the mailbox processor, it would be resumed in afterInvoke and finished
+            // after all records processed by the downstream tasks. We also suspend the default
+            // actions to avoid repeat executing the empty default operation (namely process
+            // records).
+            controller.suspendDefaultAction();
+            mailboxProcessor.suspend();
             return;
         }
 
@@ -698,23 +703,25 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>> extends Ab
         // If checkpoints are enabled, waits for all the records get processed by the downstream
         // tasks. During this process, this task could coordinate with its downstream tasks to
         // continue perform checkpoints.
+        CompletableFuture<Void> allRecordsProcessedFuture;
         if (configuration.isCheckpointingEnabled()) {
             LOG.debug("Waiting for all the records processed by the downstream tasks.");
 
-            List<CompletableFuture<Void>> allRecordsProcessedFutures = new ArrayList<>();
+            List<CompletableFuture<Void>> partitionRecordsProcessedFutures = new ArrayList<>();
             for (ResultPartitionWriter partitionWriter : getEnvironment().getAllWriters()) {
                 partitionWriter.notifyEndOfUserRecords();
-                allRecordsProcessedFutures.add(partitionWriter.getAllRecordsProcessedFuture());
+                partitionRecordsProcessedFutures.add(
+                        partitionWriter.getAllRecordsProcessedFuture());
             }
-            CompletableFuture<Void> combineFuture =
-                    FutureUtils.waitForAll(allRecordsProcessedFutures);
-
-            MailboxExecutor mailboxExecutor =
-                    mailboxProcessor.getMailboxExecutor(TaskMailbox.MIN_PRIORITY);
-            while (!combineFuture.isDone()) {
-                mailboxExecutor.tryYield();
-            }
+            allRecordsProcessedFuture = FutureUtils.waitForAll(partitionRecordsProcessedFutures);
+        } else {
+            allRecordsProcessedFuture = CompletableFuture.completedFuture(null);
         }
+        allRecordsProcessedFuture.thenRun(mailboxProcessor::allActionsCompleted);
+
+        // Resumes the mailbox processor. The mailbox processor would be completed
+        // after all records are processed by the downstream tasks.
+        mailboxProcessor.runMailboxLoop();
 
         // make sure no further checkpoint and notification actions happen.
         // at the same time, this makes sure that during any "regular" exit where still

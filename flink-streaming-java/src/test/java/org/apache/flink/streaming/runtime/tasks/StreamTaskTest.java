@@ -337,10 +337,7 @@ public class StreamTaskTest extends TestLogger {
                     savepointResult.accept(harness.streamTask, checkpointId);
                 },
                 "savepointResult");
-
-        while (harness.streamTask.isMailboxLoopRunning()) {
-            harness.streamTask.runMailboxStep();
-        }
+        harness.processAll();
 
         Assert.assertEquals(expectEndInput, TestBoundedOneInputStreamOperator.isInputEnded());
     }
@@ -617,7 +614,8 @@ public class StreamTaskTest extends TestLogger {
             } finally {
                 holder.close();
             }
-            controller.allActionsCompleted();
+            controller.suspendDefaultAction();
+            mailboxProcessor.suspend();
         }
 
         @Override
@@ -1289,7 +1287,8 @@ public class StreamTaskTest extends TestLogger {
                                             mailboxProcessor
                                                     .getMailboxExecutor(0)
                                                     .execute(latch::trigger, "trigger");
-                                            controller.allActionsCompleted();
+                                            controller.suspendDefaultAction();
+                                            mailboxProcessor.suspend();
                                         }
                                     });
             latch.await();
@@ -2281,7 +2280,8 @@ public class StreamTaskTest extends TestLogger {
             if (fail) {
                 throw new RuntimeException();
             }
-            controller.allActionsCompleted();
+            controller.suspendDefaultAction();
+            mailboxProcessor.suspend();
         }
 
         @Override
@@ -2406,7 +2406,8 @@ public class StreamTaskTest extends TestLogger {
         protected void processInput(MailboxDefaultAction.Controller controller) throws Exception {
             checkTaskThreadInfo();
             if (hasTimerTriggered) {
-                controller.allActionsCompleted();
+                controller.suspendDefaultAction();
+                mailboxProcessor.suspend();
             }
         }
 
