@@ -42,6 +42,7 @@ import org.apache.flink.runtime.scheduler.strategy.ConsumedPartitionGroup;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.shuffle.UnknownShuffleDescriptor;
 import org.apache.flink.types.Either;
+import org.apache.flink.util.CompressedSerializedValue;
 import org.apache.flink.util.SerializedValue;
 
 import javax.annotation.Nullable;
@@ -94,7 +95,8 @@ public class TaskDeploymentDescriptorFactory {
     public TaskDeploymentDescriptor createDeploymentDescriptor(
             AllocationID allocationID,
             @Nullable JobManagerTaskRestore taskRestore,
-            Collection<ResultPartitionDeploymentDescriptor> producedPartitions) {
+            Collection<ResultPartitionDeploymentDescriptor> producedPartitions)
+            throws IOException {
         return new TaskDeploymentDescriptor(
                 jobID,
                 serializedJobInformation,
@@ -108,7 +110,8 @@ public class TaskDeploymentDescriptorFactory {
                 createInputGateDeploymentDescriptors());
     }
 
-    private List<InputGateDeploymentDescriptor> createInputGateDeploymentDescriptors() {
+    private List<InputGateDeploymentDescriptor> createInputGateDeploymentDescriptors()
+            throws IOException {
         List<InputGateDeploymentDescriptor> inputGates =
                 new ArrayList<>(consumedPartitionGroups.size());
 
@@ -131,14 +134,30 @@ public class TaskDeploymentDescriptorFactory {
                             resultId,
                             partitionType,
                             queueToRequest,
-                            getConsumedPartitionShuffleDescriptors(consumedPartitionGroup)));
+                            getConsumedPartitionShuffleDescriptors(
+                                    consumedIntermediateResult, consumedPartitionGroup)));
         }
 
         return inputGates;
     }
 
-    private ShuffleDescriptor[] getConsumedPartitionShuffleDescriptors(
-            ConsumedPartitionGroup consumedPartitionGroup) {
+    private CompressedSerializedValue<ShuffleDescriptor[]> getConsumedPartitionShuffleDescriptors(
+            IntermediateResult intermediateResult, ConsumedPartitionGroup consumedPartitionGroup)
+            throws IOException {
+        CompressedSerializedValue<ShuffleDescriptor[]> serializedShuffleDescriptors =
+                intermediateResult.getCachedShuffleDescriptors(consumedPartitionGroup);
+        if (serializedShuffleDescriptors == null) {
+            serializedShuffleDescriptors =
+                    computeConsumedPartitionShuffleDescriptors(consumedPartitionGroup);
+            intermediateResult.cacheShuffleDescriptors(
+                    consumedPartitionGroup, serializedShuffleDescriptors);
+        }
+        return serializedShuffleDescriptors;
+    }
+
+    private CompressedSerializedValue<ShuffleDescriptor[]>
+            computeConsumedPartitionShuffleDescriptors(
+                    ConsumedPartitionGroup consumedPartitionGroup) throws IOException {
 
         ShuffleDescriptor[] shuffleDescriptors =
                 new ShuffleDescriptor[consumedPartitionGroup.size()];
@@ -150,7 +169,7 @@ public class TaskDeploymentDescriptorFactory {
                             resultPartitionRetriever.apply(partitionId),
                             partitionDeploymentConstraint);
         }
-        return shuffleDescriptors;
+        return CompressedSerializedValue.fromObject(shuffleDescriptors);
     }
 
     public static TaskDeploymentDescriptorFactory fromExecutionVertex(
