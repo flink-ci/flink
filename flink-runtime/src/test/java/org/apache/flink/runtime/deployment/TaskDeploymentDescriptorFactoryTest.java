@@ -21,11 +21,16 @@ package org.apache.flink.runtime.deployment;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.BlobWriter;
+import org.apache.flink.runtime.blob.TestingBlobWriter;
 import org.apache.flink.runtime.blob.VoidBlobWriter;
 import org.apache.flink.runtime.client.JobExecutionException;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
+import org.apache.flink.runtime.concurrent.ManuallyTriggeredScheduledExecutorService;
+import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor.MaybeOffloaded;
+import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor.NonOffloaded;
+import org.apache.flink.runtime.deployment.TaskDeploymentDescriptor.Offloaded;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -56,6 +61,8 @@ import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.util.CompressedSerializedValue;
 import org.apache.flink.util.TestLogger;
 
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -68,16 +75,123 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /** Tests for {@link TaskDeploymentDescriptorFactory}. */
 public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
 
     private static final int PARALLELISM = 4;
 
-    public ExecutionJobVertex setupExecutionGraph(JobID jobId, BlobWriter blobWriter)
+    private ScheduledExecutorService scheduledExecutorService;
+
+    private ComponentMainThreadExecutor mainThreadExecutor;
+
+    private ManuallyTriggeredScheduledExecutorService manualExecutor;
+
+    @Before
+    public void setup() {
+        scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+
+        mainThreadExecutor =
+                ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
+                        scheduledExecutorService);
+
+        manualExecutor = new ManuallyTriggeredScheduledExecutorService();
+    }
+
+    @After
+    public void teardown() {
+        if (scheduledExecutorService != null) {
+            scheduledExecutorService.shutdownNow();
+        }
+    }
+
+    @Test
+    public void testCacheShuffleDescriptorAsNonOffloaded() throws Exception {
+        final JobID jobId = new JobID();
+        final BlobWriter blobWriter = new VoidBlobWriter();
+
+        final ExecutionJobVertex ejv = setupExecutionGraphAndGetVertex(jobId, blobWriter);
+        final IntermediateResult consumedResult = ejv.getInputs().get(0);
+        final ExecutionVertex ev21 = ejv.getTaskVertices()[0];
+
+        final InputGateDeploymentDescriptor igdd21 = createTaskDeploymentDescriptorAndGet(ev21);
+        final ShuffleDescriptor[] shuffleDescriptors = igdd21.getShuffleDescriptors();
+
+        // ShuffleDescriptors should be cached
+        final MaybeOffloaded<ShuffleDescriptor[]> maybeOffloaded =
+                consumedResult.getCachedShuffleDescriptors(ev21.getConsumedPartitionGroup(0));
+
+        final ShuffleDescriptor[] cachedShuffleDescriptors =
+                deserializeShuffleDescriptors(maybeOffloaded);
+
+        assertEquals(shuffleDescriptors.length, cachedShuffleDescriptors.length);
+        for (int i = 0; i < cachedShuffleDescriptors.length; i++) {
+            assertEquals(
+                    shuffleDescriptors[i].getResultPartitionID(),
+                    cachedShuffleDescriptors[i].getResultPartitionID());
+        }
+
+        // The second TaskDeploymentDescriptor should uses cached ShuffleDescriptors
+        final ExecutionVertex ev22 = ejv.getTaskVertices()[1];
+        final InputGateDeploymentDescriptor igdd22 = createTaskDeploymentDescriptorAndGet(ev22);
+        final ShuffleDescriptor[] otherShuffleDescriptors = igdd22.getShuffleDescriptors();
+
+        assertEquals(shuffleDescriptors.length, otherShuffleDescriptors.length);
+        for (int i = 0; i < shuffleDescriptors.length; i++) {
+            assertEquals(
+                    shuffleDescriptors[i].getResultPartitionID(),
+                    otherShuffleDescriptors[i].getResultPartitionID());
+        }
+    }
+
+    @Test
+    public void testCacheShuffleDescriptorAsOffloaded() throws Exception {
+        final TestingBlobWriter blobWriter = new TestingBlobWriter(0);
+        final JobID jobId = new JobID();
+
+        final ExecutionJobVertex ejv = setupExecutionGraphAndGetVertex(jobId, blobWriter);
+        final IntermediateResult consumedResult = ejv.getInputs().get(0);
+        final ExecutionVertex ev21 = ejv.getTaskVertices()[0];
+
+        createTaskDeploymentDescriptorAndGet(ev21);
+
+        // The ShuffleDescriptors should be offloaded to the blob server
+        final MaybeOffloaded<ShuffleDescriptor[]> maybeOffloaded =
+                consumedResult.getCachedShuffleDescriptors(ev21.getConsumedPartitionGroup(0));
+
+        final ShuffleDescriptor[] cachedShuffleDescriptors =
+                deserializeShuffleDescriptors(maybeOffloaded, jobId, blobWriter);
+
+        assertEquals(ev21.getConsumedPartitionGroup(0).size(), cachedShuffleDescriptors.length);
+
+        int i = 0;
+        for (IntermediateResultPartitionID partitionId : ev21.getConsumedPartitionGroup(0)) {
+            assertEquals(
+                    partitionId,
+                    cachedShuffleDescriptors[i++].getResultPartitionID().getPartitionId());
+        }
+    }
+
+    @Test(expected = IllegalStateException.class)
+    public void testGetOffloadedShuffleDescriptorBeforeLoading() throws Exception {
+        final TestingBlobWriter blobWriter = new TestingBlobWriter(0);
+
+        final JobID jobId = new JobID();
+
+        final ExecutionJobVertex ejv = setupExecutionGraphAndGetVertex(jobId, blobWriter);
+
+        // Exception should be thrown when trying to get offloaded shuffle descriptors
+        final ExecutionVertex ev21 = ejv.getTaskVertices()[0];
+        final InputGateDeploymentDescriptor igdd = createTaskDeploymentDescriptorAndGet(ev21);
+        igdd.getShuffleDescriptors();
+    }
+
+    private ExecutionJobVertex setupExecutionGraphAndGetVertex(JobID jobId, BlobWriter blobWriter)
             throws JobException, JobExecutionException {
         final JobVertex v1 = createJobVertex("v1", PARALLELISM);
         final JobVertex v2 = createJobVertex("v2", PARALLELISM);
@@ -94,98 +208,123 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
     }
 
     @Test
-    public void testCacheShuffleDescriptorAsNonOffloaded() throws Exception {
-        final ExecutionJobVertex ejv = setupExecutionGraph(new JobID(), new VoidBlobWriter());
-
-        assert ejv != null;
-        final IntermediateResult consumedResult = ejv.getInputs().get(0);
-
-        final ExecutionVertex ev21 = ejv.getTaskVertices()[0];
-        final InputGateDeploymentDescriptor igdd21 = createTaskDeploymentDescriptorAndGet(ev21);
-        final ShuffleDescriptor[] shuffleDescriptors = igdd21.getShuffleDescriptors();
-
-        // Test whether ShuffleDescriptors are cached or not
-        final CompressedSerializedValue<ShuffleDescriptor[]> compressedSerializedValue =
-                consumedResult.getCachedShuffleDescriptors(ev21.getConsumedPartitionGroup(0));
-
-        final ShuffleDescriptor[] cachedShuffleDescriptors =
-                deserializeShuffleDescriptors(compressedSerializedValue);
-
-        assertEquals(shuffleDescriptors.length, cachedShuffleDescriptors.length);
-        for (int i = 0; i < cachedShuffleDescriptors.length; i++) {
-            assertEquals(
-                    shuffleDescriptors[i].getResultPartitionID(),
-                    cachedShuffleDescriptors[i].getResultPartitionID());
-        }
-
-        // Test whether the following TaskDeploymentDescriptor uses cached ShuffleDescriptors or not
-        final ExecutionVertex ev22 = ejv.getTaskVertices()[1];
-        final InputGateDeploymentDescriptor igdd22 = createTaskDeploymentDescriptorAndGet(ev22);
-        final ShuffleDescriptor[] otherShuffleDescriptors = igdd22.getShuffleDescriptors();
-
-        assertEquals(shuffleDescriptors.length, otherShuffleDescriptors.length);
-        for (int i = 0; i < shuffleDescriptors.length; i++) {
-            assertEquals(
-                    shuffleDescriptors[i].getResultPartitionID(),
-                    otherShuffleDescriptors[i].getResultPartitionID());
-        }
-    }
-
-    @Test
-    public void testRemoveShuffleDescriptorCacheAfterFinished() throws Exception {
+    public void testRemoveNonOffloadedShuffleDescriptorCacheAfterFinished() throws Exception {
+        final JobID jobId = new JobID();
+        final BlobWriter blobWriter = new VoidBlobWriter();
 
         final JobVertex v1 = createJobVertex("v1", PARALLELISM);
         final JobVertex v2 = createJobVertex("v2", PARALLELISM);
 
-        v2.connectNewDataSetAsInput(
-                v1, DistributionPattern.ALL_TO_ALL, ResultPartitionType.BLOCKING);
-
-        final List<JobVertex> ordered = new ArrayList<>(Arrays.asList(v1, v2));
-
-        final ComponentMainThreadExecutor mainThreadExecutor =
-                ComponentMainThreadExecutorServiceAdapter.forMainThread();
-
-        final DefaultScheduler scheduler = createScheduler(ordered, mainThreadExecutor);
-
-        final ExecutionGraph executionGraph = scheduler.getExecutionGraph();
-
-        final TestingLogicalSlotBuilder slotBuilder = new TestingLogicalSlotBuilder();
-
-        deployTasks(executionGraph, v1.getID(), slotBuilder);
-
-        transitionTasksToFinished(executionGraph, v1.getID());
-
-        deployTasks(executionGraph, v2.getID(), slotBuilder);
+        final ExecutionGraph executionGraph =
+                createExecutionGraphAndDeploy(jobId, blobWriter, v1, v2);
 
         // ShuffleDescriptors will be cached during the deployment
         final ShuffleDescriptor[] shuffleDescriptors =
                 deserializeShuffleDescriptors(getCachedShuffleDescriptor(executionGraph, v2));
         assertEquals(PARALLELISM, shuffleDescriptors.length);
 
-        transitionTasksToFinished(executionGraph, v2.getID());
+        CompletableFuture.runAsync(
+                        () -> transitionTasksToFinished(executionGraph, v2.getID()),
+                        mainThreadExecutor)
+                .join();
 
         // Cache will be removed when partitions are released
         assertNull(getCachedShuffleDescriptor(executionGraph, v2));
     }
 
     @Test
-    public void testCacheRemovedCorrectlyAfterFailover() throws Exception {
+    public void testNonOffloadedCacheRemovedCorrectlyAfterFailover() throws Exception {
+        final JobID jobId = new JobID();
+        final BlobWriter blobWriter = new VoidBlobWriter();
+
         final JobVertex v1 = createJobVertex("v1", PARALLELISM);
         final JobVertex v2 = createJobVertex("v2", PARALLELISM);
+
+        final ExecutionGraph executionGraph =
+                createExecutionGraphAndDeploy(jobId, blobWriter, v1, v2);
+
+        // ShuffleDescriptors are cached
+        final ShuffleDescriptor[] shuffleDescriptors =
+                deserializeShuffleDescriptors(getCachedShuffleDescriptor(executionGraph, v2));
+        assertEquals(PARALLELISM, shuffleDescriptors.length);
+
+        triggerExceptionAndComplete(executionGraph, v1, v2);
+
+        // Cache will be removed during ExecutionVertex#resetForNewExecution
+        assertNull(getCachedShuffleDescriptor(executionGraph, v2));
+
+        scheduledExecutorService.shutdownNow();
+    }
+
+    @Test
+    public void testRemoveOffloadedShuffleDescriptorCacheAfterFinished() throws Exception {
+        final JobID jobId = new JobID();
+        final TestingBlobWriter blobWriter = new TestingBlobWriter();
+
+        final JobVertex v1 = createJobVertex("v1", PARALLELISM);
+        final JobVertex v2 = createJobVertex("v2", PARALLELISM);
+
+        final ExecutionGraph executionGraph =
+                createExecutionGraphAndDeploy(jobId, blobWriter, v1, v2);
+
+        assertEquals(4, blobWriter.numberOfBlobs());
+
+        // ShuffleDescriptors will be cached during the deployment
+        final ShuffleDescriptor[] shuffleDescriptors =
+                deserializeShuffleDescriptors(
+                        getCachedShuffleDescriptor(executionGraph, v2), jobId, blobWriter);
+        assertEquals(PARALLELISM, shuffleDescriptors.length);
+
+        CompletableFuture.runAsync(
+                        () -> transitionTasksToFinished(executionGraph, v2.getID()),
+                        mainThreadExecutor)
+                .join();
+
+        manualExecutor.triggerAll();
+
+        // Cache will be removed when partitions are released
+        assertNull(getCachedShuffleDescriptor(executionGraph, v2));
+        assertEquals(3, blobWriter.numberOfBlobs());
+    }
+
+    @Test
+    public void testOffloadedCacheRemovedCorrectlyAfterFailover() throws Exception {
+        final JobID jobId = new JobID();
+        final TestingBlobWriter blobWriter = new TestingBlobWriter();
+
+        final JobVertex v1 = createJobVertex("v1", PARALLELISM);
+        final JobVertex v2 = createJobVertex("v2", PARALLELISM);
+
+        final ExecutionGraph executionGraph =
+                createExecutionGraphAndDeploy(jobId, blobWriter, v1, v2);
+
+        assertEquals(4, blobWriter.numberOfBlobs());
+
+        // ShuffleDescriptors are cached
+        final ShuffleDescriptor[] shuffleDescriptors =
+                deserializeShuffleDescriptors(
+                        getCachedShuffleDescriptor(executionGraph, v2), jobId, blobWriter);
+        assertEquals(PARALLELISM, shuffleDescriptors.length);
+
+        triggerExceptionAndComplete(executionGraph, v1, v2);
+
+        manualExecutor.triggerAll();
+
+        // Cache will be removed during ExecutionVertex#resetForNewExecution
+        assertNull(getCachedShuffleDescriptor(executionGraph, v2));
+        assertEquals(3, blobWriter.numberOfBlobs());
+    }
+
+    private ExecutionGraph createExecutionGraphAndDeploy(
+            JobID jobId, BlobWriter blobWriter, JobVertex v1, JobVertex v2) throws Exception {
 
         v2.connectNewDataSetAsInput(
                 v1, DistributionPattern.ALL_TO_ALL, ResultPartitionType.BLOCKING);
 
         final List<JobVertex> ordered = new ArrayList<>(Arrays.asList(v1, v2));
 
-        final ScheduledExecutorService scheduledExecutorService =
-                Executors.newSingleThreadScheduledExecutor();
-
-        final ComponentMainThreadExecutor mainThreadExecutor =
-                ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
-                        scheduledExecutorService);
-
-        final DefaultScheduler scheduler = createScheduler(ordered, mainThreadExecutor);
+        final DefaultScheduler scheduler =
+                createScheduler(jobId, ordered, blobWriter, mainThreadExecutor, manualExecutor);
 
         final ExecutionGraph executionGraph = scheduler.getExecutionGraph();
 
@@ -221,10 +360,11 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
                         mainThreadExecutor)
                 .join();
 
-        // ShuffleDescriptors are cached
-        final ShuffleDescriptor[] shuffleDescriptors =
-                deserializeShuffleDescriptors(getCachedShuffleDescriptor(executionGraph, v2));
-        assertEquals(PARALLELISM, shuffleDescriptors.length);
+        return executionGraph;
+    }
+
+    private void triggerExceptionAndComplete(
+            ExecutionGraph executionGraph, JobVertex v1, JobVertex v2) throws TimeoutException {
 
         // Generate a PartitionNotFoundException
         final ExecutionVertex ev21 = executionGraph.getJobVertex(v2.getID()).getTaskVertices()[0];
@@ -236,7 +376,7 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
 
         // Pass the exception to downstream tasks
         CompletableFuture.runAsync(
-                        () -> transitionTaskToFailed(scheduler, v2.getID(), 1, t),
+                        () -> transitionTaskToFailed(executionGraph, v2.getID(), 1, t),
                         mainThreadExecutor)
                 .join();
 
@@ -253,11 +393,6 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
         // Wait until the procedure finishes
         ExecutionVertex ev11 = executionGraph.getJobVertex(v1.getID()).getTaskVertices()[0];
         ExecutionGraphTestUtils.waitUntilExecutionVertexState(ev11, ExecutionState.DEPLOYING, 1000);
-
-        // Cache will be removed during ExecutionVertex#resetForNewExecution
-        assertNull(getCachedShuffleDescriptor(executionGraph, v2));
-
-        scheduledExecutorService.shutdownNow();
     }
 
     private static JobVertex createJobVertex(String vertexName, int parallelism) {
@@ -284,13 +419,22 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
     }
 
     private static DefaultScheduler createScheduler(
-            final List<JobVertex> jobVertices, final ComponentMainThreadExecutor mainThreadExecutor)
+            final JobID jobId,
+            final List<JobVertex> jobVertices,
+            final BlobWriter blobWriter,
+            final ComponentMainThreadExecutor mainThreadExecutor,
+            final ScheduledExecutorService ioExecutor)
             throws Exception {
         final JobGraph jobGraph =
-                JobGraphBuilder.newBatchJobGraphBuilder().addJobVertices(jobVertices).build();
+                JobGraphBuilder.newBatchJobGraphBuilder()
+                        .setJobId(jobId)
+                        .addJobVertices(jobVertices)
+                        .build();
 
         return SchedulerTestingUtils.newSchedulerBuilder(jobGraph, mainThreadExecutor)
+                .setBlobWriter(blobWriter)
                 .setRestartBackoffTimeStrategy(new TestRestartBackoffTimeStrategy(true, 0))
+                .setIoExecutor(ioExecutor)
                 .build();
     }
 
@@ -328,12 +472,12 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
     }
 
     private static void transitionTaskToFailed(
-            DefaultScheduler scheduler, JobVertexID jobVertexID, int taskNum, Throwable cause) {
+            ExecutionGraph executionGraph, JobVertexID jobVertexID, int taskNum, Throwable cause) {
 
         final ExecutionVertex vertex =
-                Objects.requireNonNull(scheduler.getExecutionGraph().getJobVertex(jobVertexID))
+                Objects.requireNonNull(executionGraph.getJobVertex(jobVertexID))
                         .getTaskVertices()[taskNum];
-        scheduler.updateTaskExecutionState(
+        executionGraph.updateState(
                 new TaskExecutionStateTransition(
                         new TaskExecutionState(
                                 vertex.getCurrentExecutionAttempt().getAttemptId(),
@@ -356,7 +500,7 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
         return inputGates.get(0);
     }
 
-    private static CompressedSerializedValue<ShuffleDescriptor[]> getCachedShuffleDescriptor(
+    private static MaybeOffloaded<ShuffleDescriptor[]> getCachedShuffleDescriptor(
             ExecutionGraph executionGraph, JobVertex vertex) {
         final ExecutionJobVertex ejv = executionGraph.getJobVertex(vertex.getID());
 
@@ -369,9 +513,29 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
     }
 
     private static ShuffleDescriptor[] deserializeShuffleDescriptors(
-            CompressedSerializedValue<ShuffleDescriptor[]> compressedSerializedValue)
+            MaybeOffloaded<ShuffleDescriptor[]> maybeOffloaded)
             throws IOException, ClassNotFoundException {
 
+        assertTrue(maybeOffloaded instanceof NonOffloaded);
+
+        return ((NonOffloaded<ShuffleDescriptor[]>) maybeOffloaded)
+                .serializedValue.deserializeValue(ClassLoader.getSystemClassLoader());
+    }
+
+    private static ShuffleDescriptor[] deserializeShuffleDescriptors(
+            MaybeOffloaded<ShuffleDescriptor[]> maybeOffloaded,
+            JobID jobId,
+            TestingBlobWriter blobWriter)
+            throws IOException, ClassNotFoundException {
+
+        assertTrue(maybeOffloaded instanceof Offloaded);
+
+        final CompressedSerializedValue<ShuffleDescriptor[]> compressedSerializedValue =
+                CompressedSerializedValue.fromBytes(
+                        blobWriter.getBlob(
+                                jobId,
+                                ((Offloaded<ShuffleDescriptor[]>) maybeOffloaded)
+                                        .serializedValueKey));
         return compressedSerializedValue.deserializeValue(ClassLoader.getSystemClassLoader());
     }
 }

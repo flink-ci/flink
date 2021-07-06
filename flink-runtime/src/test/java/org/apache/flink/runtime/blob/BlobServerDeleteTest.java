@@ -252,6 +252,104 @@ public class BlobServerDeleteTest extends TestLogger {
     }
 
     @Test
+    public void testDeletePermanent() throws IOException {
+
+        final Configuration config = new Configuration();
+        config.setString(
+                BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+
+        try (BlobServer server = new BlobServer(config, new VoidBlobStore())) {
+
+            server.start();
+
+            byte[] data = new byte[2000000];
+            rnd.nextBytes(data);
+
+            JobID jobId = new JobID();
+
+            // put a blob file
+            PermanentBlobKey key = (PermanentBlobKey) put(server, jobId, data, PERMANENT_BLOB);
+            assertNotNull(key);
+
+            // attempt to delete the blob
+            assertTrue(delete(server, jobId, key));
+
+            verifyDeleted(server, jobId, key);
+        }
+    }
+
+    @Test
+    public void testDeletePermanentAlreadyDeleted() throws IOException {
+
+        final Configuration config = new Configuration();
+        config.setString(
+                BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+
+        try (BlobServer server = new BlobServer(config, new VoidBlobStore())) {
+
+            server.start();
+
+            byte[] data = new byte[2000000];
+            rnd.nextBytes(data);
+
+            JobID jobId = new JobID();
+
+            // put BLOB
+            PermanentBlobKey key = (PermanentBlobKey) put(server, jobId, data, PERMANENT_BLOB);
+            assertNotNull(key);
+
+            File blobFile = server.getStorageLocation(jobId, key);
+            assertTrue(blobFile.delete());
+
+            // DELETE operation should not fail if file is already deleted
+            assertTrue(delete(server, jobId, key));
+            verifyDeleted(server, jobId, key);
+        }
+    }
+
+    @Test
+    public void testDeletePermanentFails() throws IOException {
+        assumeTrue(!OperatingSystem.isWindows()); // setWritable doesn't work on Windows.
+
+        final Configuration config = new Configuration();
+        config.setString(
+                BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
+
+        File blobFile, directory;
+
+        try (BlobServer server = new BlobServer(config, new VoidBlobStore())) {
+
+            server.start();
+
+            byte[] data = new byte[2000000];
+            rnd.nextBytes(data);
+
+            JobID jobId = new JobID();
+
+            // put BLOB
+            PermanentBlobKey key = (PermanentBlobKey) put(server, jobId, data, PERMANENT_BLOB);
+            assertNotNull(key);
+
+            blobFile = server.getStorageLocation(jobId, key);
+            directory = blobFile.getParentFile();
+
+            assertTrue(blobFile.setWritable(false, false));
+            assertTrue(directory.setWritable(false, false));
+
+            // issue a DELETE request
+            assertFalse(delete(server, jobId, key));
+
+            // the file should still be there
+            verifyContents(server, jobId, key, data);
+
+            assertTrue(blobFile.setWritable(true, false));
+            assertTrue(directory.setWritable(true, false));
+
+            assertTrue(delete(server, jobId, key));
+        }
+    }
+
+    @Test
     public void testJobCleanup() throws IOException, InterruptedException {
         testJobCleanup(TRANSIENT_BLOB);
     }
@@ -262,7 +360,7 @@ public class BlobServerDeleteTest extends TestLogger {
     }
 
     /**
-     * Tests that {@link BlobServer} cleans up after calling {@link BlobServer#cleanupJob(JobID)}.
+     * Tests that {@link BlobServer} cleans up after calling {@link BlobServer#cleanupJob}.
      *
      * @param blobType whether the BLOB should become permanent or transient
      */
@@ -409,5 +507,9 @@ public class BlobServerDeleteTest extends TestLogger {
         } else {
             return service.getTransientBlobService().deleteFromCache(jobId, key);
         }
+    }
+
+    private static boolean delete(BlobServer blobServer, JobID jobId, PermanentBlobKey key) {
+        return blobServer.deletePermanent(jobId, key);
     }
 }

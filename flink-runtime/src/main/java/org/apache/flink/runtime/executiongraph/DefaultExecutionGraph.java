@@ -1466,6 +1466,17 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     }
 
     @Override
+    public void notifyBlobWriterDeleteCache(List<PermanentBlobKey> blobKeys) {
+        CompletableFuture.runAsync(
+                () -> {
+                    for (PermanentBlobKey blobKey : blobKeys) {
+                        blobWriter.deletePermanent(getJobID(), blobKey);
+                    }
+                },
+                ioExecutor);
+    }
+
+    @Override
     public ShuffleMaster<?> getShuffleMaster() {
         return shuffleMaster;
     }
