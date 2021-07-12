@@ -20,8 +20,7 @@ from apache_beam.coders.coders import FastCoder, LengthPrefixCoder
 from apache_beam.portability import common_urns
 from apache_beam.typehints import typehints
 
-from pyflink.fn_execution.coders import (
-    ArrowCoder, OverWindowArrowCoder, LengthPrefixBaseCoder)
+from pyflink.fn_execution.coders import LengthPrefixBaseCoder
 from pyflink.fn_execution.flink_fn_execution_pb2 import CoderInfoDescriptor
 
 try:
@@ -66,11 +65,7 @@ class FlinkCoder(FastCoder):
 
     def get_impl(self):
         if isinstance(self._internal_coder, LengthPrefixBaseCoder):
-            if isinstance(self._internal_coder._field_coder, (ArrowCoder, OverWindowArrowCoder)):
-                from pyflink.fn_execution.beam.beam_coder_impl_slow import FlinkCoderBeamWrapper
-                return FlinkCoderBeamWrapper(self._create_impl())
-            else:
-                return FlinkLengthPrefixCoderBeamWrapper(self._create_impl())
+            return FlinkLengthPrefixCoderBeamWrapper(self._create_impl())
         else:
             return FlinkFieldCoderBeamWrapper(self._create_impl())
 
