@@ -21,62 +21,60 @@ package org.apache.flink.runtime.jobmaster;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
+import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedHaServicesWithLeadershipControl;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
 import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobGraphBuilder;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
-import org.apache.flink.runtime.minicluster.MiniCluster;
-import org.apache.flink.runtime.testutils.MiniClusterResource;
-import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
+import org.apache.flink.runtime.minicluster.TestingMiniCluster;
+import org.apache.flink.runtime.minicluster.TestingMiniClusterConfiguration;
+import org.apache.flink.runtime.testutils.TestingUtils;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.TestLogger;
 
-import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
-
-import static org.hamcrest.Matchers.is;
-import static org.junit.Assert.assertThat;
+import java.util.concurrent.Executor;
 
 /** Tests for the recovery of task failures. */
 public class JobRecoveryITCase extends TestLogger {
 
-    private static final int NUM_TMS = 1;
-    private static final int SLOTS_PER_TM = 11;
-    private static final int PARALLELISM = NUM_TMS * SLOTS_PER_TM;
+    private static final int PARALLELISM = 1;
 
-    @ClassRule
-    public static final MiniClusterResource MINI_CLUSTER_RESOURCE =
-            new MiniClusterResource(
-                    new MiniClusterResourceConfiguration.Builder()
-                            .setNumberTaskManagers(NUM_TMS)
-                            .setNumberSlotsPerTaskManager(SLOTS_PER_TM)
-                            .build());
+    private static class MyHaServices extends EmbeddedHaServicesWithLeadershipControl {
+
+        public MyHaServices(Executor executor) {
+            super(executor);
+        }
+    }
 
     @Test
     public void testTaskFailureRecovery() throws Exception {
-        runTaskFailureRecoveryTest(createjobGraph(false));
-    }
+        final TestingMiniClusterConfiguration configuration =
+                new TestingMiniClusterConfiguration.Builder()
+                        //                .setNumberDispatcherResourceManagerComponents(2)
+                        .setNumTaskManagers(1)
+                        .setNumTaskManagers(1)
+                        .build();
+        final HighAvailabilityServices haServices =
+                new MyHaServices(TestingUtils.defaultExecutor());
 
-    @Test
-    public void testTaskFailureWithSlotSharingRecovery() throws Exception {
-        runTaskFailureRecoveryTest(createjobGraph(true));
-    }
-
-    private void runTaskFailureRecoveryTest(final JobGraph jobGraph) throws Exception {
-        final MiniCluster miniCluster = MINI_CLUSTER_RESOURCE.getMiniCluster();
-
-        miniCluster.submitJob(jobGraph).get();
-
-        final CompletableFuture<JobResult> jobResultFuture =
-                miniCluster.requestJobResult(jobGraph.getJobID());
-
-        assertThat(jobResultFuture.get().isSuccess(), is(true));
+        try (TestingMiniCluster miniCluster =
+                new TestingMiniCluster(configuration, () -> haServices)) {
+            miniCluster.start();
+            JobGraph jobGraph = createjobGraph(true);
+            miniCluster.submitJob(jobGraph).get();
+            final CompletableFuture<JobResult> jobResultFuture =
+                    miniCluster.requestJobResult(jobGraph.getJobID());
+            JobResult jobResult = jobResultFuture.get();
+            System.out.println(jobResult.getApplicationStatus());
+        }
     }
 
     private JobGraph createjobGraph(boolean slotSharingEnabled) throws IOException {

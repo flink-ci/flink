@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.dispatcher;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.operators.ResourceSpec;
@@ -886,7 +887,8 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
     }
 
     /** Ensures that the JobMasterGateway is available. */
-    private CompletableFuture<JobMasterGateway> getJobMasterGateway(JobID jobId) {
+    @VisibleForTesting
+    CompletableFuture<JobMasterGateway> getJobMasterGateway(JobID jobId) {
         JobManagerRunner job = runningJobs.get(jobId);
         if (job == null) {
             return FutureUtils.completedExceptionally(new FlinkJobNotFoundException(jobId));

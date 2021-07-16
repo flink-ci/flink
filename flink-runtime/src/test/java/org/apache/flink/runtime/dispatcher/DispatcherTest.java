@@ -22,15 +22,10 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.time.Deadline;
-import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.configuration.BlobServerOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.OneShotLatch;
-import org.apache.flink.runtime.blob.BlobServer;
-import org.apache.flink.runtime.blob.VoidBlobStore;
 import org.apache.flink.runtime.checkpoint.Checkpoints;
-import org.apache.flink.runtime.checkpoint.StandaloneCheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.metadata.CheckpointMetadata;
 import org.apache.flink.runtime.client.DuplicateJobSubmissionException;
 import org.apache.flink.runtime.client.JobSubmissionException;
@@ -46,7 +41,6 @@ import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobGraphBuilder;
 import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.jobgraph.JobVertex;
-import org.apache.flink.runtime.jobmanager.JobGraphWriter;
 import org.apache.flink.runtime.jobmaster.JobManagerRunner;
 import org.apache.flink.runtime.jobmaster.JobManagerRunnerResult;
 import org.apache.flink.runtime.jobmaster.JobManagerSharedServices;
@@ -64,17 +58,13 @@ import org.apache.flink.runtime.jobmaster.utils.TestingJobMasterGateway;
 import org.apache.flink.runtime.jobmaster.utils.TestingJobMasterGatewayBuilder;
 import org.apache.flink.runtime.leaderelection.LeaderElectionService;
 import org.apache.flink.runtime.leaderelection.TestingLeaderElectionService;
-import org.apache.flink.runtime.leaderretrieval.SettableLeaderRetrievalService;
 import org.apache.flink.runtime.messages.Acknowledge;
 import org.apache.flink.runtime.messages.FlinkJobNotFoundException;
 import org.apache.flink.runtime.messages.webmonitor.MultipleJobsDetails;
-import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
-import org.apache.flink.runtime.resourcemanager.utils.TestingResourceManagerGateway;
 import org.apache.flink.runtime.rest.handler.legacy.utils.ArchivedExecutionGraphBuilder;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcUtils;
-import org.apache.flink.runtime.rpc.TestingRpcService;
 import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
 import org.apache.flink.runtime.state.CheckpointMetadataOutputStream;
 import org.apache.flink.runtime.state.CheckpointStorage;
@@ -85,24 +75,17 @@ import org.apache.flink.runtime.testtasks.NoOpInvokable;
 import org.apache.flink.runtime.testutils.CommonTestUtils;
 import org.apache.flink.runtime.testutils.TestingJobGraphStore;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
-import org.apache.flink.runtime.util.TestingFatalErrorHandlerResource;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.TestLogger;
 import org.apache.flink.util.TimeUtils;
 import org.apache.flink.util.function.ThrowingRunnable;
 
 import org.hamcrest.Matchers;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.Rule;
 import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
-import org.junit.rules.TestName;
 
 import javax.annotation.Nonnull;
 
@@ -115,7 +98,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
@@ -124,7 +106,6 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -143,19 +124,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Test for the {@link Dispatcher} component. */
-public class DispatcherTest extends TestLogger {
-
-    private static RpcService rpcService;
-
-    private static final Time TIMEOUT = Time.seconds(10L);
-
-    @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
-
-    @Rule
-    public final TestingFatalErrorHandlerResource testingFatalErrorHandlerResource =
-            new TestingFatalErrorHandlerResource();
-
-    @Rule public TestName name = new TestName();
+public class DispatcherTest extends AbstractDispatcherTest {
 
     private JobGraph jobGraph;
 
@@ -165,52 +134,17 @@ public class DispatcherTest extends TestLogger {
 
     private CountDownLatch createdJobManagerRunnerLatch;
 
-    private Configuration configuration;
-
-    private BlobServer blobServer;
-
     /** Instance under test. */
     private TestingDispatcher dispatcher;
 
-    private TestingHighAvailabilityServices haServices;
-
-    private HeartbeatServices heartbeatServices;
-
-    @BeforeClass
-    public static void setupClass() {
-        rpcService = new TestingRpcService();
-    }
-
-    @AfterClass
-    public static void teardownClass() throws Exception {
-        if (rpcService != null) {
-            RpcUtils.terminateRpcService(rpcService, TIMEOUT);
-
-            rpcService = null;
-        }
-    }
-
     @Before
     public void setUp() throws Exception {
+        super.setUp();
         jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
         jobId = jobGraph.getJobID();
-
-        heartbeatServices = new HeartbeatServices(1000L, 10000L);
-
         jobMasterLeaderElectionService = new TestingLeaderElectionService();
-
-        haServices = new TestingHighAvailabilityServices();
         haServices.setJobMasterLeaderElectionService(jobId, jobMasterLeaderElectionService);
-        haServices.setCheckpointRecoveryFactory(new StandaloneCheckpointRecoveryFactory());
-        haServices.setResourceManagerLeaderRetriever(new SettableLeaderRetrievalService());
-
-        configuration = new Configuration();
-
-        configuration.setString(
-                BlobServerOptions.STORAGE_DIRECTORY, temporaryFolder.newFolder().getAbsolutePath());
-
         createdJobManagerRunnerLatch = new CountDownLatch(2);
-        blobServer = new BlobServer(configuration, new VoidBlobStore());
     }
 
     @Nonnull
@@ -232,16 +166,9 @@ public class DispatcherTest extends TestLogger {
 
     @After
     public void tearDown() throws Exception {
+        super.tearDown();
         if (dispatcher != null) {
             RpcUtils.terminateRpcEndpoint(dispatcher, TIMEOUT);
-        }
-
-        if (haServices != null) {
-            haServices.closeAndCleanupAllData();
-        }
-
-        if (blobServer != null) {
-            blobServer.close();
         }
     }
 
@@ -1087,78 +1014,6 @@ public class DispatcherTest extends TestLogger {
                 long initializationTimestamp) {
             initializationTimestampQueue.offer(initializationTimestamp);
             return new TestingJobManagerRunner.Builder().setJobId(jobGraph.getJobID()).build();
-        }
-    }
-
-    /** Builder for the TestingDispatcher. */
-    public class TestingDispatcherBuilder {
-
-        private Collection<JobGraph> initialJobGraphs = Collections.emptyList();
-
-        private final DispatcherBootstrapFactory dispatcherBootstrapFactory =
-                (dispatcher, scheduledExecutor, errorHandler) -> new NoOpDispatcherBootstrap();
-
-        private HeartbeatServices heartbeatServices = DispatcherTest.this.heartbeatServices;
-
-        private HighAvailabilityServices haServices = DispatcherTest.this.haServices;
-
-        private JobManagerRunnerFactory jobManagerRunnerFactory =
-                JobMasterServiceLeadershipRunnerFactory.INSTANCE;
-
-        private JobGraphWriter jobGraphWriter = NoOpJobGraphWriter.INSTANCE;
-
-        TestingDispatcherBuilder setHeartbeatServices(HeartbeatServices heartbeatServices) {
-            this.heartbeatServices = heartbeatServices;
-            return this;
-        }
-
-        TestingDispatcherBuilder setHaServices(HighAvailabilityServices haServices) {
-            this.haServices = haServices;
-            return this;
-        }
-
-        TestingDispatcherBuilder setInitialJobGraphs(Collection<JobGraph> initialJobGraphs) {
-            this.initialJobGraphs = initialJobGraphs;
-            return this;
-        }
-
-        TestingDispatcherBuilder setJobManagerRunnerFactory(
-                JobManagerRunnerFactory jobManagerRunnerFactory) {
-            this.jobManagerRunnerFactory = jobManagerRunnerFactory;
-            return this;
-        }
-
-        TestingDispatcherBuilder setJobGraphWriter(JobGraphWriter jobGraphWriter) {
-            this.jobGraphWriter = jobGraphWriter;
-            return this;
-        }
-
-        TestingDispatcher build() throws Exception {
-            TestingResourceManagerGateway resourceManagerGateway =
-                    new TestingResourceManagerGateway();
-
-            final MemoryExecutionGraphInfoStore executionGraphInfoStore =
-                    new MemoryExecutionGraphInfoStore();
-
-            return new TestingDispatcher(
-                    rpcService,
-                    DispatcherId.generate(),
-                    initialJobGraphs,
-                    dispatcherBootstrapFactory,
-                    new DispatcherServices(
-                            configuration,
-                            haServices,
-                            () -> CompletableFuture.completedFuture(resourceManagerGateway),
-                            blobServer,
-                            heartbeatServices,
-                            executionGraphInfoStore,
-                            testingFatalErrorHandlerResource.getFatalErrorHandler(),
-                            VoidHistoryServerArchivist.INSTANCE,
-                            null,
-                            UnregisteredMetricGroups.createUnregisteredJobManagerMetricGroup(),
-                            jobGraphWriter,
-                            jobManagerRunnerFactory,
-                            ForkJoinPool.commonPool()));
         }
     }
 
