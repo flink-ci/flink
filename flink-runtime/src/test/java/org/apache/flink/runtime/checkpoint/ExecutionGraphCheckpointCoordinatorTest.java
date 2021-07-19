@@ -68,6 +68,8 @@ public class ExecutionGraphCheckpointCoordinatorTest extends TestLogger {
 
         graph.failJob(new Exception("Test Exception"), System.currentTimeMillis());
 
+        scheduler.closeAsync().get();
+
         assertThat(checkpointCoordinator.isShutdown(), is(true));
         assertThat(counterShutdownFuture.get(), is(JobStatus.FAILED));
         assertThat(storeShutdownFuture.get(), is(JobStatus.FAILED));
@@ -90,6 +92,8 @@ public class ExecutionGraphCheckpointCoordinatorTest extends TestLogger {
         assertThat(checkpointCoordinator.isShutdown(), is(false));
 
         graph.suspend(new Exception("Test Exception"));
+
+        scheduler.closeAsync().get();
 
         assertThat(checkpointCoordinator.isShutdown(), is(true));
         assertThat(counterShutdownFuture.get(), is(JobStatus.SUSPENDED));
@@ -122,6 +126,8 @@ public class ExecutionGraphCheckpointCoordinatorTest extends TestLogger {
         }
 
         assertThat(graph.getTerminationFuture().get(), is(JobStatus.FINISHED));
+
+        scheduler.closeAsync().get();
 
         assertThat(checkpointCoordinator.isShutdown(), is(true));
         assertThat(counterShutdownFuture.get(), is(JobStatus.FINISHED));

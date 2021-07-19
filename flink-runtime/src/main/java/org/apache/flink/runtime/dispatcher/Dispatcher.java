@@ -438,7 +438,9 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
                         .thenApply(cleanupJobState -> removeJob(jobId, cleanupJobState))
                         .thenCompose(Function.identity());
 
-        FutureUtils.assertNoException(jobTerminationFuture);
+        FutureUtils.handleUncaughtException(
+                jobTerminationFuture,
+                (thread, throwable) -> fatalErrorHandler.onFatalError(throwable));
         registerJobManagerRunnerTerminationFuture(jobId, jobTerminationFuture);
     }
 
@@ -744,11 +746,9 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
 
     private CompletableFuture<Void> removeJob(JobID jobId, CleanupJobState cleanupJobState) {
         final JobManagerRunner job = checkNotNull(runningJobs.remove(jobId));
-
-        final CompletableFuture<Void> jobTerminationFuture = job.closeAsync();
-
-        return jobTerminationFuture.thenRunAsync(
-                () -> cleanUpJobData(jobId, cleanupJobState.cleanupHAData), ioExecutor);
+        return CompletableFuture.runAsync(
+                        () -> cleanUpJobData(jobId, cleanupJobState.cleanupHAData), ioExecutor)
+                .thenComposeAsync(ignored -> job.closeAsync(), getMainThreadExecutor());
     }
 
     private void cleanUpJobData(JobID jobId, boolean cleanupHA) {
