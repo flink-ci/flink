@@ -1442,12 +1442,12 @@ public class Execution
                         findThrowable(error, NoResourceAvailableException.class);
                 if (noResourceException.isPresent()) {
                     LOG.info(
-                            "{} ({}) switched from {} to {}: {}",
+                            "{} ({}) switched from {} to {}",
                             getVertex().getTaskNameWithSubtaskIndex(),
                             getAttemptId(),
                             currentState,
                             targetState,
-                            noResourceException.get().getMessage());
+                            noResourceException.get());
                 } else {
                     LOG.info(
                             "{} ({}) switched from {} to {} on {}.",
