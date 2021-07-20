@@ -622,14 +622,8 @@ public final class InstantiationUtil {
 
     public static <T> T uncompressAndDeserializeObject(byte[] bytes, ClassLoader cl)
             throws IOException, ClassNotFoundException {
-        return uncompressAndDeserializeObject(bytes, cl, false);
-    }
-
-    public static <T> T uncompressAndDeserializeObject(
-            byte[] bytes, ClassLoader cl, boolean isFailureTolerant)
-            throws IOException, ClassNotFoundException {
         return deserializeObject(
-                new InflaterInputStream(new ByteArrayInputStream(bytes)), cl, isFailureTolerant);
+                new InflaterInputStream(new ByteArrayInputStream(bytes)), cl, false);
     }
 
     public static byte[] serializeObject(Object o) throws IOException {

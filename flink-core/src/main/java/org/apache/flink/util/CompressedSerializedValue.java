@@ -18,9 +18,13 @@
 
 package org.apache.flink.util;
 
+import org.apache.flink.annotation.Internal;
+import org.apache.flink.annotation.VisibleForTesting;
+
 import java.io.IOException;
 
 /** An extension of {@link SerializedValue} that compresses the value after the serialization. */
+@Internal
 public class CompressedSerializedValue<T> extends SerializedValue<T> {
 
     private static final long serialVersionUID = -4358765382738374654L;
@@ -60,6 +64,7 @@ public class CompressedSerializedValue<T> extends SerializedValue<T> {
      * @throws NullPointerException if serialized data is null
      * @throws IllegalArgumentException if serialized data is empty
      */
+    @VisibleForTesting
     public static <T> CompressedSerializedValue<T> fromBytes(byte[] serializedData) {
         return new CompressedSerializedValue<>(serializedData);
     }
