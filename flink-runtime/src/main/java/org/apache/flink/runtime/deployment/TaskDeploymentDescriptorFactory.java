@@ -141,10 +141,10 @@ public class TaskDeploymentDescriptorFactory {
         return inputGates;
     }
 
-    private CompressedSerializedValue<ShuffleDescriptor[]> getConsumedPartitionShuffleDescriptors(
+    private SerializedValue<ShuffleDescriptor[]> getConsumedPartitionShuffleDescriptors(
             IntermediateResult intermediateResult, ConsumedPartitionGroup consumedPartitionGroup)
             throws IOException {
-        CompressedSerializedValue<ShuffleDescriptor[]> serializedShuffleDescriptors =
+        SerializedValue<ShuffleDescriptor[]> serializedShuffleDescriptors =
                 intermediateResult.getCachedShuffleDescriptors(consumedPartitionGroup);
         if (serializedShuffleDescriptors == null) {
             serializedShuffleDescriptors =
@@ -155,9 +155,8 @@ public class TaskDeploymentDescriptorFactory {
         return serializedShuffleDescriptors;
     }
 
-    private CompressedSerializedValue<ShuffleDescriptor[]>
-            computeConsumedPartitionShuffleDescriptors(
-                    ConsumedPartitionGroup consumedPartitionGroup) throws IOException {
+    private SerializedValue<ShuffleDescriptor[]> computeConsumedPartitionShuffleDescriptors(
+            ConsumedPartitionGroup consumedPartitionGroup) throws IOException {
 
         ShuffleDescriptor[] shuffleDescriptors =
                 new ShuffleDescriptor[consumedPartitionGroup.size()];

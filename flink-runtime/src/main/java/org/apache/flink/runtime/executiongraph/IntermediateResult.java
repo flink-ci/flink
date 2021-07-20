@@ -24,7 +24,7 @@ import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.scheduler.strategy.ConsumedPartitionGroup;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
-import org.apache.flink.util.CompressedSerializedValue;
+import org.apache.flink.util.SerializedValue;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -56,7 +56,7 @@ public class IntermediateResult {
 
     private final ResultPartitionType resultType;
 
-    private final Map<ConsumedPartitionGroup, CompressedSerializedValue<ShuffleDescriptor[]>>
+    private final Map<ConsumedPartitionGroup, SerializedValue<ShuffleDescriptor[]>>
             shuffleDescriptorCache;
 
     public IntermediateResult(
@@ -158,14 +158,14 @@ public class IntermediateResult {
         }
     }
 
-    public CompressedSerializedValue<ShuffleDescriptor[]> getCachedShuffleDescriptors(
+    public SerializedValue<ShuffleDescriptor[]> getCachedShuffleDescriptors(
             ConsumedPartitionGroup consumedPartitionGroup) {
         return shuffleDescriptorCache.get(consumedPartitionGroup);
     }
 
     public void cacheShuffleDescriptors(
             ConsumedPartitionGroup consumedPartitionGroup,
-            CompressedSerializedValue<ShuffleDescriptor[]> shuffleDescriptors) {
+            SerializedValue<ShuffleDescriptor[]> shuffleDescriptors) {
         this.shuffleDescriptorCache.put(consumedPartitionGroup, shuffleDescriptors);
     }
 

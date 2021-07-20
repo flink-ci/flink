@@ -25,6 +25,7 @@ import org.apache.flink.runtime.jobgraph.DistributionPattern;
 import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.util.CompressedSerializedValue;
+import org.apache.flink.util.SerializedValue;
 
 import javax.annotation.Nonnegative;
 
@@ -65,7 +66,7 @@ public class InputGateDeploymentDescriptor implements Serializable {
     private transient ShuffleDescriptor[] inputChannels;
 
     /** Serialized value of shuffle descriptors. */
-    private final CompressedSerializedValue<ShuffleDescriptor[]> serializedInputChannels;
+    private final SerializedValue<ShuffleDescriptor[]> serializedInputChannels;
 
     @VisibleForTesting
     public InputGateDeploymentDescriptor(
@@ -85,7 +86,7 @@ public class InputGateDeploymentDescriptor implements Serializable {
             IntermediateDataSetID consumedResultId,
             ResultPartitionType consumedPartitionType,
             @Nonnegative int consumedSubpartitionIndex,
-            CompressedSerializedValue<ShuffleDescriptor[]> serializedInputChannels) {
+            SerializedValue<ShuffleDescriptor[]> serializedInputChannels) {
         this.consumedResultId = checkNotNull(consumedResultId);
         this.consumedPartitionType = checkNotNull(consumedPartitionType);
         this.consumedSubpartitionIndex = consumedSubpartitionIndex;
