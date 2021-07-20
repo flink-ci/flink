@@ -19,7 +19,6 @@
 package org.apache.flink.util;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.annotation.VisibleForTesting;
 
 import java.io.IOException;
 
@@ -53,20 +52,6 @@ public class CompressedSerializedValue<T> extends SerializedValue<T> {
     /** Returns the size of the compressed serialized data. */
     public int getSize() {
         return getByteArray().length;
-    }
-
-    /**
-     * Constructs {@link CompressedSerializedValue} from compressed serialized data.
-     *
-     * @param serializedData compressed serialized data
-     * @param <T> type
-     * @return {@link CompressedSerializedValue}
-     * @throws NullPointerException if serialized data is null
-     * @throws IllegalArgumentException if serialized data is empty
-     */
-    @VisibleForTesting
-    public static <T> CompressedSerializedValue<T> fromBytes(byte[] serializedData) {
-        return new CompressedSerializedValue<>(serializedData);
     }
 
     public static <T> CompressedSerializedValue<T> fromObject(T object) throws IOException {
