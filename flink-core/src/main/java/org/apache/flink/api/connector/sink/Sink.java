@@ -42,7 +42,7 @@ import java.io.Serializable;
  * @param <GlobalCommT> The type of the aggregated committable
  */
 @Experimental
-public interface Sink<InputT> extends Serializable {
+public interface Sink<InputT, WriterT extends SinkWriter<InputT>> extends Serializable {
 
     /**
      * Create a {@link SinkWriter}.
@@ -52,7 +52,7 @@ public interface Sink<InputT> extends Serializable {
      * @return A sink writer.
      * @throws IOException if fail to create a writer.
      */
-    SinkWriter<InputT> createWriter(InitContext context) throws IOException;
+    WriterT createWriter(InitContext context) throws IOException;
 
     /** The interface exposes some runtime info for creating a {@link SinkWriter}. */
     interface InitContext {

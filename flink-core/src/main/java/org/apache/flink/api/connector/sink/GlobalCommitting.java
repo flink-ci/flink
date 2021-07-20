@@ -21,8 +21,9 @@ import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
 
-public interface GlobalCommittingSink<InputT, CommT, WriterStateT, GlobalCommT>
-        extends CommittingSink<InputT, CommT, WriterStateT> {
+public interface GlobalCommitting<
+                InputT, CommT, GlobalCommT, WriterT extends Committing.Writer<InputT, CommT>>
+        extends Committing<InputT, CommT, WriterT> {
     /**
      * Creates a {@link Committer}.
      *

@@ -21,12 +21,11 @@ import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.api.common.typeinfo.IntegerTypeInfo;
 import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.runtime.operators.sink.TestSink;
+import org.apache.flink.streaming.runtime.operators.sink.Test;
 import org.apache.flink.streaming.util.FiniteTestSource;
 import org.apache.flink.test.util.AbstractTestBase;
 
 import org.junit.Before;
-import org.junit.Test;
 
 import java.io.Serializable;
 import java.util.Arrays;
@@ -114,7 +113,7 @@ public class SinkITCase extends AbstractTestBase {
         GLOBAL_COMMIT_QUEUE.clear();
     }
 
-    @Test
+    @org.junit.Test
     public void writerAndCommitterAndGlobalCommitterExecuteInStreamingMode() throws Exception {
         final StreamExecutionEnvironment env = buildStreamEnv();
         final FiniteTestSource<Integer> source =
@@ -122,7 +121,7 @@ public class SinkITCase extends AbstractTestBase {
 
         env.addSource(source, IntegerTypeInfo.INT_TYPE_INFO)
                 .sinkTo(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setDefaultCommitter(
                                         (Supplier<Queue<String>> & Serializable) () -> COMMIT_QUEUE)
                                 .setGlobalCommitter(
@@ -141,13 +140,13 @@ public class SinkITCase extends AbstractTestBase {
                 containsInAnyOrder(EXPECTED_GLOBAL_COMMITTED_DATA_IN_STREAMING_MODE.toArray()));
     }
 
-    @Test
+    @org.junit.Test
     public void writerAndCommitterAndGlobalCommitterExecuteInBatchMode() throws Exception {
         final StreamExecutionEnvironment env = buildBatchEnv();
 
         env.fromCollection(SOURCE_DATA)
                 .sinkTo(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setDefaultCommitter(
                                         (Supplier<Queue<String>> & Serializable) () -> COMMIT_QUEUE)
                                 .setGlobalCommitter(
@@ -165,7 +164,7 @@ public class SinkITCase extends AbstractTestBase {
                 containsInAnyOrder(EXPECTED_GLOBAL_COMMITTED_DATA_IN_BATCH_MODE.toArray()));
     }
 
-    @Test
+    @org.junit.Test
     public void writerAndCommitterExecuteInStreamingMode() throws Exception {
         final StreamExecutionEnvironment env = buildStreamEnv();
         final FiniteTestSource<Integer> source =
@@ -173,7 +172,7 @@ public class SinkITCase extends AbstractTestBase {
 
         env.addSource(source, IntegerTypeInfo.INT_TYPE_INFO)
                 .sinkTo(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setDefaultCommitter(
                                         (Supplier<Queue<String>> & Serializable) () -> COMMIT_QUEUE)
                                 .build());
@@ -183,13 +182,13 @@ public class SinkITCase extends AbstractTestBase {
                 containsInAnyOrder(EXPECTED_COMMITTED_DATA_IN_STREAMING_MODE.toArray()));
     }
 
-    @Test
+    @org.junit.Test
     public void writerAndCommitterExecuteInBatchMode() throws Exception {
         final StreamExecutionEnvironment env = buildBatchEnv();
 
         env.fromCollection(SOURCE_DATA)
                 .sinkTo(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setDefaultCommitter(
                                         (Supplier<Queue<String>> & Serializable) () -> COMMIT_QUEUE)
                                 .build());
@@ -198,7 +197,7 @@ public class SinkITCase extends AbstractTestBase {
                 COMMIT_QUEUE, containsInAnyOrder(EXPECTED_COMMITTED_DATA_IN_BATCH_MODE.toArray()));
     }
 
-    @Test
+    @org.junit.Test
     public void writerAndGlobalCommitterExecuteInStreamingMode() throws Exception {
         final StreamExecutionEnvironment env = buildStreamEnv();
         final FiniteTestSource<Integer> source =
@@ -206,9 +205,8 @@ public class SinkITCase extends AbstractTestBase {
 
         env.addSource(source, IntegerTypeInfo.INT_TYPE_INFO)
                 .sinkTo(
-                        TestSink.newBuilder()
-                                .setCommittableSerializer(
-                                        TestSink.StringCommittableSerializer.INSTANCE)
+                        Test.newBuilder()
+                                .setCommittableSerializer(Test.StringCommittableSerializer.INSTANCE)
                                 .setGlobalCommitter(
                                         (Supplier<Queue<String>> & Serializable)
                                                 () -> GLOBAL_COMMIT_QUEUE)
@@ -220,15 +218,14 @@ public class SinkITCase extends AbstractTestBase {
                 containsInAnyOrder(EXPECTED_GLOBAL_COMMITTED_DATA_IN_STREAMING_MODE.toArray()));
     }
 
-    @Test
+    @org.junit.Test
     public void writerAndGlobalCommitterExecuteInBatchMode() throws Exception {
         final StreamExecutionEnvironment env = buildBatchEnv();
 
         env.fromCollection(SOURCE_DATA)
                 .sinkTo(
-                        TestSink.newBuilder()
-                                .setCommittableSerializer(
-                                        TestSink.StringCommittableSerializer.INSTANCE)
+                        Test.newBuilder()
+                                .setCommittableSerializer(Test.StringCommittableSerializer.INSTANCE)
                                 .setGlobalCommitter(
                                         (Supplier<Queue<String>> & Serializable)
                                                 () -> GLOBAL_COMMIT_QUEUE)

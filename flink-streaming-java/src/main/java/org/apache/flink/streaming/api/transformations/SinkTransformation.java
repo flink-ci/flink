@@ -45,17 +45,16 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *     org.apache.flink.api.connector.sink.GlobalCommitter}
  */
 @Internal
-public class SinkTransformation<InputT, CommT, WriterStateT, GlobalCommT>
-        extends PhysicalTransformation<Object> {
+public class SinkTransformation<InputT> extends PhysicalTransformation<Object> {
 
     private final Transformation<InputT> input;
 
-    private final Sink<InputT> sink;
+    private final Sink<InputT, ?> sink;
 
     private ChainingStrategy chainingStrategy;
 
     public SinkTransformation(
-            Transformation<InputT> input, Sink<InputT> sink, String name, int parallelism) {
+            Transformation<InputT> input, Sink<InputT, ?> sink, String name, int parallelism) {
         super(name, TypeExtractor.getForClass(Object.class), parallelism);
         this.input = checkNotNull(input);
         this.sink = checkNotNull(sink);
@@ -108,7 +107,7 @@ public class SinkTransformation<InputT, CommT, WriterStateT, GlobalCommT>
         return chainingStrategy;
     }
 
-    public Sink<InputT> getSink() {
+    public Sink<InputT, ?> getSink() {
         return sink;
     }
 }

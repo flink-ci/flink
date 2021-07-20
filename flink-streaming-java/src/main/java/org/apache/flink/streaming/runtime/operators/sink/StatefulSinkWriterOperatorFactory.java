@@ -19,8 +19,7 @@
 package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.api.connector.sink.SinkWriter;
-import org.apache.flink.api.connector.sink.StatefulSink;
-import org.apache.flink.api.connector.sink.StatefulSinkWriter;
+import org.apache.flink.api.connector.sink.Stateful;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 
@@ -36,24 +35,24 @@ import javax.annotation.Nullable;
  */
 public final class StatefulSinkWriterOperatorFactory<InputT, CommT, WriterStateT>
         extends AbstractSinkWriterOperatorFactory<
-                InputT, CommT, StatefulSinkWriter<InputT, WriterStateT>> {
+                InputT, CommT, Stateful.Writer<InputT, WriterStateT>> {
 
-    private final StatefulSink<InputT, WriterStateT> sink;
+    private final Stateful<InputT, WriterStateT, ?> sink;
 
     @Nullable private final String previousSinkStateName;
 
-    public StatefulSinkWriterOperatorFactory(StatefulSink<InputT, WriterStateT> sink) {
+    public StatefulSinkWriterOperatorFactory(Stateful<InputT, WriterStateT, ?> sink) {
         this(sink, null);
     }
 
     public StatefulSinkWriterOperatorFactory(
-            StatefulSink<InputT, WriterStateT> sink, @Nullable String previousSinkStateName) {
+            Stateful<InputT, WriterStateT, ?> sink, @Nullable String previousSinkStateName) {
         this.sink = sink;
         this.previousSinkStateName = previousSinkStateName;
     }
 
     @Override
-    AbstractSinkWriterOperator<InputT, CommT, StatefulSinkWriter<InputT, WriterStateT>>
+    AbstractSinkWriterOperator<InputT, CommT, Stateful.Writer<InputT, WriterStateT>>
             createWriterOperator(ProcessingTimeService processingTimeService) {
         return new StatefulSinkWriterOperator<>(
                 previousSinkStateName,

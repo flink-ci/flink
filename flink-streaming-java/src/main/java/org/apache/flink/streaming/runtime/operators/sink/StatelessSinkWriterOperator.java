@@ -38,12 +38,12 @@ final class StatelessSinkWriterOperator<InputT, CommT>
         extends AbstractSinkWriterOperator<InputT, CommT, SinkWriter<InputT>> {
 
     /** Used to create the stateless {@link SinkWriter}. */
-    private final Sink<InputT> sink;
+    private final Sink<InputT, ?> sink;
 
     StatelessSinkWriterOperator(
             final ProcessingTimeService processingTimeService,
             MailboxExecutor mailboxExecutor,
-            final Sink<InputT> sink) {
+            final Sink<InputT, ?> sink) {
         super(processingTimeService, mailboxExecutor);
         this.sink = sink;
     }

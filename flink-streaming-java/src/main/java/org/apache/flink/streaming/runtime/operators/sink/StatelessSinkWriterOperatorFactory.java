@@ -33,9 +33,9 @@ import org.apache.flink.streaming.runtime.tasks.ProcessingTimeService;
 public final class StatelessSinkWriterOperatorFactory<InputT, CommT>
         extends AbstractSinkWriterOperatorFactory<InputT, CommT, SinkWriter<InputT>> {
 
-    private final Sink<InputT> sink;
+    private final Sink<InputT, ?> sink;
 
-    public StatelessSinkWriterOperatorFactory(Sink<InputT> sink) {
+    public StatelessSinkWriterOperatorFactory(Sink<InputT, ?> sink) {
         this.sink = sink;
     }
 

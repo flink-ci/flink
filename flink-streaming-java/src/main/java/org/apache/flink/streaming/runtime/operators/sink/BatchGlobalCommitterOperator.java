@@ -20,7 +20,7 @@ package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
-import org.apache.flink.api.connector.sink.GlobalCommittingSink;
+import org.apache.flink.api.connector.sink.GlobalCommitting;
 import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
@@ -53,12 +53,12 @@ final class BatchGlobalCommitterOperator<CommT, GlobalCommT>
     /** Record all the committables until the end of the input. */
     private List<CommT> allCommittables;
 
-    private final GlobalCommittingSink<?, CommT, ?, GlobalCommT> sink;
+    private final GlobalCommitting<?, CommT, GlobalCommT, ?> sink;
 
     private final MailboxExecutor mailboxExecutor;
 
     public BatchGlobalCommitterOperator(
-            GlobalCommittingSink<?, CommT, ?, GlobalCommT> sink, MailboxExecutor mailboxExecutor) {
+            GlobalCommitting<?, CommT, GlobalCommT, ?> sink, MailboxExecutor mailboxExecutor) {
         this.sink = checkNotNull(sink);
         this.mailboxExecutor = checkNotNull(mailboxExecutor);
         this.allCommittables = new ArrayList<>();

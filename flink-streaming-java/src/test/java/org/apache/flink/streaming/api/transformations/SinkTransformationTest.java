@@ -22,9 +22,7 @@ import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.typeinfo.IntegerTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.dag.Transformation;
-import org.apache.flink.streaming.runtime.operators.sink.TestSink;
-
-import org.junit.Test;
+import org.apache.flink.streaming.runtime.operators.sink.Test;
 
 import java.util.Collections;
 import java.util.List;
@@ -34,7 +32,7 @@ import static org.apache.flink.core.memory.ManagedMemoryUseCase.STATE_BACKEND;
 /** Unit tests for {@link SinkTransformation}. */
 public class SinkTransformationTest {
 
-    @Test(expected = UnsupportedOperationException.class)
+    @org.junit.Test(expected = UnsupportedOperationException.class)
     public void unSupportSetResource() {
         final SinkTransformation<Integer, String, String, String> sinkTransformation =
                 createSinkTransformation();
@@ -43,14 +41,14 @@ public class SinkTransformationTest {
                 ResourceSpec.newBuilder(1, 1).build(), ResourceSpec.newBuilder(2, 2).build());
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @org.junit.Test(expected = UnsupportedOperationException.class)
     public void unSupportDeclareOperatorScopeManagedMemory() {
         final SinkTransformation<Integer, String, String, String> sinkTransformation =
                 createSinkTransformation();
         sinkTransformation.declareManagedMemoryUseCaseAtOperatorScope(STATE_BACKEND, 1);
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @org.junit.Test(expected = UnsupportedOperationException.class)
     public void unSupportDeclareSlotScopeManagedMemory() {
         final SinkTransformation<Integer, String, String, String> sinkTransformation =
                 createSinkTransformation();
@@ -60,7 +58,7 @@ public class SinkTransformationTest {
     private static SinkTransformation<Integer, String, String, String> createSinkTransformation() {
         return new SinkTransformation<>(
                 new TestTransformation<>("src", IntegerTypeInfo.INT_TYPE_INFO, 1),
-                TestSink.newBuilder().build(),
+                Test.newBuilder().build(),
                 "sink",
                 1);
     }

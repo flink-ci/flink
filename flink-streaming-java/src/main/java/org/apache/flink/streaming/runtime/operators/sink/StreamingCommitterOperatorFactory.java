@@ -20,7 +20,7 @@ package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.connector.sink.Committer;
-import org.apache.flink.api.connector.sink.CommittingSink;
+import org.apache.flink.api.connector.sink.Committing;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -35,9 +35,9 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public class StreamingCommitterOperatorFactory<CommT>
         extends AbstractStreamingCommitterOperatorFactory<CommT, CommT> {
 
-    private final CommittingSink<?, CommT, ?> sink;
+    private final Committing<?, CommT, ?> sink;
 
-    public StreamingCommitterOperatorFactory(CommittingSink<?, CommT, ?> sink) {
+    public StreamingCommitterOperatorFactory(Committing<?, CommT, ?> sink) {
         this.sink = checkNotNull(sink);
     }
 

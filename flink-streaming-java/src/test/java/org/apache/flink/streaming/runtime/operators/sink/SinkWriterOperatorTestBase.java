@@ -27,8 +27,6 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.util.TestLogger;
 
-import org.junit.Test;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -42,16 +40,16 @@ import static org.junit.Assert.assertThat;
 public abstract class SinkWriterOperatorTestBase extends TestLogger {
 
     protected abstract AbstractSinkWriterOperatorFactory<Integer, String> createWriterOperator(
-            TestSink sink);
+            Test sink);
 
-    @Test
+    @org.junit.Test
     public void nonBufferingWriterEmitsWithoutFlush() throws Exception {
         final long initialTime = 0;
 
         final OneInputStreamOperatorTestHarness<Integer, String> testHarness =
                 createTestHarness(
-                        TestSink.newBuilder()
-                                .setWriter(new TestSink.DefaultSinkWriter())
+                        Test.newBuilder()
+                                .setWriter(new Test.DefaultSinkWriter())
                                 .withWriterState()
                                 .build());
         testHarness.open();
@@ -71,14 +69,14 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
                         new StreamRecord<>(Tuple3.of(2, initialTime + 2, initialTime).toString())));
     }
 
-    @Test
+    @org.junit.Test
     public void nonBufferingWriterEmitsOnFlush() throws Exception {
         final long initialTime = 0;
 
         final OneInputStreamOperatorTestHarness<Integer, String> testHarness =
                 createTestHarness(
-                        TestSink.newBuilder()
-                                .setWriter(new TestSink.DefaultSinkWriter())
+                        Test.newBuilder()
+                                .setWriter(new Test.DefaultSinkWriter())
                                 .withWriterState()
                                 .build());
         testHarness.open();
@@ -97,13 +95,13 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
                         new StreamRecord<>(Tuple3.of(2, initialTime + 2, initialTime).toString())));
     }
 
-    @Test
+    @org.junit.Test
     public void bufferingWriterDoesNotEmitWithoutFlush() throws Exception {
         final long initialTime = 0;
 
         final OneInputStreamOperatorTestHarness<Integer, String> testHarness =
                 createTestHarness(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setWriter(new BufferingSinkWriter())
                                 .withWriterState()
                                 .build());
@@ -119,13 +117,13 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
         assertThat(testHarness.getOutput(), contains(new Watermark(initialTime)));
     }
 
-    @Test
+    @org.junit.Test
     public void bufferingWriterEmitsOnFlush() throws Exception {
         final long initialTime = 0;
 
         final OneInputStreamOperatorTestHarness<Integer, String> testHarness =
                 createTestHarness(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setWriter(new BufferingSinkWriter())
                                 .withWriterState()
                                 .build());
@@ -145,13 +143,13 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
                         new StreamRecord<>(Tuple3.of(2, initialTime + 2, initialTime).toString())));
     }
 
-    @Test
+    @org.junit.Test
     public void timeBasedBufferingSinkWriter() throws Exception {
         final long initialTime = 0;
 
         final OneInputStreamOperatorTestHarness<Integer, String> testHarness =
                 createTestHarness(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setWriter(new TimeBasedBufferingSinkWriter())
                                 .withWriterState()
                                 .build());
@@ -180,14 +178,13 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
                                 Tuple3.of(2, initialTime + 2, Long.MIN_VALUE).toString())));
     }
 
-    @Test
+    @org.junit.Test
     public void watermarkPropagatedToSinkWriter() throws Exception {
         final long initialTime = 0;
 
-        final TestSink.DefaultSinkWriter writer = new TestSink.DefaultSinkWriter();
+        final Test.DefaultSinkWriter writer = new Test.DefaultSinkWriter();
         final OneInputStreamOperatorTestHarness<Integer, String> testHarness =
-                createTestHarness(
-                        TestSink.newBuilder().setWriter(writer).withWriterState().build());
+                createTestHarness(Test.newBuilder().setWriter(writer).withWriterState().build());
         testHarness.open();
 
         testHarness.processWatermark(initialTime);
@@ -207,7 +204,7 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
      * A {@link SinkWriter} that only returns committables from {@link #prepareCommit(boolean)} when
      * {@code flush} is {@code true}.
      */
-    static class BufferingSinkWriter extends TestSink.DefaultSinkWriter {
+    static class BufferingSinkWriter extends Test.DefaultSinkWriter {
         @Override
         public List<String> prepareCommit(boolean flush) {
             if (!flush) {
@@ -223,7 +220,7 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
      * A {@link SinkWriter} that buffers the committables and send the cached committables per
      * second.
      */
-    static class TimeBasedBufferingSinkWriter extends TestSink.DefaultSinkWriter
+    static class TimeBasedBufferingSinkWriter extends Test.DefaultSinkWriter
             implements Sink.ProcessingTimeService.ProcessingTimeCallback {
 
         private final List<String> cachedCommittables = new ArrayList<>();
@@ -247,7 +244,7 @@ public abstract class SinkWriterOperatorTestBase extends TestLogger {
         }
     }
 
-    protected OneInputStreamOperatorTestHarness<Integer, String> createTestHarness(TestSink sink)
+    protected OneInputStreamOperatorTestHarness<Integer, String> createTestHarness(Test sink)
             throws Exception {
         return new OneInputStreamOperatorTestHarness<>(
                 createWriterOperator(sink), IntSerializer.INSTANCE);

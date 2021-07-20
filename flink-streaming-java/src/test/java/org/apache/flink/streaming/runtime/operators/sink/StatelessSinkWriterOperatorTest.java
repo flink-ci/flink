@@ -26,8 +26,7 @@ package org.apache.flink.streaming.runtime.operators.sink;
  */
 public class StatelessSinkWriterOperatorTest extends SinkWriterOperatorTestBase {
     @Override
-    protected AbstractSinkWriterOperatorFactory<Integer, String> createWriterOperator(
-            TestSink sink) {
+    protected AbstractSinkWriterOperatorFactory<Integer, String> createWriterOperator(Test sink) {
         return new StatelessSinkWriterOperatorFactory<>(sink);
     }
 }

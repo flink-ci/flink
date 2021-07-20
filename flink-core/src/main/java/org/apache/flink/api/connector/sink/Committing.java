@@ -17,24 +17,14 @@
 
 package org.apache.flink.api.connector.sink;
 
+import org.apache.flink.annotation.Experimental;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
 import java.util.List;
 
-public interface CommittingSink<InputT, CommT, WriterStateT>
-        extends StatefulSink<InputT, WriterStateT> {
-    /**
-     * Create a {@link SinkWriter}.
-     *
-     * @param context the runtime context.
-     * @param states the writer's state.
-     * @return A sink writer.
-     * @throws IOException if fail to create a writer.
-     */
-    CommittingSinkWriter<InputT, CommT, WriterStateT> createWriter(
-            InitContext context, List<WriterStateT> states) throws IOException;
-
+public interface Committing<InputT, CommT, WriterT extends Committing.Writer<InputT, CommT>>
+        extends Sink<InputT, WriterT> {
     /**
      * Creates a {@link Committer}.
      *
@@ -45,4 +35,29 @@ public interface CommittingSink<InputT, CommT, WriterStateT>
 
     /** Returns the serializer of the committable type. */
     SimpleVersionedSerializer<CommT> getCommittableSerializer();
+
+    /**
+     * The {@code SinkWriter} is responsible for writing data and handling any potential tmp area
+     * used to write yet un-staged data, e.g. in-progress files. The data (or metadata pointing to
+     * where the actual data is staged) ready to commit is returned to the system by the {@link
+     * #prepareCommit(boolean)}.
+     *
+     * @param <InputT> The type of the sink writer's input
+     * @param <CommT> The type of information needed to commit data staged by the sink
+     */
+    @Experimental
+    interface Writer<InputT, CommT> extends SinkWriter<InputT> {
+
+        /**
+         * Prepare for a commit.
+         *
+         * <p>This will be called before we checkpoint the Writer's state in Streaming execution
+         * mode.
+         *
+         * @param flush Whether flushing the un-staged data or not
+         * @return The data is ready to commit.
+         * @throws IOException if fail to prepare for a commit.
+         */
+        List<CommT> prepareCommit(boolean flush) throws IOException, InterruptedException;
+    }
 }

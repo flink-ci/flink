@@ -18,22 +18,20 @@
 package org.apache.flink.streaming.api.datastream;
 
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.runtime.operators.sink.TestSink;
-
-import org.junit.Test;
+import org.apache.flink.streaming.runtime.operators.sink.Test;
 
 /** Unit test for {@link DataStreamSink}. */
 public class DataStreamSinkTest {
 
-    @Test(expected = IllegalStateException.class)
+    @org.junit.Test(expected = IllegalStateException.class)
     public void throwExceptionWhenGettingTransformationWithNewSinkAPI() {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.fromElements(1, 2).sinkTo(TestSink.newBuilder().build()).getTransformation();
+        env.fromElements(1, 2).sinkTo(Test.newBuilder().build()).getTransformation();
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @org.junit.Test(expected = UnsupportedOperationException.class)
     public void throwExceptionWhenSetUidWithNewSinkAPI() {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.fromElements(1, 2).sinkTo(TestSink.newBuilder().build()).setUidHash("Test");
+        env.fromElements(1, 2).sinkTo(Test.newBuilder().build()).setUidHash("Test");
     }
 }

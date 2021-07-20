@@ -20,7 +20,7 @@ package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.connector.sink.Committer;
-import org.apache.flink.api.connector.sink.CommittingSink;
+import org.apache.flink.api.connector.sink.Committing;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.util.ArrayList;
@@ -43,10 +43,10 @@ final class StreamingCommitterOperator<CommT>
     /** Responsible for committing the committable to the external system. * */
     private Committer<CommT> committer;
 
-    private final CommittingSink<?, CommT, ?> sink;
+    private final Committing<?, CommT, ?> sink;
 
     StreamingCommitterOperator(
-            CommittingSink<?, CommT, ?> sink,
+            Committing<?, CommT, ?> sink,
             MailboxExecutor mailboxExecutor,
             SimpleVersionedSerializer<CommT> committableSerializer) {
         super(committableSerializer, mailboxExecutor);

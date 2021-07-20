@@ -41,7 +41,9 @@ import java.util.List;
  * @param <GlobalCommT> The type of the aggregated committable
  */
 @Experimental
-public interface StatefulSink<InputT, WriterStateT> extends Sink<InputT> {
+public interface Stateful<
+                InputT, WriterStateT, WriterT extends Stateful.Writer<InputT, WriterStateT>>
+        extends Sink<InputT, WriterT> {
     /**
      * Create a {@link SinkWriter}.
      *
@@ -50,14 +52,30 @@ public interface StatefulSink<InputT, WriterStateT> extends Sink<InputT> {
      * @return A sink writer.
      * @throws IOException if fail to create a writer.
      */
-    StatefulSinkWriter<InputT, WriterStateT> createWriter(
-            InitContext context, List<WriterStateT> states) throws IOException;
+    WriterT createWriter(Sink.InitContext context, List<WriterStateT> states) throws IOException;
 
-    @Override
-    default SinkWriter<InputT> createWriter(InitContext context) throws IOException {
+    default WriterT createWriter(Sink.InitContext context) throws IOException {
         return createWriter(context, Collections.emptyList());
     }
 
     /** Return the serializer of the writer's state type. */
     SimpleVersionedSerializer<WriterStateT> getWriterStateSerializer();
+
+    /**
+     * The {@code SinkWriter} is responsible for writing data and handling any potential tmp area
+     * used to write yet un-staged data, e.g. in-progress files. The data (or metadata pointing to
+     * where the actual data is staged) ready to commit is returned to the system by the {@link
+     * #prepareCommit(boolean)}.
+     *
+     * @param <InputT> The type of the sink writer's input
+     * @param <WriterStateT> The type of the writer's state
+     */
+    @Experimental
+    interface Writer<InputT, WriterStateT> extends SinkWriter<InputT> {
+        /**
+         * @return The writer's state.
+         * @throws IOException if fail to snapshot writer's state.
+         */
+        List<WriterStateT> snapshotState() throws IOException;
+    }
 }

@@ -20,7 +20,7 @@ package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.operators.MailboxExecutor;
-import org.apache.flink.api.connector.sink.CommittingSinkWriter;
+import org.apache.flink.api.connector.sink.Committing;
 import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
@@ -89,8 +89,8 @@ abstract class AbstractSinkWriterOperator<InputT, CommT, WriteT extends SinkWrit
     @Override
     public void prepareSnapshotPreBarrier(long checkpointId) throws Exception {
         super.prepareSnapshotPreBarrier(checkpointId);
-        if (sinkWriter instanceof CommittingSinkWriter) {
-            sendCommittables(((CommittingSinkWriter<?, CommT, ?>) sinkWriter).prepareCommit(false));
+        if (sinkWriter instanceof Committing.Writer) {
+            sendCommittables(((Committing.Writer<InputT, CommT>) sinkWriter).prepareCommit(false));
         }
     }
 
@@ -104,8 +104,8 @@ abstract class AbstractSinkWriterOperator<InputT, CommT, WriteT extends SinkWrit
 
     @Override
     public void endInput() throws Exception {
-        if (sinkWriter instanceof CommittingSinkWriter) {
-            sendCommittables(((CommittingSinkWriter<?, CommT, ?>) sinkWriter).prepareCommit(true));
+        if (sinkWriter instanceof Committing.Writer) {
+            sendCommittables(((Committing.Writer<InputT, CommT>) sinkWriter).prepareCommit(true));
         }
     }
 

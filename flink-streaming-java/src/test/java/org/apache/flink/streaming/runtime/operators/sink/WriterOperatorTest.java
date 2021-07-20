@@ -35,8 +35,6 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.streaming.util.TestHarnessUtil;
 
-import org.junit.Test;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -46,20 +44,20 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.junit.Assert.assertThat;
 
 /** Tests for {@link StatefulSinkWriterOperator}. */
-public class StatefulSinkWriterOperatorTest extends SinkWriterOperatorTestBase {
+public class WriterOperatorTest extends SinkWriterOperatorTestBase {
 
     @Override
-    protected AbstractSinkWriterOperatorFactory createWriterOperator(TestSink sink) {
+    protected AbstractSinkWriterOperatorFactory createWriterOperator(Test sink) {
         return new StatefulSinkWriterOperatorFactory<>(sink);
     }
 
-    @Test
+    @org.junit.Test
     public void stateIsRestored() throws Exception {
         final long initialTime = 0;
 
         final OneInputStreamOperatorTestHarness<Integer, String> testHarness =
                 createTestHarness(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setWriter(new SnapshottingBufferingSinkWriter())
                                 .withWriterState()
                                 .build());
@@ -80,7 +78,7 @@ public class StatefulSinkWriterOperatorTest extends SinkWriterOperatorTestBase {
 
         final OneInputStreamOperatorTestHarness<Integer, String> restoredTestHarness =
                 createTestHarness(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setWriter(new SnapshottingBufferingSinkWriter())
                                 .withWriterState()
                                 .build());
@@ -98,7 +96,7 @@ public class StatefulSinkWriterOperatorTest extends SinkWriterOperatorTestBase {
                         new StreamRecord<>(Tuple3.of(2, initialTime + 2, initialTime).toString())));
     }
 
-    @Test
+    @org.junit.Test
     public void loadPreviousSinkState() throws Exception {
         // 1. Build previous sink state
         final List<String> previousSinkInputs =
@@ -190,7 +188,7 @@ public class StatefulSinkWriterOperatorTest extends SinkWriterOperatorTestBase {
             sinkState =
                     new SimpleVersionedListState<>(
                             context.getOperatorStateStore().getListState(SINK_STATE_DESC),
-                            TestSink.StringCommittableSerializer.INSTANCE);
+                            Test.StringCommittableSerializer.INSTANCE);
         }
 
         @Override
@@ -203,7 +201,7 @@ public class StatefulSinkWriterOperatorTest extends SinkWriterOperatorTestBase {
             throws Exception {
         return new OneInputStreamOperatorTestHarness<>(
                 new StatefulSinkWriterOperatorFactory<>(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setWriter(new SnapshottingBufferingSinkWriter())
                                 .withWriterState()
                                 .build(),

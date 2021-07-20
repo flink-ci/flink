@@ -21,7 +21,7 @@ package org.apache.flink.streaming.runtime.operators.sink;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
-import org.apache.flink.api.connector.sink.GlobalCommittingSink;
+import org.apache.flink.api.connector.sink.GlobalCommitting;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 
@@ -56,10 +56,10 @@ public final class StreamingGlobalCommitterOperator<CommT, GlobalCommT>
 
     private boolean endOfInput;
 
-    private final GlobalCommittingSink<?, CommT, ?, GlobalCommT> sink;
+    private final GlobalCommitting<?, CommT, GlobalCommT, ?> sink;
 
     StreamingGlobalCommitterOperator(
-            GlobalCommittingSink<?, CommT, ?, GlobalCommT> sink,
+            GlobalCommitting<?, CommT, GlobalCommT, ?> sink,
             MailboxExecutor mailboxExecutor,
             SimpleVersionedSerializer<GlobalCommT> committableSerializer) {
         super(committableSerializer, mailboxExecutor);

@@ -24,8 +24,6 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.util.TestLogger;
 
-import org.junit.Test;
-
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -37,7 +35,7 @@ import static org.hamcrest.Matchers.is;
 /** Tests for {@link BatchGlobalCommitterOperator}. */
 public class BatchGlobalCommitterOperatorTest extends TestLogger {
 
-    @Test(expected = IllegalStateException.class)
+    @org.junit.Test(expected = IllegalStateException.class)
     public void throwExceptionWithoutCommitter() throws Exception {
         final OneInputStreamOperatorTestHarness<String, String> testHarness =
                 createTestHarness(null);
@@ -45,10 +43,10 @@ public class BatchGlobalCommitterOperatorTest extends TestLogger {
         testHarness.initializeEmptyState();
     }
 
-    @Test(expected = UnsupportedOperationException.class)
+    @org.junit.Test(expected = UnsupportedOperationException.class)
     public void doNotSupportRetry() throws Exception {
         final OneInputStreamOperatorTestHarness<String, String> testHarness =
-                createTestHarness(new TestSink.AlwaysRetryGlobalCommitter());
+                createTestHarness(new Test.AlwaysRetryGlobalCommitter());
 
         testHarness.initializeEmptyState();
         testHarness.open();
@@ -57,10 +55,9 @@ public class BatchGlobalCommitterOperatorTest extends TestLogger {
         testHarness.close();
     }
 
-    @Test
+    @org.junit.Test
     public void endOfInput() throws Exception {
-        final TestSink.DefaultGlobalCommitter globalCommitter =
-                new TestSink.DefaultGlobalCommitter();
+        final Test.DefaultGlobalCommitter globalCommitter = new Test.DefaultGlobalCommitter();
         final OneInputStreamOperatorTestHarness<String, String> testHarness =
                 createTestHarness(globalCommitter);
         final List<String> inputs = Arrays.asList("compete", "swear", "shallow");
@@ -83,10 +80,9 @@ public class BatchGlobalCommitterOperatorTest extends TestLogger {
         testHarness.close();
     }
 
-    @Test
+    @org.junit.Test
     public void close() throws Exception {
-        final TestSink.DefaultGlobalCommitter globalCommitter =
-                new TestSink.DefaultGlobalCommitter();
+        final Test.DefaultGlobalCommitter globalCommitter = new Test.DefaultGlobalCommitter();
         final OneInputStreamOperatorTestHarness<String, String> testHarness =
                 createTestHarness(globalCommitter);
         testHarness.initializeEmptyState();
@@ -101,10 +97,10 @@ public class BatchGlobalCommitterOperatorTest extends TestLogger {
 
         return new OneInputStreamOperatorTestHarness<>(
                 new BatchGlobalCommitterOperatorFactory<>(
-                        TestSink.newBuilder()
+                        Test.newBuilder()
                                 .setGlobalCommitter(globalCommitter)
                                 .setGlobalCommittableSerializer(
-                                        TestSink.StringCommittableSerializer.INSTANCE)
+                                        Test.StringCommittableSerializer.INSTANCE)
                                 .build()),
                 StringSerializer.INSTANCE);
     }

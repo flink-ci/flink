@@ -24,8 +24,9 @@ import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.serialization.BulkWriter;
 import org.apache.flink.api.common.serialization.Encoder;
 import org.apache.flink.api.connector.sink.Committer;
-import org.apache.flink.api.connector.sink.CommittingSink;
-import org.apache.flink.api.connector.sink.CommittingSinkWriter;
+import org.apache.flink.api.connector.sink.Committing;
+import org.apache.flink.api.connector.sink.Sink;
+import org.apache.flink.api.connector.sink.Stateful;
 import org.apache.flink.connector.file.sink.committer.FileCommitter;
 import org.apache.flink.connector.file.sink.writer.DefaultFileWriterBucketFactory;
 import org.apache.flink.connector.file.sink.writer.FileWriter;
@@ -105,7 +106,9 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 @Experimental
 public class FileSink<IN>
-        implements CommittingSink<IN, FileSinkCommittable, FileWriterBucketState> {
+        implements Sink<IN, FileWriter<IN>>,
+                Committing<IN, FileSinkCommittable, FileWriter<IN>>,
+                Stateful<IN, FileWriterBucketState, FileWriter<IN>> {
 
     private final BucketsBuilder<IN, ? extends BucketsBuilder<IN, ?>> bucketsBuilder;
 
@@ -114,8 +117,8 @@ public class FileSink<IN>
     }
 
     @Override
-    public CommittingSinkWriter<IN, FileSinkCommittable, FileWriterBucketState> createWriter(
-            InitContext context, List<FileWriterBucketState> states) throws IOException {
+    public FileWriter<IN> createWriter(InitContext context, List<FileWriterBucketState> states)
+            throws IOException {
         FileWriter<IN> writer = bucketsBuilder.createWriter(context);
         writer.initializeState(states);
         return writer;

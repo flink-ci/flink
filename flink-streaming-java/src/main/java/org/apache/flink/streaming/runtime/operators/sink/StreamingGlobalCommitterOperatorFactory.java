@@ -19,7 +19,7 @@
 package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.api.connector.sink.GlobalCommitter;
-import org.apache.flink.api.connector.sink.GlobalCommittingSink;
+import org.apache.flink.api.connector.sink.GlobalCommitting;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -34,10 +34,10 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public class StreamingGlobalCommitterOperatorFactory<CommT, GlobalCommT>
         extends AbstractStreamingCommitterOperatorFactory<CommT, GlobalCommT> {
 
-    private final GlobalCommittingSink<?, CommT, ?, GlobalCommT> sink;
+    private final GlobalCommitting<?, CommT, GlobalCommT, ?> sink;
 
     public StreamingGlobalCommitterOperatorFactory(
-            GlobalCommittingSink<?, CommT, ?, GlobalCommT> sink) {
+            GlobalCommitting<?, CommT, GlobalCommT, ?> sink) {
         this.sink = checkNotNull(sink);
     }
 

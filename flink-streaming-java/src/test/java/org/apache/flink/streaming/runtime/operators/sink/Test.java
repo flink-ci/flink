@@ -20,9 +20,8 @@ package org.apache.flink.streaming.runtime.operators.sink;
 
 import org.apache.flink.api.common.eventtime.Watermark;
 import org.apache.flink.api.connector.sink.Committer;
-import org.apache.flink.api.connector.sink.CommittingSinkWriter;
 import org.apache.flink.api.connector.sink.GlobalCommitter;
-import org.apache.flink.api.connector.sink.GlobalCommittingSink;
+import org.apache.flink.api.connector.sink.GlobalCommitting;
 import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.api.connector.sink.SinkWriter;
 import org.apache.flink.api.java.tuple.Tuple3;
@@ -47,7 +46,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.junit.Assert.assertNotNull;
 
 /** A {@link Sink TestSink} for all the sink related tests. */
-public class TestSink implements GlobalCommittingSink<Integer, String, String, String> {
+public class Test implements GlobalCommitting<Integer, String, String, String> {
 
     private final DefaultSinkWriter writer;
 
@@ -61,7 +60,7 @@ public class TestSink implements GlobalCommittingSink<Integer, String, String, S
 
     @Nullable private final SimpleVersionedSerializer<String> globalCommittableSerializer;
 
-    private TestSink(
+    private Test(
             DefaultSinkWriter writer,
             @Nullable SimpleVersionedSerializer<String> writerStateSerializer,
             @Nullable Committer<String> committer,
@@ -77,8 +76,7 @@ public class TestSink implements GlobalCommittingSink<Integer, String, String, S
     }
 
     @Override
-    public CommittingSinkWriter<Integer, String> createWriter(
-            InitContext context, List<String> states) {
+    public Writer<Integer, String> createWriter(InitContext context, List<String> states) {
         writer.restoredFrom(states);
         writer.setProcessingTimerService(context.getProcessingTimeService());
         return writer;
@@ -113,7 +111,7 @@ public class TestSink implements GlobalCommittingSink<Integer, String, String, S
         return new Builder();
     }
 
-    /** A builder class for {@link TestSink}. */
+    /** A builder class for {@link Test}. */
     public static class Builder {
 
         private DefaultSinkWriter writer = new DefaultSinkWriter();
@@ -184,8 +182,8 @@ public class TestSink implements GlobalCommittingSink<Integer, String, String, S
             return this;
         }
 
-        public TestSink build() {
-            return new TestSink(
+        public Test build() {
+            return new Test(
                     writer,
                     writerStateSerializer,
                     committer,
@@ -198,7 +196,7 @@ public class TestSink implements GlobalCommittingSink<Integer, String, String, S
     // -------------------------------------- Sink Writer ------------------------------------------
 
     /** Base class for out testing {@link SinkWriter Writers}. */
-    static class DefaultSinkWriter implements CommittingSinkWriter<Integer, String>, Serializable {
+    static class DefaultSinkWriter implements Writer<Integer, String>, Serializable {
 
         protected List<String> elements;
 
@@ -377,7 +375,7 @@ public class TestSink implements GlobalCommittingSink<Integer, String, String, S
 
     /**
      * We introduce this {@link StringCommittableSerializer} is because that all the fields of
-     * {@link TestSink} should be serializable.
+     * {@link Test} should be serializable.
      */
     public static class StringCommittableSerializer
             implements SimpleVersionedSerializer<String>, Serializable {
