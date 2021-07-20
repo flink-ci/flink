@@ -106,7 +106,6 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
         final ExecutionJobVertex ejv =
                 setupExecutionGraphAndGetVertex(new JobID(), new VoidBlobWriter());
 
-        assert ejv != null;
         final IntermediateResult consumedResult = ejv.getInputs().get(0);
 
         final ExecutionVertex ev21 = ejv.getTaskVertices()[0];
