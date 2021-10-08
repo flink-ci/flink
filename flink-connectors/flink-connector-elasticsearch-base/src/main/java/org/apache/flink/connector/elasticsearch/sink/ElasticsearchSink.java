@@ -47,7 +47,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  *   <li>{@link DeliveryGuarantee#AT_LEAST_ONCE} on a checkpoint the sink will wait until all
  *       buffered actions are flushed to and acknowledged by Elasticsearch. No actions will be lost
  *       but actions might be sent to Elasticsearch multiple times when Flink restarts. These
- *       additional requests may cause inconsistent data in ElasticSearch right after the restart,
+ *       additional requests may cause inconsistent data in Elasticsearch right after the restart,
  *       but eventually everything will be consistent again.
  * </ul>
  *

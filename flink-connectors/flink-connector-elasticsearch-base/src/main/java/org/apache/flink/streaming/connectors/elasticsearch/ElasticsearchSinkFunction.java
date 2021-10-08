@@ -34,7 +34,7 @@ import java.io.Serializable;
  * <p>Example:
  *
  * <pre>{@code
- * 				private static class TestElasticSearchSinkFunction implements
+ * 				private static class TestElasticsearchSinkFunction implements
  * 					ElasticsearchSinkFunction<Tuple2<Integer, String>> {
  *
  * 				public IndexRequest createIndexRequest(Tuple2<Integer, String> element) {

@@ -62,7 +62,7 @@ sed -i -e 's/package org.apache.flink.quickstarts.test/package org.apache.flink.
 
 position=$(awk '/<dependencies>/ {print NR}' pom.xml | head -1)
 
-# Add ElasticSearch dependency to pom.xml
+# Add Elasticsearch dependency to pom.xml
 sed -i -e ''$(($position + 1))'i\
 '${ES_DEPENDENCY}'' pom.xml
 
