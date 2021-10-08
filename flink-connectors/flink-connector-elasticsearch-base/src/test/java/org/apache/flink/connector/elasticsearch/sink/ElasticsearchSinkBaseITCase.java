@@ -108,7 +108,7 @@ abstract class ElasticsearchSinkBaseITCase {
 
     @ParameterizedTest
     @EnumSource(DeliveryGuarantee.class)
-    void testWriteToElasticSearchWithDeliveryGuarantee(DeliveryGuarantee deliveryGuarantee)
+    void testWriteToElasticsearchWithDeliveryGuarantee(DeliveryGuarantee deliveryGuarantee)
             throws Exception {
         final String index = "test-es-with-delivery-" + deliveryGuarantee;
         boolean failure = false;
