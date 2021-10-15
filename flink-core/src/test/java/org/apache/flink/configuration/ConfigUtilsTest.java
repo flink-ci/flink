@@ -29,6 +29,7 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.core.Is.is;
 import static org.hamcrest.core.IsEqual.equalTo;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThat;
 
 /** Tests the {@link ConfigUtils} methods. */
@@ -79,6 +80,17 @@ public class ConfigUtilsTest {
                 ConfigUtils.decodeListFromConfig(
                         configurationUnderTest, TEST_OPTION, Integer::valueOf);
         assertThat(recoveredList, is(empty()));
+    }
+
+    @Test
+    public void emptyCollectionPutsNothingInConfig() {
+        final Configuration conf = new Configuration();
+        ConfigUtils.encodeCollectionToConfig(
+                conf, TEST_OPTION, Collections.emptyList(), Object::toString);
+
+        assertThat(conf.keySet(), is(empty()));
+
+        assertFalse(conf.toMap().containsKey(TEST_OPTION.key()));
     }
 
     @Test

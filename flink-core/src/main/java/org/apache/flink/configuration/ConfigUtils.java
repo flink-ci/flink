@@ -19,6 +19,7 @@
 package org.apache.flink.configuration;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.util.CollectionUtil;
 import org.apache.flink.util.function.FunctionWithException;
 
 import javax.annotation.Nullable;
@@ -96,6 +97,10 @@ public class ConfigUtils {
                         .map(mapper)
                         .filter(Objects::nonNull)
                         .collect(Collectors.toCollection(ArrayList::new));
+
+        if (CollectionUtil.isNullOrEmpty(encodedOption)) {
+            return;
+        }
 
         configuration.set(key, encodedOption);
     }
