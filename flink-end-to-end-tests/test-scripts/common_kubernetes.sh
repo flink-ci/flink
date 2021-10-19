@@ -30,7 +30,7 @@ NON_LINUX_ENV_NOTE="****** Please start/stop minikube manually in non-linux envi
 
 # If running tests on non-linux os, the kubectl and minikube should be installed manually
 function setup_kubernetes_for_linux {
-    if [[ `uname -i` == 'aarch64' ]]; then
+    if [[ `uname -m` == 'aarch64' ]]; then
         local arch='arm64'
     else
         local arch='amd64'

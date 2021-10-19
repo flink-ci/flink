@@ -114,7 +114,7 @@ if [[ "$OS_TYPE" == "mac" ]]; then
 elif  [[ "$OS_TYPE" == "linux" ]]; then
     echo "[INFO] `date +%H:%M:%S` Current OS: GNU/Linux OS"
     echo "[INFO] `date +%H:%M:%S` Download data generator from github..."
-    if [[ `uname -i` == 'aarch64' ]]; then
+    if [[ `uname -m` == 'aarch64' ]]; then
       retry_times_with_backoff_and_cleanup 3 5 "download_and_validate "dsdgen_linux" $generator_dir $dsdgen_linux_url_aarch64 $dsdgen_linux_aarch64_md5 $OS_TYPE" \
       "cleanup "dsdgen_linux" $generator_dir" || errCode_download_dsgen=$?
     else
