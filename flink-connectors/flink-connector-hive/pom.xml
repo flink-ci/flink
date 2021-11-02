@@ -964,6 +964,16 @@ under the License.
 									<pattern>shaded.parquet</pattern>
 									<shadedPattern>org.apache.flink.hive.reshaded.parquet</shadedPattern>
 								</relocation>
+								<relocations>
+									<relocation>
+										<pattern>com.facebook.fb303</pattern>
+										<shadedPattern>org.apache.flink.facebook.shaded.fb303</shadedPattern>
+									</relocation>
+									<relocation>
+										<pattern>org.apache.thrift</pattern>
+										<shadedPattern>org.apache.flink.shaded.thrift</shadedPattern>
+									</relocation>
+								</relocations>
 							</relocations>
 							<filters>
 								<filter>
