@@ -45,7 +45,9 @@ import org.apache.flink.table.connector.source.abilities.SupportsLimitPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsPartitionPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushDown;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.filesystem.ContinuousPartitionFetcher;
+import org.apache.flink.table.filesystem.DefaultPartTimeExtractor;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.util.Preconditions;
 
@@ -58,13 +60,14 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.flink.connectors.hive.util.HivePartitionUtils.getAllPartitions;
-import static org.apache.flink.table.filesystem.DefaultPartTimeExtractor.toMills;
+import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER;
 import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.STREAMING_SOURCE_CONSUME_START_OFFSET;
 import static org.apache.flink.table.filesystem.FileSystemConnectorOptions.STREAMING_SOURCE_ENABLE;
 
@@ -297,7 +300,18 @@ public class HiveTableSource
                     if (configuration.contains(STREAMING_SOURCE_CONSUME_START_OFFSET)) {
                         String consumeOffsetStr =
                                 configuration.getString(STREAMING_SOURCE_CONSUME_START_OFFSET);
-                        consumeStartOffset = (T) Long.valueOf(toMills(consumeOffsetStr));
+
+                        LocalDateTime localDateTime =
+                                DefaultPartTimeExtractor.toLocalDateTime(
+                                        consumeOffsetStr,
+                                        configuration.getString(
+                                                PARTITION_TIME_EXTRACTOR_TIMESTAMP_FORMATTER));
+
+                        consumeStartOffset =
+                                (T)
+                                        Long.valueOf(
+                                                TimestampData.fromLocalDateTime(localDateTime)
+                                                        .getMillisecond());
                     } else {
                         consumeStartOffset = (T) DEFAULT_MIN_TIME_OFFSET;
                     }
