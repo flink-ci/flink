@@ -108,6 +108,56 @@ The file system connector can be used to read single files or entire directories
 
 When using a directory as the source path, there is **no defined order of ingestion** for the files inside the directory.
 
+### Available Metadata
+
+The following connector metadata can be accessed as metadata columns in a table definition. All the metadata are read only.
+
+<table class="table table-bordered">
+    <thead>
+    <tr>
+      <th class="text-left" style="width: 25%">Key</th>
+      <th class="text-center" style="width: 30%">Data Type</th>
+      <th class="text-center" style="width: 40%">Description</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr>
+      <td><code>file.path</code></td>
+      <td><code>STRING NOT NULL</code></td>
+      <td>Full path of the input file.</td>
+    </tr>
+    <tr>
+      <td><code>file.name</code></td>
+      <td><code>STRING NOT NULL</code></td>
+      <td>Name of the file, that is the farthest element from the root of the filepath.</td>
+    </tr>
+    <tr>
+      <td><code>file.size</code></td>
+      <td><code>BIGINT NOT NULL</code></td>
+      <td>Byte count of the file.</td>
+    </tr>
+    <tr>
+      <td><code>file.modification-time</code></td>
+      <td><code>TIMESTAMP_LTZ(3) NOT NULL</code></td>
+      <td>Modification time of the file.</td>
+    </tr>
+    </tbody>
+</table>
+
+The extended `CREATE TABLE` example demonstrates the syntax for exposing these metadata fields:
+
+```sql
+CREATE TABLE MyUserTableWithFilepath (
+  column_name1 INT,
+  column_name2 STRING,
+  `file.path` STRING NOT NULL METADATA
+) WITH (
+  'connector' = 'filesystem',
+  'path' = 'file:///path/to/whatever',
+  'format' = 'json'
+)
+```
+
 ## Streaming Sink
 
 The file system connector supports streaming writes, based on Flink's [Streaming File Sink]({{< ref "docs/connectors/datastream/streamfile_sink" >}})

@@ -38,6 +38,7 @@ import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.checkpoint.channel.SequentialChannelStateReader;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
+import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.io.network.api.CancelCheckpointMarker;
 import org.apache.flink.runtime.io.network.api.CheckpointBarrier;
 import org.apache.flink.runtime.io.network.api.writer.MultipleRecordWriters;
@@ -54,8 +55,6 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointableTask;
 import org.apache.flink.runtime.jobgraph.tasks.CoordinatedTask;
 import org.apache.flink.runtime.jobgraph.tasks.TaskInvokable;
-import org.apache.flink.runtime.metrics.MetricNames;
-import org.apache.flink.runtime.metrics.TimerGauge;
 import org.apache.flink.runtime.metrics.groups.TaskIOMetricGroup;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.plugable.SerializationDelegate;
@@ -70,7 +69,6 @@ import org.apache.flink.runtime.taskmanager.AsyncExceptionHandler;
 import org.apache.flink.runtime.taskmanager.AsynchronousException;
 import org.apache.flink.runtime.taskmanager.DispatcherThreadFactory;
 import org.apache.flink.runtime.taskmanager.Task;
-import org.apache.flink.runtime.throughput.ThroughputCalculator;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
 import org.apache.flink.streaming.api.graph.StreamConfig;
@@ -87,7 +85,6 @@ import org.apache.flink.streaming.runtime.io.checkpointing.CheckpointBarrierHand
 import org.apache.flink.streaming.runtime.partitioner.ConfigurableStreamPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.streaming.runtime.tasks.bufferdebloat.BufferDebloater;
 import org.apache.flink.streaming.runtime.tasks.mailbox.GaugePeriodTimer;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction;
 import org.apache.flink.streaming.runtime.tasks.mailbox.MailboxDefaultAction.Suspension;
@@ -105,8 +102,6 @@ import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.TernaryBoolean;
 import org.apache.flink.util.WrappingRuntimeException;
-import org.apache.flink.util.clock.Clock;
-import org.apache.flink.util.clock.SystemClock;
 import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.function.RunnableWithException;
@@ -292,10 +287,6 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
     private volatile boolean endOfDataReceived = false;
 
-    private final ThroughputCalculator throughputCalculator;
-
-    private final @Nullable BufferDebloater bufferDebloater;
-
     private final long bufferDebloatPeriod;
 
     private final Environment environment;
@@ -304,6 +295,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
     @GuardedBy("shouldInterruptOnCancelLock")
     private boolean shouldInterruptOnCancel = true;
+
+    @Nullable private final AvailabilityProvider changelogWriterAvailabilityProvider;
 
     // ------------------------------------------------------------------------
 
@@ -389,6 +382,13 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
         this.stateBackend = createStateBackend();
         this.checkpointStorage = createCheckpointStorage(stateBackend);
+        this.changelogWriterAvailabilityProvider =
+                environment.getTaskStateManager().getStateChangelogStorage() == null
+                        ? null
+                        : environment
+                                .getTaskStateManager()
+                                .getStateChangelogStorage()
+                                .getAvailabilityProvider();
 
         CheckpointStorageAccess checkpointStorageAccess =
                 checkpointStorage.createCheckpointStorage(getEnvironment().getJobID());
@@ -427,28 +427,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         injectChannelStateWriterIntoChannels();
 
         environment.getMetricGroup().getIOMetricGroup().setEnableBusyTime(true);
-        this.throughputCalculator = environment.getThroughputCalculator();
         Configuration taskManagerConf = environment.getTaskManagerInfo().getConfiguration();
 
         this.bufferDebloatPeriod = taskManagerConf.get(BUFFER_DEBLOAT_PERIOD).toMillis();
-
-        if (taskManagerConf.get(TaskManagerOptions.BUFFER_DEBLOAT_ENABLED)) {
-            this.bufferDebloater =
-                    new BufferDebloater(taskManagerConf, environment.getAllInputGates());
-            environment
-                    .getMetricGroup()
-                    .gauge(
-                            MetricNames.ESTIMATED_TIME_TO_CONSUME_BUFFERS,
-                            () ->
-                                    bufferDebloater
-                                            .getLastEstimatedTimeToConsumeBuffers()
-                                            .toMillis());
-            environment
-                    .getMetricGroup()
-                    .gauge(MetricNames.DEBLOATED_BUFFER_SIZE, bufferDebloater::getLastBufferSize);
-        } else {
-            this.bufferDebloater = null;
-        }
     }
 
     private TimerService createTimerService(String timerThreadName) {
@@ -503,7 +484,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         DataInputStatus status = inputProcessor.processInput();
         switch (status) {
             case MORE_AVAILABLE:
-                if (recordWriter.isAvailable()) {
+                if (recordWriter.isAvailable()
+                        && (changelogWriterAvailabilityProvider == null
+                                || changelogWriterAvailabilityProvider.isAvailable())) {
                     return;
                 }
                 break;
@@ -530,11 +513,14 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         if (!recordWriter.isAvailable()) {
             timer = new GaugePeriodTimer(ioMetrics.getBackPressuredTimePerSecond());
             resumeFuture = recordWriter.getAvailableFuture();
-        } else {
-            timer =
-                    new ThroughputPeriodTimer(
-                            ioMetrics.getIdleTimeMsPerSecond(), throughputCalculator);
+        } else if (!inputProcessor.isAvailable()) {
+            timer = new GaugePeriodTimer(ioMetrics.getIdleTimeMsPerSecond());
             resumeFuture = inputProcessor.getAvailableFuture();
+        } else {
+            // currently, waiting for changelog availability is reported as busy
+            // todo: add new metric (FLINK-24402)
+            timer = null;
+            resumeFuture = changelogWriterAvailabilityProvider.getAvailableFuture();
         }
         assertNoException(
                 resumeFuture.thenRun(
@@ -780,7 +766,11 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         // the debloater. At the same time, for SourceStreamTask using legacy sources and checkpoint
         // lock, enqueuing even a single mailbox action can cause performance regression. This is
         // especially visible in batch, with disabled checkpointing and no processing time timers.
-        if (getEnvironment().getAllInputGates().length == 0) {
+        if (getEnvironment().getAllInputGates().length == 0
+                || !environment
+                        .getTaskManagerInfo()
+                        .getConfiguration()
+                        .getBoolean(TaskManagerOptions.BUFFER_DEBLOAT_ENABLED)) {
             return;
         }
         systemTimerService.registerTimer(
@@ -796,9 +786,8 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
     @VisibleForTesting
     void debloat() {
-        long throughput = throughputCalculator.calculateThroughput();
-        if (bufferDebloater != null) {
-            bufferDebloater.recalculateBufferSize(throughput);
+        for (IndexedInputGate inputGate : environment.getAllInputGates()) {
+            inputGate.triggerDebloating();
         }
     }
 
@@ -1705,48 +1694,22 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
 
     private static class ResumeWrapper implements Runnable {
         private final Suspension suspendedDefaultAction;
-        private final PeriodTimer timer;
+        @Nullable private final PeriodTimer timer;
 
-        public ResumeWrapper(Suspension suspendedDefaultAction, PeriodTimer timer) {
+        public ResumeWrapper(Suspension suspendedDefaultAction, @Nullable PeriodTimer timer) {
             this.suspendedDefaultAction = suspendedDefaultAction;
-            timer.markStart();
+            if (timer != null) {
+                timer.markStart();
+            }
             this.timer = timer;
         }
 
         @Override
         public void run() {
-            timer.markEnd();
+            if (timer != null) {
+                timer.markEnd();
+            }
             suspendedDefaultAction.resume();
-        }
-    }
-
-    /**
-     * Implementation of {@link org.apache.flink.streaming.runtime.tasks.mailbox.PeriodTimer} which
-     * combine signal for metric and the throughput.
-     */
-    private static class ThroughputPeriodTimer implements PeriodTimer {
-        private final Clock clock = SystemClock.getInstance();
-        private final TimerGauge idleTimerGauge;
-        private final ThroughputCalculator throughputCalculator;
-
-        private ThroughputPeriodTimer(
-                TimerGauge idleTimerGauge, ThroughputCalculator throughputCalculator) {
-            this.idleTimerGauge = idleTimerGauge;
-            this.throughputCalculator = throughputCalculator;
-        }
-
-        @Override
-        public void markStart() {
-            long absoluteTimeMillis = clock.absoluteTimeMillis();
-            idleTimerGauge.markStart(absoluteTimeMillis);
-            throughputCalculator.pauseMeasurement(absoluteTimeMillis);
-        }
-
-        @Override
-        public void markEnd() {
-            long absoluteTimeMillis = clock.absoluteTimeMillis();
-            idleTimerGauge.markEnd(absoluteTimeMillis);
-            throughputCalculator.resumeMeasurement(absoluteTimeMillis);
         }
     }
 

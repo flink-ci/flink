@@ -25,6 +25,7 @@ import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.connector.ChangelogMode;
 import org.apache.flink.table.connector.format.DecodingFormat;
 import org.apache.flink.table.connector.format.EncodingFormat;
+import org.apache.flink.table.connector.format.ProjectableDecodingFormat;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.data.RowData;
@@ -118,11 +119,16 @@ public class TestCsvFileSystemFormatFactory
     @Override
     public DecodingFormat<DeserializationSchema<RowData>> createDecodingFormat(
             DynamicTableFactory.Context context, ReadableConfig formatOptions) {
-        return new DecodingFormat<DeserializationSchema<RowData>>() {
+        return new ProjectableDecodingFormat<DeserializationSchema<RowData>>() {
             @Override
             public DeserializationSchema<RowData> createRuntimeDecoder(
-                    DynamicTableSource.Context context, DataType physicalDataType) {
-                return new TestCsvDeserializationSchema(physicalDataType);
+                    DynamicTableSource.Context context,
+                    DataType physicalDataType,
+                    int[][] projections) {
+                DataType projectedPhysicalDataType =
+                        DataType.projectFields(physicalDataType, projections);
+                return new TestCsvDeserializationSchema(
+                        projectedPhysicalDataType, DataType.getFieldNames(physicalDataType));
             }
 
             @Override
