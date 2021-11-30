@@ -326,14 +326,18 @@ public abstract class FileSystem {
             FS_FACTORIES.clear();
 
             Collection<Supplier<Iterator<FileSystemFactory>>> factorySuppliers = new ArrayList<>(2);
-            factorySuppliers.add(() -> ServiceLoader.load(FileSystemFactory.class).iterator());
+            factorySuppliers.add(
+                    () ->
+                            Iterators.transform(
+                                    ServiceLoader.load(FileSystemFactory.class).iterator(),
+                                    StickyClassLoaderFileSystemFactory::of));
 
             if (pluginManager != null) {
                 factorySuppliers.add(
                         () ->
                                 Iterators.transform(
                                         pluginManager.load(FileSystemFactory.class),
-                                        PluginFileSystemFactory::of));
+                                        StickyClassLoaderFileSystemFactory::of));
             }
 
             final List<FileSystemFactory> fileSystemFactories =

@@ -18,27 +18,49 @@
 package org.apache.flink.core.fs;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.util.FatalExitExceptionHandler;
 import org.apache.flink.util.TemporaryClassLoaderContext;
 import org.apache.flink.util.WrappingProxy;
+import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * A wrapper around {@link FileSystemFactory} that ensures the plugin classloader is used for all
  * {@link FileSystem} operations.
  */
-public class PluginFileSystemFactory implements FileSystemFactory {
+public class StickyClassLoaderFileSystemFactory implements FileSystemFactory {
+
+    private static final ExecutorService EXECUTOR =
+            Executors.newSingleThreadExecutor(
+                    new ExecutorThreadFactory.Builder()
+                            .setPoolName("plugin-classloader")
+                            .setExceptionHandler(FatalExitExceptionHandler.INSTANCE)
+                            .build());
+
+    static {
+        EXECUTOR.execute(
+                () -> {
+                    // No-op. This is just to warm up thread in the right context.
+                });
+    }
+
+    public static StickyClassLoaderFileSystemFactory of(final FileSystemFactory inner) {
+        return new StickyClassLoaderFileSystemFactory(inner, inner.getClass().getClassLoader());
+    }
+
     private final FileSystemFactory inner;
     private final ClassLoader loader;
 
-    private PluginFileSystemFactory(final FileSystemFactory inner, final ClassLoader loader) {
+    private StickyClassLoaderFileSystemFactory(
+            final FileSystemFactory inner, final ClassLoader loader) {
         this.inner = inner;
-        this.loader = loader;
-    }
-
-    public static PluginFileSystemFactory of(final FileSystemFactory inner) {
-        return new PluginFileSystemFactory(inner, inner.getClass().getClassLoader());
+        this.loader = new ProtectionDomainSafeClassLoader(loader);
     }
 
     @Override
@@ -66,6 +88,31 @@ public class PluginFileSystemFactory implements FileSystemFactory {
     @Override
     public String toString() {
         return String.format("Plugin %s", inner.getClass().getName());
+    }
+
+    private static class ProtectionDomainSafeClassLoader extends ClassLoader {
+
+        ProtectionDomainSafeClassLoader(ClassLoader parent) {
+            super(parent);
+        }
+
+        @Override
+        public Class<?> loadClass(String name) throws ClassNotFoundException {
+            final CompletableFuture<Class<?>> classFuture = new CompletableFuture<>();
+            EXECUTOR.execute(
+                    () -> {
+                        try {
+                            classFuture.complete(super.loadClass(name));
+                        } catch (ClassNotFoundException e) {
+                            classFuture.completeExceptionally(e);
+                        }
+                    });
+            try {
+                return classFuture.join();
+            } catch (CompletionException e) {
+                throw (ClassNotFoundException) e.getCause();
+            }
+        }
     }
 
     static class ClassLoaderFixingFileSystem extends FileSystem
