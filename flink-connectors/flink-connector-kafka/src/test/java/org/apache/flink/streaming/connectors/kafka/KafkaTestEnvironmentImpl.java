@@ -18,10 +18,10 @@
 package org.apache.flink.streaming.connectors.kafka;
 
 import org.apache.flink.api.common.serialization.SerializationSchema;
-import org.apache.flink.connector.kafka.sink.KafkaUtil;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.KafkaSourceBuilder;
 import org.apache.flink.connector.kafka.source.reader.deserializer.KafkaRecordDeserializationSchema;
+import org.apache.flink.connector.kafka.testutils.KafkaUtil;
 import org.apache.flink.core.testutils.CommonTestUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
@@ -419,6 +419,8 @@ public class KafkaTestEnvironmentImpl extends KafkaTestEnvironment {
         kafkaProperties.put("replica.fetch.max.bytes", String.valueOf(50 * 1024 * 1024));
         kafkaProperties.put(
                 "transaction.max.timeout.ms", Integer.toString(1000 * 60 * 60 * 2)); // 2hours
+        // Disable log deletion to prevent records from being deleted during test run
+        kafkaProperties.put("log.retention.ms", "-1");
 
         // for CI stability, increase zookeeper session timeout
         kafkaProperties.put("zookeeper.session.timeout.ms", zkTimeout);
