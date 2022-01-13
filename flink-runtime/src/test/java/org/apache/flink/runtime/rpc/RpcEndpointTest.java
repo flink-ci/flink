@@ -20,7 +20,7 @@ package org.apache.flink.runtime.rpc;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.util.TestLogger;
+import org.apache.flink.runtime.concurrent.ThrowingScheduledFuture;
 
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -31,19 +31,23 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /** Tests for the RpcEndpoint, its self gateways and MainThreadExecutor scheduling command. */
-public class RpcEndpointTest extends TestLogger {
+public class RpcEndpointTest extends EndpointCloseableRegistryTest {
 
     private static final Time TIMEOUT = Time.seconds(10L);
     private static RpcService rpcService = null;
@@ -70,6 +74,8 @@ public class RpcEndpointTest extends TestLogger {
         try {
             baseEndpoint.start();
 
+            validateRegisteredResourceCount(1, baseEndpoint.getResourceRegistry());
+
             BaseGateway baseGateway = baseEndpoint.getSelfGateway(BaseGateway.class);
 
             CompletableFuture<Integer> foobar = baseGateway.foobar();
@@ -77,6 +83,8 @@ public class RpcEndpointTest extends TestLogger {
             assertEquals(Integer.valueOf(expectedValue), foobar.get());
         } finally {
             RpcUtils.terminateRpcEndpoint(baseEndpoint, TIMEOUT);
+
+            validateRegistryClosed(baseEndpoint.getResourceRegistry());
         }
     }
 
@@ -92,12 +100,16 @@ public class RpcEndpointTest extends TestLogger {
         try {
             baseEndpoint.start();
 
+            validateRegisteredResourceCount(1, baseEndpoint.getResourceRegistry());
+
             DifferentGateway differentGateway = baseEndpoint.getSelfGateway(DifferentGateway.class);
 
             fail(
                     "Expected to fail with a RuntimeException since we requested the wrong gateway type.");
         } finally {
             RpcUtils.terminateRpcEndpoint(baseEndpoint, TIMEOUT);
+
+            validateRegistryClosed(baseEndpoint.getResourceRegistry());
         }
     }
 
@@ -115,6 +127,7 @@ public class RpcEndpointTest extends TestLogger {
 
         try {
             endpoint.start();
+            validateRegisteredResourceCount(1, endpoint.getResourceRegistry());
 
             BaseGateway baseGateway = endpoint.getSelfGateway(BaseGateway.class);
             ExtendedGateway extendedGateway = endpoint.getSelfGateway(ExtendedGateway.class);
@@ -127,6 +140,7 @@ public class RpcEndpointTest extends TestLogger {
             assertEquals(foo, differentGateway.foo().get());
         } finally {
             RpcUtils.terminateRpcEndpoint(endpoint, TIMEOUT);
+            validateRegistryClosed(endpoint.getResourceRegistry());
         }
     }
 
@@ -142,9 +156,11 @@ public class RpcEndpointTest extends TestLogger {
 
         try {
             endpoint.start();
+            validateRegisteredResourceCount(1, endpoint.getResourceRegistry());
             assertThat(gateway.queryIsRunningFlag().get(), is(true));
         } finally {
             RpcUtils.terminateRpcEndpoint(endpoint, TIMEOUT);
+            validateRegistryClosed(endpoint.getResourceRegistry());
         }
     }
 
@@ -159,12 +175,14 @@ public class RpcEndpointTest extends TestLogger {
                 endpoint.getSelfGateway(RunningStateTestingEndpointGateway.class);
 
         endpoint.start();
+        validateRegisteredResourceCount(1, endpoint.getResourceRegistry());
         CompletableFuture<Void> terminationFuture = endpoint.closeAndWaitUntilOnStopCalled();
 
         assertThat(gateway.queryIsRunningFlag().get(), is(false));
 
         stopFuture.complete(null);
         terminationFuture.get(TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS);
+        validateRegistryClosed(endpoint.getResourceRegistry());
     }
 
     public interface BaseGateway extends RpcGateway {
@@ -265,6 +283,7 @@ public class RpcEndpointTest extends TestLogger {
         final CompletableFuture<Void> asyncExecutionFuture = new CompletableFuture<>();
         try {
             endpoint.start();
+            validateRegisteredResourceCount(1, endpoint.getResourceRegistry());
             endpoint.getMainThreadExecutor()
                     .execute(
                             () -> {
@@ -274,6 +293,7 @@ public class RpcEndpointTest extends TestLogger {
             asyncExecutionFuture.get(TIMEOUT.getSize(), TIMEOUT.getUnit());
         } finally {
             RpcUtils.terminateRpcEndpoint(endpoint, TIMEOUT);
+            validateRegistryClosed(endpoint.getResourceRegistry());
         }
     }
 
@@ -288,6 +308,14 @@ public class RpcEndpointTest extends TestLogger {
     @Test
     public void testScheduleRunnableWithDelayInSeconds() throws Exception {
         testScheduleWithDelay(
+                (mainThreadExecutor, expectedDelay) ->
+                        mainThreadExecutor.schedule(
+                                () -> {}, expectedDelay.toMillis() / 1000, TimeUnit.SECONDS));
+    }
+
+    @Test
+    public void testScheduleRunnableAfterClose() throws Exception {
+        testScheduleAfterClose(
                 (mainThreadExecutor, expectedDelay) ->
                         mainThreadExecutor.schedule(
                                 () -> {}, expectedDelay.toMillis() / 1000, TimeUnit.SECONDS));
@@ -309,22 +337,53 @@ public class RpcEndpointTest extends TestLogger {
                                 () -> 1, expectedDelay.toMillis() / 1000, TimeUnit.SECONDS));
     }
 
+    @Test
+    public void testScheduleCallableAfterClose() throws Exception {
+        testScheduleAfterClose(
+                (mainThreadExecutor, expectedDelay) ->
+                        mainThreadExecutor.schedule(
+                                () -> 1, expectedDelay.toMillis() / 1000, TimeUnit.SECONDS));
+    }
+
     private static void testScheduleWithDelay(
             BiConsumer<RpcEndpoint.MainThreadExecutor, Duration> scheduler) throws Exception {
-        final CompletableFuture<Long> actualDelayMsFuture = new CompletableFuture<>();
-
-        final MainThreadExecutable mainThreadExecutable =
-                new TestMainThreadExecutable(
-                        (runnable, delay) -> actualDelayMsFuture.complete(delay));
-
-        final RpcEndpoint.MainThreadExecutor mainThreadExecutor =
-                new RpcEndpoint.MainThreadExecutor(mainThreadExecutable, () -> {});
+        final CompletableFuture<Void> actualDelayMsFuture = new CompletableFuture<>();
+        final String endpointId = "foobar";
 
         final Duration expectedDelay = Duration.ofSeconds(1);
+        final MainThreadExecutable mainThreadExecutable =
+                new TestMainThreadExecutable(() -> actualDelayMsFuture.complete(null));
+
+        final RpcEndpoint.MainThreadExecutor mainThreadExecutor =
+                new RpcEndpoint.MainThreadExecutor(mainThreadExecutable, () -> {}, endpointId);
 
         scheduler.accept(mainThreadExecutor, expectedDelay);
 
-        assertThat(actualDelayMsFuture.get(), is(expectedDelay.toMillis()));
+        actualDelayMsFuture.get(expectedDelay.toMillis() * 2, TimeUnit.MILLISECONDS);
+        mainThreadExecutor.close();
+    }
+
+    private static void testScheduleAfterClose(
+            BiFunction<RpcEndpoint.MainThreadExecutor, Duration, ScheduledFuture<?>> scheduler) {
+        final CompletableFuture<Void> actualDelayMsFuture = new CompletableFuture<>();
+        final String endpointId = "foobar";
+
+        final Duration expectedDelay = Duration.ofSeconds(1);
+        final MainThreadExecutable mainThreadExecutable =
+                new TestMainThreadExecutable(() -> actualDelayMsFuture.complete(null));
+
+        final RpcEndpoint.MainThreadExecutor mainThreadExecutor =
+                new RpcEndpoint.MainThreadExecutor(mainThreadExecutable, () -> {}, endpointId);
+
+        mainThreadExecutor.close();
+
+        ScheduledFuture<?> future = scheduler.apply(mainThreadExecutor, expectedDelay);
+
+        assertTrue(future.isDone());
+        assertTrue(future instanceof ThrowingScheduledFuture);
+        assertTrue(future.cancel(true));
+        assertTrue(future.cancel(false));
+        assertFalse(actualDelayMsFuture.isDone());
     }
 
     /**
@@ -339,6 +398,7 @@ public class RpcEndpointTest extends TestLogger {
         final Integer expectedInteger = 12345;
         try {
             endpoint.start();
+            validateRegisteredResourceCount(1, endpoint.getResourceRegistry());
             final CompletableFuture<Integer> integerFuture =
                     endpoint.callAsync(
                             () -> {
@@ -349,6 +409,7 @@ public class RpcEndpointTest extends TestLogger {
             assertEquals(expectedInteger, integerFuture.get(TIMEOUT.getSize(), TIMEOUT.getUnit()));
         } finally {
             RpcUtils.terminateRpcEndpoint(endpoint, TIMEOUT);
+            validateRegistryClosed(endpoint.getResourceRegistry());
         }
     }
 
@@ -364,6 +425,7 @@ public class RpcEndpointTest extends TestLogger {
         CountDownLatch latch = new CountDownLatch(1);
         try {
             endpoint.start();
+            validateRegisteredResourceCount(1, endpoint.getResourceRegistry());
             final CompletableFuture<Throwable> throwableFuture =
                     endpoint.callAsync(
                                     () -> {
@@ -380,20 +442,21 @@ public class RpcEndpointTest extends TestLogger {
         } finally {
             latch.countDown();
             RpcUtils.terminateRpcEndpoint(endpoint, TIMEOUT);
+            validateRegistryClosed(endpoint.getResourceRegistry());
         }
     }
 
     private static class TestMainThreadExecutable implements MainThreadExecutable {
 
-        private final BiConsumer<Runnable, Long> scheduleRunAsyncConsumer;
+        private final Runnable scheduleRunAsyncRunnable;
 
-        private TestMainThreadExecutable(BiConsumer<Runnable, Long> scheduleRunAsyncConsumer) {
-            this.scheduleRunAsyncConsumer = scheduleRunAsyncConsumer;
+        private TestMainThreadExecutable(Runnable scheduleRunAsyncRunnable) {
+            this.scheduleRunAsyncRunnable = scheduleRunAsyncRunnable;
         }
 
         @Override
         public void runAsync(Runnable runnable) {
-            throw new UnsupportedOperationException();
+            scheduleRunAsyncRunnable.run();
         }
 
         @Override
@@ -403,7 +466,7 @@ public class RpcEndpointTest extends TestLogger {
 
         @Override
         public void scheduleRunAsync(Runnable runnable, long delay) {
-            scheduleRunAsyncConsumer.accept(runnable, delay);
+            throw new UnsupportedOperationException();
         }
     }
 }

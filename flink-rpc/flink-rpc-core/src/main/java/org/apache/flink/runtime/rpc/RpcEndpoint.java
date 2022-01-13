@@ -18,21 +18,29 @@
 
 package org.apache.flink.runtime.rpc;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ScheduledFutureAdapter;
+import org.apache.flink.runtime.concurrent.ThrowingScheduledFuture;
 import org.apache.flink.util.AutoCloseableAsync;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.concurrent.ExecutorThreadFactory;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -100,6 +108,8 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
      */
     final AtomicReference<Thread> currentMainThread = new AtomicReference<>(null);
 
+    private final CloseableRegistry resourceRegistry;
+
     /**
      * The main thread executor to be used to execute future callbacks in the main thread of the
      * executing rpc server.
@@ -126,7 +136,10 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
 
         this.rpcServer = rpcService.startServer(this);
 
-        this.mainThreadExecutor = new MainThreadExecutor(rpcServer, this::validateRunsInMainThread);
+        this.resourceRegistry = new CloseableRegistry();
+        this.mainThreadExecutor =
+                new MainThreadExecutor(rpcServer, this::validateRunsInMainThread, endpointId);
+        registerResource(this.mainThreadExecutor);
     }
 
     /**
@@ -182,6 +195,30 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
     }
 
     /**
+     * Register the given closeable resource to {@link CloseableRegistry}.
+     *
+     * @param closeableResource the given closeable resource
+     */
+    protected void registerResource(Closeable closeableResource) {
+        try {
+            resourceRegistry.registerCloseable(closeableResource);
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Registry closeable resource " + closeableResource + " fail", e);
+        }
+    }
+
+    /**
+     * Unregister the given closeable resource from {@link CloseableRegistry}.
+     *
+     * @param closeableResource the given closeable resource
+     * @return true if the given resource register successful, otherwise false
+     */
+    protected boolean unregisterResource(Closeable closeableResource) {
+        return resourceRegistry.unregisterCloseable(closeableResource);
+    }
+
+    /**
      * User overridable callback which is called from {@link #internalCallOnStart()}.
      *
      * <p>This method is called when the RpcEndpoint is being started. The method is guaranteed to
@@ -211,6 +248,11 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
      */
     public final CompletableFuture<Void> internalCallOnStop() {
         validateRunsInMainThread();
+        try {
+            resourceRegistry.close();
+        } catch (IOException e) {
+            throw new RuntimeException("Close resource registry fail", e);
+        }
         CompletableFuture<Void> stopFuture = onStop();
         isRunning = false;
         return stopFuture;
@@ -322,6 +364,16 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
         return rpcServer.getTerminationFuture();
     }
 
+    /**
+     * Get the closeable resource registry.
+     *
+     * @return Closeable resource registry
+     */
+    @VisibleForTesting
+    CloseableRegistry getResourceRegistry() {
+        return resourceRegistry;
+    }
+
     // ------------------------------------------------------------------------
     //  Asynchronous executions
     // ------------------------------------------------------------------------
@@ -399,15 +451,24 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
     //  Utilities
     // ------------------------------------------------------------------------
 
-    /** Executor which executes runnables in the main thread context. */
+    /**
+     * Executor which executes runnables in the main thread context. The executor will holds all the
+     * periodic tasks, sends them to akka thread pool via gateway when they should be executed.
+     */
     protected static class MainThreadExecutor implements ComponentMainThreadExecutor {
+        private final Logger log = LoggerFactory.getLogger(getClass());
 
         private final MainThreadExecutable gateway;
         private final Runnable mainThreadCheck;
+        private final ScheduledExecutorService scheduledExecutorService;
 
-        MainThreadExecutor(MainThreadExecutable gateway, Runnable mainThreadCheck) {
+        MainThreadExecutor(
+                MainThreadExecutable gateway, Runnable mainThreadCheck, String endpointId) {
             this.gateway = Preconditions.checkNotNull(gateway);
             this.mainThreadCheck = Preconditions.checkNotNull(mainThreadCheck);
+            this.scheduledExecutorService =
+                    Executors.newSingleThreadScheduledExecutor(
+                            new ExecutorThreadFactory(endpointId + "-scheduled-main-executor"));
         }
 
         private void scheduleRunAsync(Runnable runnable, long delayMillis) {
@@ -419,20 +480,54 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
             gateway.runAsync(command);
         }
 
+        /**
+         * The result future will be used to cancel the runnable, we return a throwing scheduled
+         * future when the scheduled executor service is shutdown.
+         *
+         * @param command the task to execute in the future
+         * @param delay the time from now to delay the execution
+         * @param unit the time unit of the delay parameter
+         * @return the result future
+         */
         @Override
         public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
-            final long delayMillis = TimeUnit.MILLISECONDS.convert(delay, unit);
-            FutureTask<Void> ft = new FutureTask<>(command, null);
-            scheduleRunAsync(ft, delayMillis);
-            return new ScheduledFutureAdapter<>(ft, delayMillis, TimeUnit.MILLISECONDS);
+            if (delay > 0) {
+                // If the scheduled executor service is shutdown, the command won't be executed.
+                if (scheduledExecutorService.isShutdown()) {
+                    log.warn(
+                            "The scheduled executor service is shutdown and return throwing scheduled future for command {}",
+                            command);
+                    return ThrowingScheduledFuture.create();
+                } else {
+                    return scheduledExecutorService.schedule(() -> execute(command), delay, unit);
+                }
+            } else {
+                final long delayMillis = TimeUnit.MILLISECONDS.convert(delay, unit);
+                FutureTask<Void> ft = new FutureTask<>(command, null);
+                scheduleRunAsync(ft, delayMillis);
+                return new ScheduledFutureAdapter<>(ft, delayMillis, TimeUnit.MILLISECONDS);
+            }
         }
 
         @Override
         public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
-            final long delayMillis = TimeUnit.MILLISECONDS.convert(delay, unit);
             FutureTask<V> ft = new FutureTask<>(callable);
-            scheduleRunAsync(ft, delayMillis);
-            return new ScheduledFutureAdapter<>(ft, delayMillis, TimeUnit.MILLISECONDS);
+            if (delay > 0) {
+                // If the scheduled executor service is shutdown, the callable won't be executed.
+                if (scheduledExecutorService.isShutdown()) {
+                    log.warn(
+                            "The scheduled executor service is shutdown and return throwing scheduled future for callable {}",
+                            callable);
+                    return ThrowingScheduledFuture.create();
+                } else {
+                    scheduledExecutorService.schedule(() -> execute(ft), delay, unit);
+                    return new ScheduledFutureAdapter<>(ft, delay, unit);
+                }
+            } else {
+                final long delayMillis = TimeUnit.MILLISECONDS.convert(delay, unit);
+                scheduleRunAsync(ft, delayMillis);
+                return new ScheduledFutureAdapter<>(ft, delayMillis, TimeUnit.MILLISECONDS);
+            }
         }
 
         @Override
@@ -452,6 +547,17 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
         @Override
         public void assertRunningInMainThread() {
             mainThreadCheck.run();
+        }
+
+        /**
+         * Shutdown the scheduled executor service and clear all the pending periodic tasks. The
+         * main thread executor will not execute periodic tasks later.
+         */
+        @Override
+        public void close() {
+            if (!scheduledExecutorService.isShutdown()) {
+                scheduledExecutorService.shutdownNow().clear();
+            }
         }
     }
 }
