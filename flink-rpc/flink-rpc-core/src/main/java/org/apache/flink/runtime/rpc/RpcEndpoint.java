@@ -35,6 +35,7 @@ import javax.annotation.Nonnull;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -469,6 +470,10 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
             this.scheduledExecutorService =
                     Executors.newSingleThreadScheduledExecutor(
                             new ExecutorThreadFactory(endpointId + "-scheduled-main-executor"));
+            log.info(
+                    "Main Scheduled Executor Service create with {}",
+                    this.scheduledExecutorService,
+                    new Exception());
         }
 
         private void scheduleRunAsync(Runnable runnable, long delayMillis) {
@@ -491,6 +496,12 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
          */
         @Override
         public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            log.info(
+                    "Main Scheduled Executor Service submit task {} delay {} to {}",
+                    command,
+                    delay,
+                    scheduledExecutorService,
+                    new Exception());
             if (delay > 0) {
                 // If the scheduled executor service is shutdown, the command won't be executed.
                 if (scheduledExecutorService.isShutdown()) {
@@ -512,6 +523,13 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
         @Override
         public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
             FutureTask<V> ft = new FutureTask<>(callable);
+            log.info(
+                    "Main Scheduled Executor Service submit callable {} ft {} delay {} to {}",
+                    callable,
+                    ft,
+                    delay,
+                    scheduledExecutorService,
+                    new Exception());
             if (delay > 0) {
                 // If the scheduled executor service is shutdown, the callable won't be executed.
                 if (scheduledExecutorService.isShutdown()) {
@@ -556,7 +574,13 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
         @Override
         public void close() {
             if (!scheduledExecutorService.isShutdown()) {
-                scheduledExecutorService.shutdownNow().clear();
+                List<Runnable> runnableList = scheduledExecutorService.shutdownNow();
+                log.info(
+                        "Main Scheduled Executor Service close {} with task list {}",
+                        scheduledExecutorService,
+                        runnableList,
+                        new Exception());
+                runnableList.clear();
             }
         }
     }
