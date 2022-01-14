@@ -1,10 +1,12 @@
 ---
-title: File Sink
+title: FileSystem
 weight: 6
 type: docs
 aliases:
   - /dev/connectors/file_sink.html
   - /apis/streaming/connectors/filesystem_sink.html
+  - /docs/connectors/datastream/streamfile_sink/
+  - /docs/connectors/datastream/file_sink/
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -25,12 +27,243 @@ specific language governing permissions and limitations
 under the License.
 -->
 
-# File Sink
+# FileSystem
 
-This connector provides a unified Sink for `BATCH` and `STREAMING` that writes partitioned files to filesystems
+This connector provides a unified Source and Sink for `BATCH` and `STREAMING` that reads or writes (partitioned) files to filesystems
 supported by the [Flink `FileSystem` abstraction]({{< ref "docs/deployment/filesystems/overview" >}}). This filesystem
-connector provides the same guarantees for both `BATCH` and `STREAMING` and it is an evolution of the 
-existing [Streaming File Sink]({{< ref "docs/connectors/datastream/streamfile_sink" >}}) which was designed for providing exactly-once semantics for `STREAMING` execution.
+connector provides the same guarantees for both `BATCH` and `STREAMING` and is designed for providing exactly-once semantics for `STREAMING` execution.
+
+The connector supports reading and writing a set of files from any (distributed) file system (e.g. POSIX, S3, HDFS)
+with a [format]({{< ref "docs/connectors/datastream/formats/overview" >}}) (e.g., Avro, CSV, Parquet),
+producing a stream or records.
+
+## File Source
+
+The `File Source` is based on the [Source API]({{< ref "docs/dev/datastream/sources" >}}#the-data-source-api), 
+a unified data source that reads files - both in batch and in streaming mode. 
+It is divided into the following two parts: File SplitEnumerator and File SourceReader. 
+
+* File `SplitEnumerator` is responsible for discovering and identifying the files to read and assigns them to the File SourceReader.
+* File `SourceReader` requests the files it needs to process and reads the file from the filesystem. 
+
+You'll need to combine the File Source with a [format]({{< ref "docs/connectors/datastream/formats/overview" >}}). This allows you to
+parse CSV, decode AVRO or read Parquet columnar files.
+
+#### Bounded and Unbounded Streams
+
+A bounded `File Source` lists all files (via SplitEnumerator, for example a recursive directory list with filtered-out hidden files) and reads them all.
+
+An unbounded `File Source` is created when configuring the enumerator for periodic file discovery.
+In that case, the SplitEnumerator will enumerate like the bounded case but after a certain interval repeats the enumeration.
+For any repeated enumeration, the `SplitEnumerator` filters out previously detect files and only sends new ones to the `SourceReader`.
+
+### Usage
+
+You start building a file source via one of the following calls:
+
+{{< tabs "FileSourceUsage" >}}
+{{< tab "Java" >}}
+```java
+// reads the contents of a file from a file stream. 
+FileSource.forRecordStreamFormat(StreamFormat,Path...)
+        
+// reads batches of records from a file at a time
+FileSource.forBulkFileFormat(BulkFormat,Path...)
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+This creates a `FileSource.FileSourceBuilder` on which you can configure all the properties of the file source.
+
+For the bounded/batch case, the file source processes all files under the given path(s). 
+In the continuous/streaming case, the source periodically checks the paths for new files and will start reading those.
+
+When you start creating a file source (via the `FileSource.FileSourceBuilder` created through one of the above-mentioned methods) 
+the source is by default in bounded/batch mode. Call `AbstractFileSource.AbstractFileSourceBuilder.monitorContinuously(Duration)` 
+to put the source into continuous streaming mode.
+
+{{< tabs "FileSourceBuilder" >}}
+{{< tab "Java" >}}
+```java
+final FileSource<String> source =
+        FileSource.forRecordStreamFormat(...)
+        .monitorContinuously(Duration.ofMillis(5))  
+        .build();
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+### Format Types
+
+The reading of each file happens through file readers defined by file formats. 
+These define the parsing logic for the contents of the file. There are multiple classes that the source supports. 
+Their interfaces trade of simplicity of implementation and flexibility/efficiency.
+
+* A `StreamFormat` reads the contents of a file from a file stream. It is the simplest format to implement, 
+and provides many features out-of-the-box (like checkpointing logic) but is limited in the optimizations it can apply 
+(such as object reuse, batching, etc.).
+
+* A `BulkFormat` reads batches of records from a file at a time. 
+It is the most "low level" format to implement, but offers the greatest flexibility to optimize the implementation.
+
+#### TextLine format
+
+A `StreamFormat` reader format that text lines from a file.
+The reader uses Java's built-in `InputStreamReader` to decode the byte stream using
+various supported charset encodings.
+This format does not support optimized recovery from checkpoints. On recovery, it will re-read
+and discard the number of lined that were processed before the last checkpoint. That is due to
+the fact that the offsets of lines in the file cannot be tracked through the charset decoders
+with their internal buffering of stream input and charset decoder state.
+
+#### SimpleStreamFormat Abstract Class
+
+A simple version of `StreamFormat` for formats that are not splittable.
+Custom reads of Array or File can be done by implementing `SimpleStreamFormat`:
+
+{{< tabs "SimpleStreamFormat" >}}
+{{< tab "Java" >}}
+```java
+private static final class ArrayReaderFormat extends SimpleStreamFormat<byte[]> {
+    private static final long serialVersionUID = 1L;
+
+    @Override
+    public Reader<byte[]> createReader(Configuration config, FSDataInputStream stream)
+            throws IOException {
+        return new ArrayReader(stream);
+    }
+
+    @Override
+    public TypeInformation<byte[]> getProducedType() {
+        return PrimitiveArrayTypeInfo.BYTE_PRIMITIVE_ARRAY_TYPE_INFO;
+    }
+}
+
+final FileSource<byte[]> source =
+                FileSource.forRecordStreamFormat(new ArrayReaderFormat(), path).build();
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+An example of a `SimpleStreamFormat` is `CsvReaderFormat`. It can be initialized as follows:
+```java
+CsvReaderFormat<SomePojo> csvFormat = CsvReaderFormat.forPojo(SomePojo.class);
+FileSource<SomePojo> source = 
+        FileSource.forRecordStreamFormat(csvFormat, Path.fromLocalFile(...)).build();
+```
+
+The schema for CSV parsing, in this case, is automatically derived based on the fields of the `SomePojo` class using the `Jackson` library. (Note: you might need to add `@JsonPropertyOrder({field1, field2, ...})` annotation to your class definition with the fields order exactly matching those of the CSV file columns).
+
+If you need more fine-grained control over the CSV schema or the parsing options, use the more low-level `forSchema` static factory method of `CsvReaderFormat`:
+
+```java
+CsvReaderFormat<T> forSchema(CsvMapper mapper, 
+                             CsvSchema schema, 
+                             TypeInformation<T> typeInformation) 
+```
+
+#### Bulk Format
+
+The BulkFormat reads and decodes batches of records at a time. Examples of bulk formats
+are formats like ORC or Parquet.
+The outer `BulkFormat` class acts mainly as a configuration holder and factory for the
+reader. The actual reading is done by the `BulkFormat.Reader`, which is created in the
+`BulkFormat#createReader(Configuration, FileSourceSplit)` method. If a bulk reader is
+created based on a checkpoint during checkpointed streaming execution, then the reader is
+re-created in the `BulkFormat#restoreReader(Configuration, FileSourceSplit)` method.
+
+A `SimpleStreamFormat` can be turned into a `BulkFormat` by wrapping it in a `StreamFormatAdapter`:
+```java
+BulkFormat<SomePojo, FileSourceSplit> bulkFormat = 
+        new StreamFormatAdapter<>(CsvReaderFormat.forPojo(SomePojo.class));
+```
+
+### Customizing File Enumeration
+
+{{< tabs "CustomizingFileEnumeration" >}}
+{{< tab "Java" >}}
+```java
+/**
+ * A FileEnumerator implementation for hive source, which generates splits based on 
+ * HiveTablePartition.
+ */
+public class HiveSourceFileEnumerator implements FileEnumerator {
+    
+    // reference constructor
+    public HiveSourceFileEnumerator(...) {
+        ...
+    }
+
+    /***
+     * Generates all file splits for the relevant files under the given paths. The {@code
+     * minDesiredSplits} is an optional hint indicating how many splits would be necessary to
+     * exploit parallelism properly.
+     */
+    @Override
+    public Collection<FileSourceSplit> enumerateSplits(Path[] paths, int minDesiredSplits)
+            throws IOException {
+        // createInputSplits:splitting files into fragmented collections
+        return new ArrayList<>(createInputSplits(...));
+    }
+
+    ...
+
+    /***
+     * A factory to create HiveSourceFileEnumerator.
+     */
+    public static class Provider implements FileEnumerator.Provider {
+
+        ...
+        @Override
+        public FileEnumerator create() {
+            return new HiveSourceFileEnumerator(...);
+        }
+    }
+}
+// use the customizing file enumeration
+new HiveSource<>(
+        ...,
+        new HiveSourceFileEnumerator.Provider(
+        partitions != null ? partitions : Collections.emptyList(),
+        new JobConfWrapper(jobConf)),
+       ...);
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+### Current Limitations
+
+Watermarking doesn't work particularly well for large backlogs of files, because watermarks eagerly advance within a file, and the next file might contain data later than the watermark again.
+We are looking at ways to generate the watermarks more based on global information.
+
+For Unbounded File Sources, the enumerator currently remembers paths of all already processed files, which is a state that can in come cases grow rather large.
+The future will be planned to add a compressed form of tracking already processed files in the future (for example by keeping modification timestamps lower boundaries).
+
+### Behind the Scene
+{{< hint info >}}
+If you are interested in how File source works under the design of new data source API, you may
+want to read this part as a reference. For details about the new data source API,
+[documentation of data source]({{< ref "docs/dev/datastream/sources.md" >}}) and
+<a href="https://cwiki.apache.org/confluence/display/FLINK/FLIP-27%3A+Refactor+Source+Interface">FLIP-27</a>
+provide more descriptive discussions.
+{{< /hint >}}
+
+The `File Source` is divided in the following two parts: File SplitEnumerator and File SourceReader.
+
+The Source of a file system is divided into the following two parts: File Split Enumerator and File Source Reader,
+File Split Enumerator (Split is an abstraction of the external file system data splitting)
+It is responsible for discovering the split in the external system and assigning it to the File SourceReader,
+and it also manages the global water level to ensure that the consumption rate is approximately the same between our different File Source Readers.
+File Source Reader is the part that really interacts with the external system, the community provides `SourceReaderBase`,
+`SourceReaderBase` implementation is divided into two parts, one is to interact with the external system,
+he is composed of one or more SplitReader, each Reader is driven by a Fetcher, multiple Fetcher unified by a Manager for management,
+SplitReader will pull a batch of data from the external system each time down to the middle of the ElementQueue.
+The other part is to interact with the engine side of Flink, which is driven by the main thread of Task.
+The main thread of Task uses the lock-free model of MailBox, each time the RecordEmitter will take a batch
+of data from the ElementQueue and send them downstream one by one, while the RecordEmitter will report to
+output whether there is still new data to be processed and record the state of the split in SplitState.
+
+## File Sink
 
 The file sink writes incoming data into buckets. Given that the incoming streams can be unbounded,
 data in each bucket is organized into part files of finite size. The bucketing behaviour is fully configurable
@@ -54,7 +287,7 @@ in the `in-progress` or the `pending` state, and cannot be safely read by downst
 
  {{< img src="/fig/streamfilesink_bucketing.png"  width="100%" >}}
 
-## File Formats
+### Format Types
 
 The `FileSink` supports both row-wise and bulk encoding formats, such as [Apache Parquet](http://parquet.apache.org).
 These two variants come with their respective builders that can be created with the following static methods:
@@ -68,7 +301,7 @@ stored and the encoding logic for our data.
 Please check out the JavaDoc for {{< javadoc file="org/apache/flink/connector/file/sink/FileSink.html" name="FileSink">}}
 for all the configuration options and more documentation about the implementation of the different data formats.
 
-### Row-encoded Formats
+#### Row-encoded Formats
 
 Row-encoded formats need to specify an `Encoder`
 that is used for serializing individual rows to the `OutputStream` of the in-progress part files.
@@ -143,7 +376,7 @@ a rolling policy that rolls the in-progress part file on any of the following 3 
  - It hasn't received new records for the last 5 minutes
  - The file size has reached 1 GB (after writing the last record)
 
-### Bulk-encoded Formats
+#### Bulk-encoded Formats
 
 Bulk-encoded sinks are created similarly to the row-encoded ones, but instead of
 specifying an `Encoder`, we have to specify a {{< javadoc file="org/apache/flink/api/common/serialization/BulkWriter.Factory.html" name="BulkWriter.Factory">}}.
@@ -163,7 +396,7 @@ Flink comes with four built-in BulkWriter factories:
 The latter rolls on every checkpoint. A policy can roll additionally based on size or processing time.
 {{< /hint >}}
 
-#### Parquet format
+##### Parquet format
 
 Flink contains built in convenience methods for creating Parquet writer factories for Avro data. These methods
 and their associated documentation can be found in the ParquetAvroWriters class.
@@ -251,7 +484,7 @@ input.sinkTo(sink)
 {{< /tab >}}
 {{< /tabs >}}
 
-#### Avro format
+##### Avro format
 
 Flink also provides built-in support for writing data into Avro files. A list of convenience methods to create
 Avro writer factories and their associated documentation can be found in the 
@@ -345,7 +578,7 @@ stream.sinkTo(FileSink.forBulkFormat(
 {{< /tab >}}
 {{< /tabs >}}
 
-#### ORC Format
+##### ORC Format
  
 To enable the data to be bulk encoded in ORC format, Flink offers `OrcBulkWriterFactory`
 which takes a concrete implementation of Vectorizer.
@@ -539,7 +772,7 @@ class PersonVectorizer(schema: String) extends Vectorizer[Person](schema) {
 {{< /tab >}}
 {{< /tabs >}}
 
-#### Hadoop SequenceFile format
+##### Hadoop SequenceFile format
 
 To use the `SequenceFile` bulk encoder in your application you need to add the following dependency:
 
@@ -595,7 +828,7 @@ input.sinkTo(sink)
 
 The `SequenceFileWriterFactory` supports additional constructor parameters to specify compression settings.
 
-## Bucket Assignment
+### Bucket Assignment
 
 The bucketing logic defines how the data will be structured into subdirectories inside the base output directory.
 
@@ -611,7 +844,7 @@ Flink comes with two built-in BucketAssigners:
  - `DateTimeBucketAssigner` : Default time based assigner
  - `BasePathBucketAssigner` : Assigner that stores all part files in the base path (single global bucket)
 
-## Rolling Policy
+### Rolling Policy
 
 The `RollingPolicy` defines when a given in-progress part file will be closed and moved to the pending and later to finished state.
 Part files in the "finished" state are the ones that are ready for viewing and are guaranteed to contain valid data that will not be reverted in case of failure.
@@ -624,7 +857,7 @@ Flink comes with two built-in RollingPolicies:
  - `DefaultRollingPolicy`
  - `OnCheckpointRollingPolicy`
 
-## Part file lifecycle
+### Part file lifecycle
 
 In order to use the output of the `FileSink` in downstream systems, we need to understand the naming and lifecycle of the output files produced.
 
@@ -678,7 +911,7 @@ New buckets are created as dictated by the bucketing policy, and this doesn't af
 
 Old buckets can still receive new records as the bucketing policy is evaluated on a per-record basis.
 
-### Part file configuration
+#### Part file configuration
 
 Finished files can be distinguished from the in-progress ones by their naming scheme only.
 
@@ -741,9 +974,9 @@ val sink = FileSink
 {{< /tab >}}
 {{< /tabs >}}
 
-## Important Considerations
+### Important Considerations
 
-### General
+#### General
 
 <span class="label label-danger">Important Note 1</span>: When using Hadoop < 2.7, please use
 the `OnCheckpointRollingPolicy` which rolls part files on every checkpoint. The reason is that if part files "traverse"
@@ -763,7 +996,7 @@ in-progress file.
 <span class="label label-danger">Important Note 4</span>: Currently, the `FileSink` only supports three filesystems: 
 HDFS, S3, and Local. Flink will throw an exception when using an unsupported filesystem at runtime.
 
-### BATCH-specific
+#### BATCH-specific
 
 <span class="label label-danger">Important Note 1</span>: Although the `Writer` is executed with the user-specified
 parallelism, the `Committer` is executed with parallelism equal to 1.
@@ -776,7 +1009,7 @@ failure happens while the `Committers` are committing, then we may have duplicat
 future Flink versions 
 (see progress in [FLIP-147](https://cwiki.apache.org/confluence/display/FLINK/FLIP-147%3A+Support+Checkpoints+After+Tasks+Finished)).
 
-### S3-specific
+#### S3-specific
 
 <span class="label label-danger">Important Note 1</span>: For S3, the `FileSink`
 supports only the [Hadoop-based](https://hadoop.apache.org/) FileSystem implementation, not
@@ -797,3 +1030,4 @@ before the job is restarted. This will result in your job not being able to rest
 pending part-files are no longer there and Flink will fail with an exception as it tries to fetch them and fails.
 
 {{< top >}}
+

@@ -161,8 +161,8 @@ CREATE TABLE MyUserTableWithFilepath (
 
 ## Streaming Sink
 
-The file system connector supports streaming writes, based on Flink's [Streaming File Sink]({{< ref "docs/connectors/datastream/streamfile_sink" >}})
-to write records to file. Row-encoded Formats are csv and json. Bulk-encoded Formats are parquet, orc and avro.
+The file system connector supports streaming writes, based on Flink's [FileSystem]({{< ref "docs/connectors/datastream/filesystem" >}})
+to write records to file. Row-encoded Formats are csv and json. Bulk-encoded Formats are Parquet, ORC and Avro.
 
 You can write SQL directly, insert the stream data into the non-partitioned table.
 If it is a partitioned table, you can configure partition related operations. See [Partition Commit](filesystem.html#partition-commit) for details.
