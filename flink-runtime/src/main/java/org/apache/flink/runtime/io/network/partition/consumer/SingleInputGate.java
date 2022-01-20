@@ -29,6 +29,7 @@ import org.apache.flink.runtime.event.TaskEvent;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.io.network.api.EndOfData;
 import org.apache.flink.runtime.io.network.api.EndOfPartitionEvent;
+import org.apache.flink.runtime.io.network.api.StopMode;
 import org.apache.flink.runtime.io.network.api.serialization.EventSerializer;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferDecompressor;
@@ -208,6 +209,7 @@ public class SingleInputGate extends IndexedInputGate {
 
     private final ThroughputCalculator throughputCalculator;
     private final BufferDebloater bufferDebloater;
+    private boolean shouldDrainOnEndOfData = true;
 
     public SingleInputGate(
             String owningTaskName,
@@ -455,7 +457,27 @@ public class SingleInputGate extends IndexedInputGate {
                 }
 
                 return totalBuffers;
-            } catch (Exception ignored) {
+            } catch (Exception ex) {
+                LOG.debug("Fail to get number of queued buffers :", ex);
+            }
+        }
+
+        return 0;
+    }
+
+    public long getSizeOfQueuedBuffers() {
+        // re-try 3 times, if fails, return 0 for "unknown"
+        for (int retry = 0; retry < 3; retry++) {
+            try {
+                long totalSize = 0;
+
+                for (InputChannel channel : inputChannels.values()) {
+                    totalSize += channel.unsynchronizedGetSizeOfQueuedBuffers();
+                }
+
+                return totalSize;
+            } catch (Exception ex) {
+                LOG.debug("Fail to get size of queued buffers :", ex);
             }
         }
 
@@ -666,8 +688,14 @@ public class SingleInputGate extends IndexedInputGate {
     }
 
     @Override
-    public boolean hasReceivedEndOfData() {
-        return hasReceivedEndOfData;
+    public EndOfDataStatus hasReceivedEndOfData() {
+        if (!hasReceivedEndOfData) {
+            return EndOfDataStatus.NOT_END_OF_DATA;
+        } else if (shouldDrainOnEndOfData) {
+            return EndOfDataStatus.DRAINED;
+        } else {
+            return EndOfDataStatus.STOPPED;
+        }
     }
 
     @Override
@@ -708,14 +736,11 @@ public class SingleInputGate extends IndexedInputGate {
         Optional<InputWithData<InputChannel, BufferAndAvailability>> next =
                 waitAndGetNextData(blocking);
         if (!next.isPresent()) {
-            throughputCalculator.pauseMeasurement(System.currentTimeMillis());
-            getAvailableFuture()
-                    .whenComplete(
-                            (future, ex) -> {
-                                throughputCalculator.resumeMeasurement(System.currentTimeMillis());
-                            });
+            throughputCalculator.pauseMeasurement();
             return Optional.empty();
         }
+
+        throughputCalculator.resumeMeasurement();
 
         InputWithData<InputChannel, BufferAndAvailability> inputWithData = next.get();
         final BufferOrEvent bufferOrEvent =
@@ -849,6 +874,7 @@ public class SingleInputGate extends IndexedInputGate {
                 channelsWithEndOfUserRecords.set(currentChannel.getChannelIndex());
                 hasReceivedEndOfData =
                         channelsWithEndOfUserRecords.cardinality() == numberOfInputChannels;
+                shouldDrainOnEndOfData &= ((EndOfData) event).getStopMode() == StopMode.DRAIN;
             }
         }
 

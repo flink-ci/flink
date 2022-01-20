@@ -23,6 +23,7 @@ import org.apache.flink.api.connector.sink.GlobalCommitter;
 import org.apache.flink.api.connector.sink.Sink;
 import org.apache.flink.connector.base.sink.writer.ElementConverter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
+import org.apache.flink.util.Preconditions;
 
 import java.io.Serializable;
 import java.util.Collection;
@@ -54,22 +55,28 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
     private final int maxBatchSize;
     private final int maxInFlightRequests;
     private final int maxBufferedRequests;
-    private final long flushOnBufferSizeInBytes;
+    private final long maxBatchSizeInBytes;
     private final long maxTimeInBufferMS;
+    private final long maxRecordSizeInBytes;
 
     protected AsyncSinkBase(
             ElementConverter<InputT, RequestEntryT> elementConverter,
             int maxBatchSize,
             int maxInFlightRequests,
             int maxBufferedRequests,
-            long flushOnBufferSizeInBytes,
-            long maxTimeInBufferMS) {
-        this.elementConverter = elementConverter;
+            long maxBatchSizeInBytes,
+            long maxTimeInBufferMS,
+            long maxRecordSizeInBytes) {
+        this.elementConverter =
+                Preconditions.checkNotNull(
+                        elementConverter,
+                        "ElementConverter must be not null when initilizing the AsyncSinkBase.");
         this.maxBatchSize = maxBatchSize;
         this.maxInFlightRequests = maxInFlightRequests;
         this.maxBufferedRequests = maxBufferedRequests;
-        this.flushOnBufferSizeInBytes = flushOnBufferSizeInBytes;
+        this.maxBatchSizeInBytes = maxBatchSizeInBytes;
         this.maxTimeInBufferMS = maxTimeInBufferMS;
+        this.maxRecordSizeInBytes = maxRecordSizeInBytes;
     }
 
     @Override
@@ -108,11 +115,15 @@ public abstract class AsyncSinkBase<InputT, RequestEntryT extends Serializable>
         return maxBufferedRequests;
     }
 
-    protected long getFlushOnBufferSizeInBytes() {
-        return flushOnBufferSizeInBytes;
+    protected long getMaxBatchSizeInBytes() {
+        return maxBatchSizeInBytes;
     }
 
     protected long getMaxTimeInBufferMS() {
         return maxTimeInBufferMS;
+    }
+
+    protected long getMaxRecordSizeInBytes() {
+        return maxRecordSizeInBytes;
     }
 }

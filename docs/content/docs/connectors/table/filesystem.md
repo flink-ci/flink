@@ -30,6 +30,7 @@ This connector provides access to partitioned files in filesystems
 supported by the [Flink FileSystem abstraction]({{< ref "docs/deployment/filesystems/overview" >}}).
 
 The file system connector itself is included in Flink and does not require an additional dependency.
+The corresponding jar can be found in the Flink distribution inside the `/lib` directory.
 A corresponding format needs to be specified for reading and writing rows from and to a file system.
 
 The file system connector allows for reading and writing from a local or distributed filesystem. A filesystem table can be defined as:
@@ -107,6 +108,37 @@ The file system connector supports multiple formats:
 The file system connector can be used to read single files or entire directories into a single table.
 
 When using a directory as the source path, there is **no defined order of ingestion** for the files inside the directory.
+
+### Directory watching
+
+The file system connector automatically watches the input directory when the runtime mode is configured as STREAMING.
+
+You can modify the watch interval using the following option.
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+        <th class="text-left" style="width: 20%">Key</th>
+        <th class="text-left" style="width: 15%">Default</th>
+        <th class="text-left" style="width: 10%">Type</th>
+        <th class="text-left" style="width: 55%">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+        <td><h5>source.monitor-interval</h5></td>
+        <td style="word-wrap: break-word;">(none)</td>
+        <td>Duration</td>
+        <td>The interval in which the source checks for new files. The interval must be greater than 0. 
+        Each file is uniquely identified by its path, and will be processed once, as soon as it's discovered. 
+        The set of files already processed is kept in state during the whole lifecycle of the source, 
+        so it's persisted in checkpoints and savepoints together with the source state. 
+        Shorter intervals mean that files are discovered more quickly, 
+        but also imply more frequent listing or directory traversal of the file system / object store. 
+        If this config option is not set, the provided path will be scanned once, hence the source will be bounded.</td>
+    </tr>
+  </tbody>
+</table>
 
 ### Available Metadata
 
@@ -335,7 +367,7 @@ Time extractors define extracting time from partition values.
         <td><h5>partition.time-extractor.kind</h5></td>
         <td style="word-wrap: break-word;">default</td>
         <td>String</td>
-        <td>Time extractor to extract time from partition values. Support default and custom. For default, can configure timestamp pattern. For custom, should configure extractor class.</td>
+        <td>Time extractor to extract time from partition values. Support default and custom. For default, can configure timestamp pattern\formatter. For custom, should configure extractor class.</td>
     </tr>
     <tr>
         <td><h5>partition.time-extractor.class</h5></td>
@@ -347,7 +379,15 @@ Time extractors define extracting time from partition values.
         <td><h5>partition.time-extractor.timestamp-pattern</h5></td>
         <td style="word-wrap: break-word;">(none)</td>
         <td>String</td>
-        <td>The 'default' construction way allows users to use partition fields to get a legal timestamp pattern. Default support 'yyyy-mm-dd hh:mm:ss' from first field. If timestamp should be extracted from a single partition field 'dt', can configure: '$dt'. If timestamp should be extracted from multiple partition fields, say 'year', 'month', 'day' and 'hour', can configure: '$year-$month-$day $hour:00:00'. If timestamp should be extracted from two partition fields 'dt' and 'hour', can configure: '$dt $hour:00:00'.</td>
+        <td>The 'default' construction way allows users to use partition fields to get a legal timestamp pattern. Default support 'yyyy-MM-dd hh:mm:ss' from first field. If timestamp should be extracted from a single partition field 'dt', can configure: '$dt'. If timestamp should be extracted from multiple partition fields, say 'year', 'month', 'day' and 'hour', can configure: '$year-$month-$day $hour:00:00'. If timestamp should be extracted from two partition fields 'dt' and 'hour', can configure: '$dt $hour:00:00'.</td>
+    </tr>
+    <tr>
+        <td><h5>partition.time-extractor.timestamp-formatter</h5></td>
+        <td style="word-wrap: break-word;">yyyy-MM-dd&nbsp;HH:mm:ss</td>
+        <td>String</td>
+        <td>The formatter that formats the partition timestamp string value to timestamp, the partition timestamp string value is expressed by 'partition.time-extractor.timestamp-pattern'. For example, the partition timestamp is extracted from multiple partition fields, say 'year', 'month' and 'day', you can configure 'partition.time-extractor.timestamp-pattern' to '$year$month$day', and configure `partition.time-extractor.timestamp-formatter` to 'yyyyMMdd'. By default the formatter is 'yyyy-MM-dd HH:mm:ss'.
+            <br>The timestamp-formatter is compatible with Java's <a href="https://docs.oracle.com/javase/8/docs/api/java/time/format/DateTimeFormatter.html">DateTimeFormatter</a>
+ 				</td>
     </tr>
   </tbody>
 </table>

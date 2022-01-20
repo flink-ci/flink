@@ -18,8 +18,8 @@
 
 package org.apache.flink.tests.util.kafka;
 
-import org.apache.flink.connector.kafka.source.testutils.KafkaMultipleTopicExternalContext;
-import org.apache.flink.connector.kafka.source.testutils.KafkaSingleTopicExternalContext;
+import org.apache.flink.connector.kafka.testutils.KafkaMultipleTopicExternalContext;
+import org.apache.flink.connector.kafka.testutils.KafkaSingleTopicExternalContext;
 import org.apache.flink.connectors.test.common.external.DefaultContainerizedExternalSystem;
 import org.apache.flink.connectors.test.common.junit.annotations.ExternalContextFactory;
 import org.apache.flink.connectors.test.common.junit.annotations.ExternalSystem;
@@ -52,7 +52,7 @@ public class KafkaSourceE2ECase extends SourceTestSuiteBase<String> {
                     .fromContainer(
                             new KafkaContainer(DockerImageName.parse(DockerImageVersions.KAFKA))
                                     .withNetworkAliases(KAFKA_HOSTNAME))
-                    .bindWithFlinkContainer(flink.getFlinkContainer())
+                    .bindWithFlinkContainer(flink.getFlinkContainers().getJobManager())
                     .build();
 
     // Defines 2 External context Factories, so test cases will be invoked twice using these two

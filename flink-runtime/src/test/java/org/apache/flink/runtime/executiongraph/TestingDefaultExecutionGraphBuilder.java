@@ -21,7 +21,6 @@ package org.apache.flink.runtime.executiongraph;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.blob.BlobWriter;
@@ -42,7 +41,7 @@ import org.apache.flink.runtime.scheduler.SchedulerBase;
 import org.apache.flink.runtime.scheduler.VertexParallelismStore;
 import org.apache.flink.runtime.shuffle.ShuffleMaster;
 import org.apache.flink.runtime.shuffle.ShuffleTestUtils;
-import org.apache.flink.runtime.testutils.TestingUtils;
+import org.apache.flink.testutils.TestingUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,7 +69,6 @@ public class TestingDefaultExecutionGraphBuilder {
     private JobMasterPartitionTracker partitionTracker = NoOpJobMasterPartitionTracker.INSTANCE;
     private Configuration jobMasterConfig = new Configuration();
     private JobGraph jobGraph = JobGraphTestUtils.emptyJobGraph();
-    private MetricGroup metricGroup = new UnregisteredMetricsGroup();
     private CompletedCheckpointStore completedCheckpointStore =
             new StandaloneCompletedCheckpointStore(1);
     private CheckpointIDCounter checkpointIdCounter = new StandaloneCheckpointIDCounter();
@@ -128,11 +126,6 @@ public class TestingDefaultExecutionGraphBuilder {
         return this;
     }
 
-    public TestingDefaultExecutionGraphBuilder setMetricGroup(MetricGroup metricGroup) {
-        this.metricGroup = metricGroup;
-        return this;
-    }
-
     public TestingDefaultExecutionGraphBuilder setCompletedCheckpointStore(
             CompletedCheckpointStore completedCheckpointStore) {
         this.completedCheckpointStore = completedCheckpointStore;
@@ -163,7 +156,8 @@ public class TestingDefaultExecutionGraphBuilder {
         return this;
     }
 
-    public DefaultExecutionGraph build() throws JobException, JobExecutionException {
+    private DefaultExecutionGraph build(boolean isDynamicGraph)
+            throws JobException, JobExecutionException {
         return DefaultExecutionGraphBuilder.buildGraph(
                 jobGraph,
                 jobMasterConfig,
@@ -174,7 +168,6 @@ public class TestingDefaultExecutionGraphBuilder {
                 new CheckpointsCleaner(),
                 checkpointIdCounter,
                 rpcTimeout,
-                metricGroup,
                 blobWriter,
                 LOG,
                 shuffleMaster,
@@ -187,6 +180,15 @@ public class TestingDefaultExecutionGraphBuilder {
                 new DefaultVertexAttemptNumberStore(),
                 Optional.ofNullable(vertexParallelismStore)
                         .orElseGet(() -> SchedulerBase.computeVertexParallelismStore(jobGraph)),
-                () -> new CheckpointStatsTracker(0, new UnregisteredMetricsGroup()));
+                () -> new CheckpointStatsTracker(0, new UnregisteredMetricsGroup()),
+                isDynamicGraph);
+    }
+
+    public DefaultExecutionGraph build() throws JobException, JobExecutionException {
+        return build(false);
+    }
+
+    public DefaultExecutionGraph buildDynamicGraph() throws JobException, JobExecutionException {
+        return build(true);
     }
 }

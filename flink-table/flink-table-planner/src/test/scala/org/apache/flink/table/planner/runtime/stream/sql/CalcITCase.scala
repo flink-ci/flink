@@ -152,8 +152,8 @@ class CalcITCase extends StreamingTestBase {
     tEnv.registerTable("MyTableRow", t)
 
     val outputType = InternalTypeInfo.ofFields(
-      new VarCharType(VarCharType.MAX_LENGTH),
-      new VarCharType(VarCharType.MAX_LENGTH),
+      VarCharType.STRING_TYPE,
+      VarCharType.STRING_TYPE,
       new IntType())
 
     val result = tEnv.sqlQuery(sqlQuery).toAppendStream[RowData]
@@ -592,5 +592,33 @@ class CalcITCase extends StreamingTestBase {
 
     val result = tEnv.sqlQuery("SELECT * FROM T").execute().collect().toList
     TestBaseUtils.compareResultAsText(result, "42")
+  }
+
+  @Test
+  def testSearch(): Unit = {
+    val stream = env.fromElements("HC809", "H389N     ")
+    tEnv.createTemporaryView(
+      "SimpleTable", stream, Schema.newBuilder().column("f0", DataTypes.STRING()).build())
+
+    val sql =
+      """
+        |SELECT upper(f0) from SimpleTable where upper(f0) in (
+        |'CTNBSmokeSensor',
+        |'H388N',
+        |'H389N     ',
+        |'GHL-IRD',
+        |'JY-BF-20YN',
+        |'HC809',
+        |'DH-9908N-AEP',
+        |'DH-9908N'
+        |)
+        |""".stripMargin
+    val result = tEnv.sqlQuery(sql).toAppendStream[Row]
+    val sink = new TestingAppendSink
+    result.addSink(sink)
+    env.execute()
+    val expected =
+      List("HC809", "H389N     ")
+    assertEquals(expected.sorted, sink.getAppendResults.sorted)
   }
 }
