@@ -342,6 +342,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MetricCollectionResponseBody'
+  /jobmanager/thread-dump:
+    get:
+      description: Returns the thread dump of the JobManager.
+      responses:
+        "200":
+          description: The request was successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThreadDumpInfo'
   /jobs:
     get:
       description: Returns an overview over all jobs and their current state.
@@ -1867,6 +1877,8 @@ components:
           type: string
         cancel-job:
           type: boolean
+        triggerId:
+          $ref: '#/components/schemas/TriggerId'
     ThreadDumpInfo:
       type: object
       properties:
@@ -2094,6 +2106,9 @@ components:
         size:
           type: integer
           format: int64
+        mtime:
+          type: integer
+          format: int64
     CompletedCheckpointStatistics:
       type: object
       allOf:
@@ -2124,6 +2139,12 @@ components:
           type: boolean
         savepointPath:
           type: string
+        restoreMode:
+          type: string
+          enum:
+          - CLAIM
+          - NO_CLAIM
+          - LEGACY
     SubtaskAccumulatorsInfo:
       type: object
       properties:
@@ -2473,6 +2494,8 @@ components:
           type: string
         drain:
           type: boolean
+        triggerId:
+          $ref: '#/components/schemas/TriggerId'
     DashboardConfiguration:
       type: object
       properties:
@@ -2789,6 +2812,8 @@ components:
         aligned_checkpoint_timeout:
           type: integer
           format: int64
+        checkpoints_after_tasks_finish:
+          type: boolean
     JobExceptionsInfoWithHistory:
       type: object
       properties:
