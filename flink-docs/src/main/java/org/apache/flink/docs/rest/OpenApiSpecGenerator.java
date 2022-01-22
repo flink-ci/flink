@@ -36,12 +36,14 @@ import org.apache.flink.runtime.rest.messages.MessagePathParameter;
 import org.apache.flink.runtime.rest.messages.MessageQueryParameter;
 import org.apache.flink.runtime.rest.messages.TriggerId;
 import org.apache.flink.runtime.rest.messages.job.JobSubmitHeaders;
+import org.apache.flink.runtime.rest.messages.json.SerializedThrowableSerializer;
 import org.apache.flink.runtime.rest.util.DocumentingDispatcherRestEndpoint;
 import org.apache.flink.runtime.rest.util.DocumentingRestEndpoint;
 import org.apache.flink.runtime.rest.versioning.RestAPIVersion;
 import org.apache.flink.runtime.util.EnvironmentInformation;
 import org.apache.flink.runtime.webmonitor.handlers.JarUploadHeaders;
 import org.apache.flink.util.ConfigurationException;
+import org.apache.flink.util.SerializedThrowable;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.SerializationFeature;
@@ -151,6 +153,7 @@ public class OpenApiSpecGenerator {
         injectAsyncOperationResultSchema(openApi, asyncOperationSchemas);
 
         overrideIdSchemas(openApi);
+        overrideSerializeThrowableSchema(openApi);
 
         Files.deleteIfExists(outputFile);
         Files.write(outputFile, Yaml.pretty(openApi).getBytes(StandardCharsets.UTF_8));
@@ -253,6 +256,20 @@ public class OpenApiSpecGenerator {
                 .addSchemas(IntermediateDataSetID.class.getSimpleName(), idSchema)
                 .addSchemas(TriggerId.class.getSimpleName(), idSchema)
                 .addSchemas(ResourceID.class.getSimpleName(), idSchema);
+    }
+
+    private static void overrideSerializeThrowableSchema(final OpenAPI openAPI) {
+        final Schema serializedThrowableSchema =
+                new Schema<>()
+                        .type("object")
+                        .properties(
+                                Collections.singletonMap(
+                                        SerializedThrowableSerializer
+                                                .FIELD_NAME_SERIALIZED_THROWABLE,
+                                        new Schema().type("string").format("binary")));
+
+        openAPI.getComponents()
+                .addSchemas(SerializedThrowable.class.getSimpleName(), serializedThrowableSchema);
     }
 
     private static void add(MessageHeaders<?, ?, ?> spec, OpenAPI openApi) {
