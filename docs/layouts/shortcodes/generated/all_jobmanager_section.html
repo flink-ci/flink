@@ -117,6 +117,12 @@
             <td>The time in seconds after which a completed job expires and is purged from the job store.</td>
         </tr>
         <tr>
+            <td><h5>jobstore.flush-to-disk</h5></td>
+            <td style="word-wrap: break-word;">true</td>
+            <td>Boolean</td>
+            <td>Flag indicating whether the FileExecutionGraphInfoStore would flush execution graph to disk. If the option is set to "false", the execution graph will be manager by cache in store only.</td>
+        </tr>
+        <tr>
             <td><h5>jobstore.max-capacity</h5></td>
             <td style="word-wrap: break-word;">2147483647</td>
             <td>Integer</td>

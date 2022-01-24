@@ -49,6 +49,8 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                 configuration.getInteger(JobManagerOptions.JOB_STORE_MAX_CAPACITY);
         final long maximumCacheSizeBytes =
                 configuration.getLong(JobManagerOptions.JOB_STORE_CACHE_SIZE);
+        final boolean flushToDisk =
+                configuration.getBoolean(JobManagerOptions.JOB_STORE_FLUSH_TO_DISK);
 
         return new FileExecutionGraphInfoStore(
                 tmpDir,
@@ -56,6 +58,7 @@ public abstract class SessionClusterEntrypoint extends ClusterEntrypoint {
                 maximumCapacity,
                 maximumCacheSizeBytes,
                 scheduledExecutor,
-                Ticker.systemTicker());
+                Ticker.systemTicker(),
+                flushToDisk);
     }
 }

@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.blob.BlobServer;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -62,6 +63,8 @@ import org.hamcrest.Matchers;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.io.File;
 import java.io.IOException;
@@ -80,6 +83,7 @@ import static org.junit.Assert.assertThat;
 import static org.junit.Assert.assertTrue;
 
 /** Tests for the {@link FileExecutionGraphInfoStore}. */
+@RunWith(Parameterized.class)
 public class FileExecutionGraphInfoStoreTest extends TestLogger {
 
     private static final List<JobStatus> GLOBALLY_TERMINAL_JOB_STATUS =
@@ -88,6 +92,13 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
                     .collect(Collectors.toList());
 
     @ClassRule public static TemporaryFolder temporaryFolder = new TemporaryFolder();
+
+    @Parameterized.Parameter public boolean flushToDisk;
+
+    @Parameterized.Parameters(name = "flushToDisk = {0}")
+    public static Collection<Boolean> parameters() {
+        return Arrays.asList(true, false);
+    }
 
     /**
      * Tests that we can put {@link ExecutionGraphInfo} into the {@link FileExecutionGraphInfoStore}
@@ -110,7 +121,7 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
         final File rootDir = temporaryFolder.newFolder();
 
         try (final FileExecutionGraphInfoStore executionGraphStore =
-                createDefaultExecutionGraphInfoStore(rootDir)) {
+                createDefaultExecutionGraphInfoStore(rootDir, flushToDisk)) {
             assertThat(executionGraphStore.get(new JobID()), Matchers.nullValue());
         }
     }
@@ -133,7 +144,7 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
         final File rootDir = temporaryFolder.newFolder();
 
         try (final FileExecutionGraphInfoStore executionGraphInfoStore =
-                createDefaultExecutionGraphInfoStore(rootDir)) {
+                createDefaultExecutionGraphInfoStore(rootDir, flushToDisk)) {
             for (ExecutionGraphInfo executionGraphInfo : executionGraphInfos) {
                 executionGraphInfoStore.put(executionGraphInfo);
             }
@@ -156,7 +167,7 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
         final File rootDir = temporaryFolder.newFolder();
 
         try (final FileExecutionGraphInfoStore executionGraphInfoStore =
-                createDefaultExecutionGraphInfoStore(rootDir)) {
+                createDefaultExecutionGraphInfoStore(rootDir, flushToDisk)) {
             for (ExecutionGraphInfo executionGraphInfo : executionGraphInfos) {
                 executionGraphInfoStore.put(executionGraphInfo);
             }
@@ -186,7 +197,8 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
                         Integer.MAX_VALUE,
                         10000L,
                         scheduledExecutor,
-                        manualTicker)) {
+                        manualTicker,
+                        flushToDisk)) {
 
             final ExecutionGraphInfo executionGraphInfo =
                     new ExecutionGraphInfo(
@@ -225,7 +237,7 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
         assertThat(rootDir.listFiles().length, Matchers.equalTo(0));
 
         try (final FileExecutionGraphInfoStore executionGraphInfoStore =
-                createDefaultExecutionGraphInfoStore(rootDir)) {
+                createDefaultExecutionGraphInfoStore(rootDir, flushToDisk)) {
 
             assertThat(rootDir.listFiles().length, Matchers.equalTo(1));
 
@@ -239,7 +251,11 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
                                     .setState(JobStatus.FINISHED)
                                     .build()));
 
-            assertThat(storageDirectory.listFiles().length, Matchers.equalTo(1));
+            if (flushToDisk) {
+                assertThat(storageDirectory.listFiles().length, Matchers.equalTo(1));
+            } else {
+                assertThat(storageDirectory.listFiles().length, Matchers.equalTo(0));
+            }
         }
 
         assertThat(rootDir.listFiles().length, Matchers.equalTo(0));
@@ -257,7 +273,8 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
                         Integer.MAX_VALUE,
                         100L << 10,
                         TestingUtils.defaultScheduledExecutor(),
-                        Ticker.systemTicker())) {
+                        Ticker.systemTicker(),
+                        flushToDisk)) {
 
             final LoadingCache<JobID, ExecutionGraphInfo> executionGraphInfoCache =
                     executionGraphInfoStore.getExecutionGraphInfoCache();
@@ -284,14 +301,18 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
 
             final File storageDirectory = executionGraphInfoStore.getStorageDir();
 
-            assertThat(
-                    storageDirectory.listFiles().length,
-                    Matchers.equalTo(executionGraphInfos.size()));
-
-            for (ExecutionGraphInfo executionGraphInfo : executionGraphInfos) {
+            if (flushToDisk) {
                 assertThat(
-                        executionGraphInfoStore.get(executionGraphInfo.getJobId()),
-                        matchesPartiallyWith(executionGraphInfo));
+                        storageDirectory.listFiles().length,
+                        Matchers.equalTo(executionGraphInfos.size()));
+                for (ExecutionGraphInfo executionGraphInfo : executionGraphInfos) {
+                    assertThat(
+                            executionGraphInfoStore.get(executionGraphInfo.getJobId()),
+                            matchesPartiallyWith(executionGraphInfo));
+                }
+            } else {
+                assertThat(storageDirectory.listFiles().length, Matchers.equalTo(0));
+                assertTrue(executionGraphInfoCache.size() < executionGraphInfoStore.size());
             }
         }
     }
@@ -322,7 +343,8 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
                         maxCapacity,
                         10000L,
                         TestingUtils.defaultScheduledExecutor(),
-                        Ticker.systemTicker())) {
+                        Ticker.systemTicker(),
+                        flushToDisk)) {
 
             for (ExecutionGraphInfo executionGraphInfo : oldExecutionGraphInfos) {
                 executionGraphInfoStore.put(executionGraphInfo);
@@ -346,27 +368,32 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
     /** Tests that a session cluster can terminate gracefully when jobs are still running. */
     @Test
     public void testPutSuspendedJobOnClusterShutdown() throws Exception {
+        Configuration configuration = new Configuration();
+        configuration.set(JobManagerOptions.JOB_STORE_FLUSH_TO_DISK, flushToDisk);
         try (final MiniCluster miniCluster =
-                new PersistingMiniCluster(new MiniClusterConfiguration.Builder().build())) {
+                new PersistingMiniCluster(
+                        new MiniClusterConfiguration.Builder()
+                                .setConfiguration(configuration)
+                                .build())) {
             miniCluster.start();
             final JobVertex vertex = new JobVertex("blockingVertex");
+            // Reset the latch
+            OneShotLatchFactory factory = OneShotLatchFactory.getFactory();
+            factory.resetLatch();
             // The adaptive scheduler expects that every vertex has a configured parallelism
             vertex.setParallelism(1);
             vertex.setInvokableClass(SignallingBlockingNoOpInvokable.class);
             final JobGraph jobGraph = JobGraphTestUtils.streamingJobGraph(vertex);
             miniCluster.submitJob(jobGraph);
-            SignallingBlockingNoOpInvokable.LATCH.await();
+            factory.getLatch().await();
         }
     }
 
     /**
-     * Invokable which signals with {@link SignallingBlockingNoOpInvokable#LATCH} when it is invoked
-     * and blocks forever afterwards.
+     * Invokable which signals with latch in {@link OneShotLatchFactory} when it is invoked and
+     * blocks forever afterwards.
      */
     public static class SignallingBlockingNoOpInvokable extends AbstractInvokable {
-
-        /** Latch used to signal an initial invocation. */
-        public static final OneShotLatch LATCH = new OneShotLatch();
 
         public SignallingBlockingNoOpInvokable(Environment environment) {
             super(environment);
@@ -374,8 +401,29 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
 
         @Override
         public void invoke() throws Exception {
-            LATCH.trigger();
+            OneShotLatchFactory.getFactory().getLatch().trigger();
             Thread.sleep(Long.MAX_VALUE);
+        }
+    }
+
+    /** Latch used to signal an initial invocation. */
+    public static class OneShotLatchFactory {
+        private static final OneShotLatchFactory FACTORY = new OneShotLatchFactory();
+
+        private OneShotLatch latch;
+
+        private OneShotLatchFactory() {}
+
+        public static OneShotLatchFactory getFactory() {
+            return FACTORY;
+        }
+
+        public void resetLatch() {
+            this.latch = new OneShotLatch();
+        }
+
+        public OneShotLatch getLatch() {
+            return latch;
         }
     }
 
@@ -405,7 +453,9 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
 
             final File rootDir = temporaryFolder.newFolder();
             final ExecutionGraphInfoStore executionGraphInfoStore =
-                    createDefaultExecutionGraphInfoStore(rootDir);
+                    createDefaultExecutionGraphInfoStore(
+                            rootDir,
+                            configuration.getBoolean(JobManagerOptions.JOB_STORE_FLUSH_TO_DISK));
 
             return Collections.singleton(
                     dispatcherResourceManagerComponentFactory.create(
@@ -439,15 +489,16 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
         return executionGraphInfos;
     }
 
-    private FileExecutionGraphInfoStore createDefaultExecutionGraphInfoStore(File storageDirectory)
-            throws IOException {
+    private FileExecutionGraphInfoStore createDefaultExecutionGraphInfoStore(
+            File storageDirectory, boolean flushToDisk) throws IOException {
         return new FileExecutionGraphInfoStore(
                 storageDirectory,
                 Time.hours(1L),
                 Integer.MAX_VALUE,
                 10000L,
                 TestingUtils.defaultScheduledExecutor(),
-                Ticker.systemTicker());
+                Ticker.systemTicker(),
+                flushToDisk);
     }
 
     private static final class PartialExecutionGraphInfoMatcher
@@ -507,7 +558,7 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
         final File rootDir = temporaryFolder.newFolder();
 
         try (final FileExecutionGraphInfoStore executionGraphStore =
-                createDefaultExecutionGraphInfoStore(rootDir)) {
+                createDefaultExecutionGraphInfoStore(rootDir, flushToDisk)) {
 
             final File storageDirectory = executionGraphStore.getStorageDir();
 
@@ -517,7 +568,11 @@ public class FileExecutionGraphInfoStoreTest extends TestLogger {
             executionGraphStore.put(dummyExecutionGraphInfo);
 
             // check that we have persisted the given execution graph
-            assertThat(storageDirectory.listFiles().length, Matchers.equalTo(1));
+            if (flushToDisk) {
+                assertThat(storageDirectory.listFiles().length, Matchers.equalTo(1));
+            } else {
+                assertThat(storageDirectory.listFiles().length, Matchers.equalTo(0));
+            }
 
             assertThat(
                     executionGraphStore.get(dummyExecutionGraphInfo.getJobId()),

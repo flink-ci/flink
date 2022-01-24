@@ -317,6 +317,18 @@ public class JobManagerOptions {
                             "The max number of completed jobs that can be kept in the job store.");
 
     /**
+     * Flag indicating whether the FileExecutionGraphInfoStore would flush the execution graph info
+     * to disk or not.
+     */
+    @Documentation.Section(Documentation.Sections.ALL_JOB_MANAGER)
+    public static final ConfigOption<Boolean> JOB_STORE_FLUSH_TO_DISK =
+            key("jobstore.flush-to-disk")
+                    .booleanType()
+                    .defaultValue(true)
+                    .withDescription(
+                            "Flag indicating whether the FileExecutionGraphInfoStore would flush execution graph to disk. If the option is set to \"false\", the execution graph will be manager by cache in store only.");
+
+    /**
      * Flag indicating whether JobManager would retrieve canonical host name of TaskManager during
      * registration.
      */

@@ -44,11 +44,13 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
@@ -74,11 +76,32 @@ public class FileExecutionGraphInfoStore implements ExecutionGraphInfoStore {
 
     private final Thread shutdownHook;
 
+    private final boolean flushToDisk;
+
     private int numFinishedJobs;
 
     private int numFailedJobs;
 
     private int numCanceledJobs;
+
+    @VisibleForTesting
+    FileExecutionGraphInfoStore(
+            File rootDir,
+            Time expirationTime,
+            int maximumCapacity,
+            long maximumCacheSizeBytes,
+            ScheduledExecutor scheduledExecutor,
+            Ticker ticker)
+            throws IOException {
+        this(
+                rootDir,
+                expirationTime,
+                maximumCapacity,
+                maximumCacheSizeBytes,
+                scheduledExecutor,
+                ticker,
+                true);
+    }
 
     public FileExecutionGraphInfoStore(
             File rootDir,
@@ -86,7 +109,8 @@ public class FileExecutionGraphInfoStore implements ExecutionGraphInfoStore {
             int maximumCapacity,
             long maximumCacheSizeBytes,
             ScheduledExecutor scheduledExecutor,
-            Ticker ticker)
+            Ticker ticker,
+            boolean flushToDisk)
             throws IOException {
 
         final File storageDirectory = initExecutionGraphStorageDirectory(rootDir);
@@ -133,6 +157,8 @@ public class FileExecutionGraphInfoStore implements ExecutionGraphInfoStore {
                         TimeUnit.MILLISECONDS);
 
         this.shutdownHook = ShutdownHookUtil.addShutdownHook(this, getClass().getSimpleName(), LOG);
+
+        this.flushToDisk = flushToDisk;
 
         this.numFinishedJobs = 0;
         this.numFailedJobs = 0;
@@ -242,23 +268,41 @@ public class FileExecutionGraphInfoStore implements ExecutionGraphInfoStore {
     // --------------------------------------------------------------
 
     private int calculateSize(JobID jobId, ExecutionGraphInfo serializableExecutionGraphInfo) {
-        final File executionGraphInfoFile = getExecutionGraphFile(jobId);
+        if (flushToDisk) {
+            final File executionGraphInfoFile = getExecutionGraphFile(jobId);
 
-        if (executionGraphInfoFile.exists()) {
-            return Math.toIntExact(executionGraphInfoFile.length());
+            if (executionGraphInfoFile.exists()) {
+                return Math.toIntExact(executionGraphInfoFile.length());
+            }
         } else {
-            LOG.debug(
-                    "Could not find execution graph information file for {}. Estimating the size instead.",
-                    jobId);
-            final ArchivedExecutionGraph serializableExecutionGraph =
-                    serializableExecutionGraphInfo.getArchivedExecutionGraph();
-            return serializableExecutionGraph.getAllVertices().size() * 1000
-                    + serializableExecutionGraph.getAccumulatorsSerialized().size() * 1000;
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            try (ObjectOutputStream oos = new ObjectOutputStream(bos)) {
+                oos.writeObject(serializableExecutionGraphInfo);
+                oos.flush();
+                return bos.size();
+            } catch (Exception e) {
+                LOG.warn("Calculate graph info size failed", e);
+            }
         }
+
+        LOG.debug(
+                "Could not find execution graph information file for {}. Estimating the size instead.",
+                jobId);
+        final ArchivedExecutionGraph serializableExecutionGraph =
+                serializableExecutionGraphInfo.getArchivedExecutionGraph();
+        return serializableExecutionGraph.getAllVertices().size() * 1000
+                + serializableExecutionGraph.getAccumulatorsSerialized().size() * 1000;
     }
 
     private ExecutionGraphInfo loadExecutionGraph(JobID jobId)
             throws IOException, ClassNotFoundException {
+        if (!flushToDisk) {
+            throw new FileNotFoundException(
+                    "Could not find file for archived execution graph "
+                            + jobId
+                            + " because the file has been never written.");
+        }
+
         final File executionGraphInfoFile = getExecutionGraphFile(jobId);
 
         if (executionGraphInfoFile.exists()) {
@@ -275,11 +319,14 @@ public class FileExecutionGraphInfoStore implements ExecutionGraphInfoStore {
     }
 
     private void storeExecutionGraphInfo(ExecutionGraphInfo executionGraphInfo) throws IOException {
-        final File archivedExecutionGraphFile =
-                getExecutionGraphFile(executionGraphInfo.getJobId());
+        if (flushToDisk) {
+            final File archivedExecutionGraphFile =
+                    getExecutionGraphFile(executionGraphInfo.getJobId());
 
-        try (FileOutputStream fileOutputStream = new FileOutputStream(archivedExecutionGraphFile)) {
-            InstantiationUtil.serializeObject(fileOutputStream, executionGraphInfo);
+            try (FileOutputStream fileOutputStream =
+                    new FileOutputStream(archivedExecutionGraphFile)) {
+                InstantiationUtil.serializeObject(fileOutputStream, executionGraphInfo);
+            }
         }
     }
 
@@ -290,12 +337,14 @@ public class FileExecutionGraphInfoStore implements ExecutionGraphInfoStore {
     private void deleteExecutionGraphFile(JobID jobId) {
         Preconditions.checkNotNull(jobId);
 
-        final File archivedExecutionGraphFile = getExecutionGraphFile(jobId);
+        if (flushToDisk) {
+            final File archivedExecutionGraphFile = getExecutionGraphFile(jobId);
 
-        try {
-            FileUtils.deleteFileOrDirectory(archivedExecutionGraphFile);
-        } catch (IOException e) {
-            LOG.debug("Could not delete file {}.", archivedExecutionGraphFile, e);
+            try {
+                FileUtils.deleteFileOrDirectory(archivedExecutionGraphFile);
+            } catch (IOException e) {
+                LOG.debug("Could not delete file {}.", archivedExecutionGraphFile, e);
+            }
         }
 
         executionGraphInfoCache.invalidate(jobId);
