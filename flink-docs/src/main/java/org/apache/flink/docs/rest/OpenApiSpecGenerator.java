@@ -212,13 +212,16 @@ public class OpenApiSpecGenerator {
      */
     private static void injectAsyncOperationResultSchema(
             final OpenAPI openApi, List<Schema> asyncOperationSchemas) {
-        openApi.getComponents()
-                .getSchemas()
-                .get(AsynchronousOperationResult.class.getSimpleName())
-                .getProperties()
-                .put(
-                        AsynchronousOperationResult.FIELD_NAME_OPERATION,
-                        new ComposedSchema().oneOf(asyncOperationSchemas));
+        final Schema schema =
+                openApi.getComponents()
+                        .getSchemas()
+                        .get(AsynchronousOperationResult.class.getSimpleName());
+        if (schema != null) {
+            schema.getProperties()
+                    .put(
+                            AsynchronousOperationResult.FIELD_NAME_OPERATION,
+                            new ComposedSchema().oneOf(asyncOperationSchemas));
+        }
     }
 
     /**
