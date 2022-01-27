@@ -647,8 +647,9 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
             return;
         }
         closedOperators = false;
-        LOG.debug("Initializing {}.", getName());
-
+        LOG.info("Initializing {}.", getName());
+        long startTime = System.currentTimeMillis();
+        
         operatorChain =
                 getEnvironment().getTaskStateManager().isTaskDeployedAsFinished()
                         ? new FinishedOperatorChain<>(this, recordWriter)
@@ -685,7 +686,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
         // we recovered all the gates, we can close the channel IO executor as it is no longer
         // needed
         channelIOExecutor.shutdown();
-
+        LOG.info("{} completion initialization, takes {}.", getName(), (System.currentTimeMillis() - startTime));
         isRunning = true;
     }
 
