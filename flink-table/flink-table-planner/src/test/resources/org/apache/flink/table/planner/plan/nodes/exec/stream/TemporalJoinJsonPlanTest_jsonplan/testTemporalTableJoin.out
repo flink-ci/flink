@@ -3,11 +3,7 @@
   "nodes" : [ {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecTableSourceScan",
     "scanTableSource" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "Orders"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`Orders`",
       "catalogTable" : {
         "schema.watermark.0.strategy.expr" : "`rowtime`",
         "schema.0.data-type" : "INT",
@@ -33,11 +29,7 @@
     "watermarkExpr" : {
       "kind" : "INPUT_REF",
       "inputIndex" : 2,
-      "type" : {
-        "typeName" : "TIMESTAMP",
-        "nullable" : true,
-        "precision" : 3
-      }
+      "type" : "TIMESTAMP(3)"
     },
     "rowtimeFieldIndex" : 2,
     "id" : 2,
@@ -98,11 +90,7 @@
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecTableSourceScan",
     "scanTableSource" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "RatesHistory"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`RatesHistory`",
       "catalogTable" : {
         "schema.watermark.0.strategy.expr" : "`rowtime`",
         "schema.2.data-type" : "TIMESTAMP(3)",
@@ -127,11 +115,7 @@
     "watermarkExpr" : {
       "kind" : "INPUT_REF",
       "inputIndex" : 2,
-      "type" : {
-        "typeName" : "TIMESTAMP",
-        "nullable" : true,
-        "precision" : 3
-      }
+      "type" : "TIMESTAMP(3)"
     },
     "rowtimeFieldIndex" : 2,
     "id" : 5,
@@ -258,22 +242,13 @@
       "operands" : [ {
         "kind" : "INPUT_REF",
         "inputIndex" : 0,
-        "type" : {
-          "typeName" : "INTEGER",
-          "nullable" : true
-        }
+        "type" : "INT"
       }, {
         "kind" : "INPUT_REF",
         "inputIndex" : 4,
-        "type" : {
-          "typeName" : "INTEGER",
-          "nullable" : true
-        }
+        "type" : "INT"
       } ],
-      "type" : {
-        "typeName" : "INTEGER",
-        "nullable" : true
-      }
+      "type" : "INT"
     } ],
     "condition" : null,
     "id" : 8,
@@ -289,11 +264,7 @@
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecSink",
     "dynamicTableSink" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "MySink"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`MySink`",
       "catalogTable" : {
         "table-sink-class" : "DEFAULT",
         "connector" : "values",

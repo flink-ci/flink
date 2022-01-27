@@ -884,8 +884,8 @@ Metrics related to data exchange between task executors using netty network comm
   </thead>
   <tbody>
     <tr>
-      <th rowspan="6"><strong>TaskManager</strong></th>
-      <td rowspan="6">Status.Shuffle.Netty</td>
+      <th rowspan="7"><strong>TaskManager</strong></th>
+      <td rowspan="7">Status.Shuffle.Netty</td>
       <td>AvailableMemorySegments</td>
       <td>The number of unused memory segments.</td>
       <td>Gauge</td>
@@ -913,6 +913,11 @@ Metrics related to data exchange between task executors using netty network comm
     <tr>
       <td>TotalMemory</td>
       <td>The amount of allocated memory in bytes.</td>
+      <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>RequestedMemoryUsage</td>
+      <td>Experimental: The usage of the network memory. Shows (as percentage) the total amount of requested memory from all of the subtasks. It can exceed 100% as not all requested memory is required for subtask to make progress. However if usage exceeds 100% throughput can suffer greatly and please consider increasing available network memory, or decreasing configured size of network buffer pools.</td>
       <td>Gauge</td>
     </tr>
     <tr>
@@ -1066,6 +1071,11 @@ Metrics related to data exchange between task executors using netty network comm
 
 ### Availability
 
+The metrics in this table are available for each of the following job states: INITIALIZING, CREATED, RUNNING, RESTARTING, CANCELLING, FAILING.
+Whether these metrics are reported depends on the [metrics.job.status.enable]({{< ref "docs/deployment/config" >}}#metrics-job-status-enable) setting.
+
+<span class="label label-info">Evolving</span> The semantics of these metrics may change in later releases.
+
 <table class="table table-bordered">
   <thead>
     <tr>
@@ -1077,12 +1087,36 @@ Metrics related to data exchange between task executors using netty network comm
   </thead>
   <tbody>
     <tr>
-      <th rowspan="5"><strong>Job (only available on JobManager)</strong></th>
-      <td>restartingTime</td>
-      <td>The time it took to restart the job, or how long the current restart has been in progress (in milliseconds).</td>
+      <th rowspan="3"><strong>Job (only available on JobManager)</strong></th>
+      <td>&lt;jobStatus&gt;State</td>
+      <td>For a given state, return 1 if the job is currently in that state, otherwise return 0.</td>
       <td>Gauge</td>
     </tr>
     <tr>
+      <td>&lt;jobStatus&gt;Time</td>
+      <td>For a given state, if the job is currently in that state, return the time (in milliseconds) since the job transitioned into that state, otherwise return 0.</td>
+      <td>Gauge</td>
+    </tr>
+    <tr>
+      <td>&lt;jobStatus&gt;TimeTotal</td>
+      <td>For a given state, return how much time (in milliseconds) the job has spent in that state in total.</td>
+      <td>Gauge</td>
+    </tr>
+  </tbody>
+</table>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th class="text-left" style="width: 18%">Scope</th>
+      <th class="text-left" style="width: 26%">Metrics</th>
+      <th class="text-left" style="width: 48%">Description</th>
+      <th class="text-left" style="width: 8%">Type</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th rowspan="4"><strong>Job (only available on JobManager)</strong></th>
       <td>uptime</td>
       <td>
         The time that the job has been running without interruption.

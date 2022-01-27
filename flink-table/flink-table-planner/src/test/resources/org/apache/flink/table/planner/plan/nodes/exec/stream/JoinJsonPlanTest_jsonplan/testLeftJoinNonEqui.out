@@ -3,11 +3,7 @@
   "nodes" : [ {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecTableSourceScan",
     "scanTableSource" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "A"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`A`",
       "catalogTable" : {
         "schema.2.data-type" : "BIGINT",
         "connector" : "values",
@@ -48,11 +44,7 @@
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecTableSourceScan",
     "scanTableSource" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "B"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`B`",
       "catalogTable" : {
         "schema.2.data-type" : "BIGINT",
         "connector" : "values",
@@ -107,22 +99,13 @@
         "operands" : [ {
           "kind" : "INPUT_REF",
           "inputIndex" : 1,
-          "type" : {
-            "typeName" : "BIGINT",
-            "nullable" : true
-          }
+          "type" : "BIGINT"
         }, {
           "kind" : "INPUT_REF",
           "inputIndex" : 3,
-          "type" : {
-            "typeName" : "BIGINT",
-            "nullable" : true
-          }
+          "type" : "BIGINT"
         } ],
-        "type" : {
-          "typeName" : "BOOLEAN",
-          "nullable" : true
-        }
+        "type" : "BOOLEAN"
       }
     },
     "leftUniqueKeys" : [ ],
@@ -148,17 +131,11 @@
     "projection" : [ {
       "kind" : "INPUT_REF",
       "inputIndex" : 0,
-      "type" : {
-        "typeName" : "INTEGER",
-        "nullable" : true
-      }
+      "type" : "INT"
     }, {
       "kind" : "INPUT_REF",
       "inputIndex" : 2,
-      "type" : {
-        "typeName" : "INTEGER",
-        "nullable" : true
-      }
+      "type" : "INT"
     } ],
     "condition" : null,
     "id" : 6,
@@ -174,11 +151,7 @@
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecSink",
     "dynamicTableSink" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "MySink"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`MySink`",
       "catalogTable" : {
         "sink-insert-only" : "false",
         "table-sink-class" : "DEFAULT",

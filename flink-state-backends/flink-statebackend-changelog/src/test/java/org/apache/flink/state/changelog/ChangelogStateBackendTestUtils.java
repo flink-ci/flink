@@ -35,6 +35,8 @@ import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.mailbox.SyncMailboxExecutor;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
+import org.apache.flink.runtime.state.CheckpointStateOutputStream;
+import org.apache.flink.runtime.state.CheckpointStateToolset;
 import org.apache.flink.runtime.state.CheckpointStorageAccess;
 import org.apache.flink.runtime.state.CheckpointStorageLocation;
 import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
@@ -246,7 +248,8 @@ public class ChangelogStateBackendTestUtils {
     private static void materialize(
             ChangelogKeyedStateBackend<Integer> keyedBackend,
             PeriodicMaterializationManager periodicMaterializationManager) {
-        StateChangelogWriter<ChangelogStateHandle> writer = keyedBackend.getChangelogWriter();
+        StateChangelogWriter<? extends ChangelogStateHandle> writer =
+                keyedBackend.getChangelogWriter();
         SequenceNumber sqnBefore = writer.lastAppendedSequenceNumber();
         periodicMaterializationManager.triggerMaterialization();
         assertTrue(
@@ -354,7 +357,8 @@ public class ChangelogStateBackendTestUtils {
                 1);
     }
 
-    static class DummyCheckpointingStorageAccess implements CheckpointStorageAccess {
+    /** Dummy {@link CheckpointStorageAccess}. */
+    public static class DummyCheckpointingStorageAccess implements CheckpointStorageAccess {
 
         DummyCheckpointingStorageAccess() {}
 
@@ -398,7 +402,13 @@ public class ChangelogStateBackendTestUtils {
         }
 
         @Override
-        public CheckpointStreamFactory.CheckpointStateOutputStream createTaskOwnedStateStream() {
+        public CheckpointStateOutputStream createTaskOwnedStateStream() {
+            throw new UnsupportedOperationException(
+                    "Checkpoints are not supported in a single key state backend");
+        }
+
+        @Override
+        public CheckpointStateToolset createTaskOwnedCheckpointStateToolset() {
             throw new UnsupportedOperationException(
                     "Checkpoints are not supported in a single key state backend");
         }

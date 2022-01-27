@@ -58,6 +58,7 @@ import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Session;
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.mapping.Mapper;
+import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
@@ -73,6 +74,7 @@ import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Random;
 import java.util.UUID;
@@ -101,6 +103,8 @@ public class CassandraConnectorITCase
     private static final int MAX_CONNECTION_RETRY = 3;
     private static final long CONNECTION_RETRY_DELAY = 500L;
     private static final Logger LOG = LoggerFactory.getLogger(CassandraConnectorITCase.class);
+    private static final String TABLE_POJO = "test";
+    private static final String TABLE_POJO_NO_ANNOTATED_KEYSPACE = "testPojoNoAnnotatedKeyspace";
 
     @Rule public final RetryRule retryRule = new RetryRule();
 
@@ -136,19 +140,43 @@ public class CassandraConnectorITCase
 
     private static final String TABLE_NAME_PREFIX = "flink_";
     private static final String TABLE_NAME_VARIABLE = "$TABLE";
+    private static final String KEYSPACE = "flink";
+    private static final String TUPLE_ID_FIELD = "id";
+    private static final String TUPLE_COUNTER_FIELD = "counter";
+    private static final String TUPLE_BATCHID_FIELD = "batch_id";
     private static final String CREATE_KEYSPACE_QUERY =
-            "CREATE KEYSPACE flink WITH replication= {'class':'SimpleStrategy', 'replication_factor':1};";
-    private static final String DROP_KEYSPACE_QUERY = "DROP KEYSPACE IF EXISTS flink ;";
+            "CREATE KEYSPACE "
+                    + KEYSPACE
+                    + " WITH replication= {'class':'SimpleStrategy', 'replication_factor':1};";
+    private static final String DROP_KEYSPACE_QUERY = "DROP KEYSPACE IF EXISTS " + KEYSPACE + " ;";
+    private static final String DROP_TABLE_QUERY =
+            "DROP TABLE IF EXISTS " + KEYSPACE + "." + TABLE_NAME_VARIABLE + " ;";
     private static final String CREATE_TABLE_QUERY =
-            "CREATE TABLE flink."
+            "CREATE TABLE "
+                    + KEYSPACE
+                    + "."
                     + TABLE_NAME_VARIABLE
-                    + " (id text PRIMARY KEY, counter int, batch_id int);";
+                    + " ("
+                    + TUPLE_ID_FIELD
+                    + " text PRIMARY KEY, "
+                    + TUPLE_COUNTER_FIELD
+                    + " int, "
+                    + TUPLE_BATCHID_FIELD
+                    + " int);";
     private static final String INSERT_DATA_QUERY =
-            "INSERT INTO flink."
+            "INSERT INTO "
+                    + KEYSPACE
+                    + "."
                     + TABLE_NAME_VARIABLE
-                    + " (id, counter, batch_id) VALUES (?, ?, ?)";
+                    + " ("
+                    + TUPLE_ID_FIELD
+                    + ", "
+                    + TUPLE_COUNTER_FIELD
+                    + ", "
+                    + TUPLE_BATCHID_FIELD
+                    + ") VALUES (?, ?, ?)";
     private static final String SELECT_DATA_QUERY =
-            "SELECT * FROM flink." + TABLE_NAME_VARIABLE + ';';
+            "SELECT * FROM " + KEYSPACE + "." + TABLE_NAME_VARIABLE + ';';
 
     private static final Random random = new Random();
     private int tableID;
@@ -215,6 +243,18 @@ public class CassandraConnectorITCase
         session.execute(injectTableName(CREATE_TABLE_QUERY));
     }
 
+    @After
+    public void dropTables() {
+        // need to drop tables in case of retrials. Need to drop all the tables
+        // that are created in test because this method is executed with every test
+        session.execute(
+                DROP_TABLE_QUERY.replace(
+                        TABLE_NAME_VARIABLE, CustomCassandraAnnotatedPojo.TABLE_NAME));
+        session.execute(DROP_TABLE_QUERY.replace(TABLE_NAME_VARIABLE, TABLE_POJO));
+        session.execute(
+                DROP_TABLE_QUERY.replace(TABLE_NAME_VARIABLE, TABLE_POJO_NO_ANNOTATED_KEYSPACE));
+    }
+
     @AfterClass
     public static void closeCassandra() {
         if (session != null) {
@@ -262,7 +302,7 @@ public class CassandraConnectorITCase
         }
 
         for (com.datastax.driver.core.Row s : result) {
-            list.remove(new Integer(s.getInt("counter")));
+            list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
         }
         Assert.assertTrue(
                 "The following ID's were not found in the ResultSet: " + list.toString(),
@@ -280,7 +320,7 @@ public class CassandraConnectorITCase
         }
 
         for (com.datastax.driver.core.Row s : result) {
-            list.remove(new Integer(s.getInt("counter")));
+            list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
         }
         Assert.assertTrue(
                 "The following ID's were not found in the ResultSet: " + list.toString(),
@@ -301,7 +341,7 @@ public class CassandraConnectorITCase
         }
 
         for (com.datastax.driver.core.Row s : result) {
-            list.remove(new Integer(s.getInt("counter")));
+            list.remove(new Integer(s.getInt(TUPLE_COUNTER_FIELD)));
         }
         Assert.assertTrue(
                 "The following ID's were not found in the ResultSet: " + list.toString(),
@@ -328,7 +368,7 @@ public class CassandraConnectorITCase
         ResultSet result = session.execute(injectTableName(SELECT_DATA_QUERY));
 
         for (com.datastax.driver.core.Row s : result) {
-            actual.add(s.getInt("counter"));
+            actual.add(s.getInt(TUPLE_COUNTER_FIELD));
         }
 
         Collections.sort(actual);
@@ -428,7 +468,7 @@ public class CassandraConnectorITCase
 
     @Test
     public void testCassandraPojoAtLeastOnceSink() throws Exception {
-        session.execute(CREATE_TABLE_QUERY.replace(TABLE_NAME_VARIABLE, "test"));
+        session.execute(CREATE_TABLE_QUERY.replace(TABLE_NAME_VARIABLE, TABLE_POJO));
 
         CassandraPojoSink<Pojo> sink = new CassandraPojoSink<>(Pojo.class, builderForWriting);
         try {
@@ -440,17 +480,17 @@ public class CassandraConnectorITCase
             sink.close();
         }
 
-        ResultSet rs = session.execute(SELECT_DATA_QUERY.replace(TABLE_NAME_VARIABLE, "test"));
+        ResultSet rs = session.execute(SELECT_DATA_QUERY.replace(TABLE_NAME_VARIABLE, TABLE_POJO));
         Assert.assertEquals(20, rs.all().size());
     }
 
     @Test
     public void testCassandraPojoNoAnnotatedKeyspaceAtLeastOnceSink() throws Exception {
         session.execute(
-                CREATE_TABLE_QUERY.replace(TABLE_NAME_VARIABLE, "testPojoNoAnnotatedKeyspace"));
+                CREATE_TABLE_QUERY.replace(TABLE_NAME_VARIABLE, TABLE_POJO_NO_ANNOTATED_KEYSPACE));
 
         CassandraPojoSink<PojoNoAnnotatedKeyspace> sink =
-                new CassandraPojoSink<>(PojoNoAnnotatedKeyspace.class, builderForWriting, "flink");
+                new CassandraPojoSink<>(PojoNoAnnotatedKeyspace.class, builderForWriting, KEYSPACE);
         try {
             sink.open(new Configuration());
             for (int x = 0; x < 20; x++) {
@@ -463,7 +503,7 @@ public class CassandraConnectorITCase
         ResultSet rs =
                 session.execute(
                         SELECT_DATA_QUERY.replace(
-                                TABLE_NAME_VARIABLE, "testPojoNoAnnotatedKeyspace"));
+                                TABLE_NAME_VARIABLE, TABLE_POJO_NO_ANNOTATED_KEYSPACE));
         Assert.assertEquals(20, rs.all().size());
     }
 
@@ -507,6 +547,19 @@ public class CassandraConnectorITCase
                 "The input data was not completely written to Cassandra", input.isEmpty());
     }
 
+    private static int retrialsCount = 0;
+
+    @Test
+    public void testRetrialAndDropTables() {
+        session.execute(
+                CREATE_TABLE_QUERY.replace(
+                        TABLE_NAME_VARIABLE, CustomCassandraAnnotatedPojo.TABLE_NAME));
+        if (retrialsCount < 2) {
+            retrialsCount++;
+            throw new NoHostAvailableException(new HashMap<>());
+        }
+    }
+
     @Test
     public void testCassandraBatchPojoFormat() throws Exception {
 
@@ -545,7 +598,8 @@ public class CassandraConnectorITCase
 
         InputFormat<CustomCassandraAnnotatedPojo, InputSplit> source =
                 new CassandraPojoInputFormat<>(
-                        SELECT_DATA_QUERY.replace(TABLE_NAME_VARIABLE, "batches"),
+                        SELECT_DATA_QUERY.replace(
+                                TABLE_NAME_VARIABLE, CustomCassandraAnnotatedPojo.TABLE_NAME),
                         builderForReading,
                         CustomCassandraAnnotatedPojo.class);
         List<CustomCassandraAnnotatedPojo> result = new ArrayList<>();
@@ -692,7 +746,9 @@ public class CassandraConnectorITCase
         for (com.datastax.driver.core.Row row : rows) {
             scalaTupleCollection.remove(
                     new scala.Tuple3<>(
-                            row.getString("id"), row.getInt("counter"), row.getInt("batch_id")));
+                            row.getString(TUPLE_ID_FIELD),
+                            row.getInt(TUPLE_COUNTER_FIELD),
+                            row.getInt(TUPLE_BATCHID_FIELD)));
         }
         Assert.assertEquals(0, scalaTupleCollection.size());
     }
@@ -731,7 +787,9 @@ public class CassandraConnectorITCase
             Assert.assertEquals(
                     new scala.Tuple3<>(id, counter, batchId),
                     new scala.Tuple3<>(
-                            row.getString("id"), row.getInt("counter"), row.getInt("batch_id")));
+                            row.getString(TUPLE_ID_FIELD),
+                            row.getInt(TUPLE_COUNTER_FIELD),
+                            row.getInt(TUPLE_BATCHID_FIELD)));
         }
     }
 }

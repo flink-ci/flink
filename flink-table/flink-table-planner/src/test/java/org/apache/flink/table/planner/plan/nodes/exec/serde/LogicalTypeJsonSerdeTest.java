@@ -66,11 +66,8 @@ import org.apache.flink.table.types.utils.DataTypeFactoryMock;
 import org.apache.flink.table.utils.CatalogManagerMocks;
 import org.apache.flink.types.Row;
 
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.JsonNode;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectReader;
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectWriter;
 
 import org.junit.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -88,7 +85,9 @@ import java.util.Optional;
 import static org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches;
 import static org.apache.flink.table.api.config.TableConfigOptions.CatalogPlanCompilation.ALL;
 import static org.apache.flink.table.api.config.TableConfigOptions.CatalogPlanCompilation.IDENTIFIER;
-import static org.apache.flink.table.planner.plan.nodes.exec.serde.DataTypeJsonSerdeTest.configuredSerdeContext;
+import static org.apache.flink.table.planner.plan.nodes.exec.serde.JsonSerdeTestUtil.configuredSerdeContext;
+import static org.apache.flink.table.planner.plan.nodes.exec.serde.JsonSerdeTestUtil.toJson;
+import static org.apache.flink.table.planner.plan.nodes.exec.serde.JsonSerdeTestUtil.toObject;
 import static org.apache.flink.table.utils.CatalogManagerMocks.preparedCatalogManager;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -102,13 +101,13 @@ public class LogicalTypeJsonSerdeTest {
         final SerdeContext serdeContext = configuredSerdeContext();
 
         final String json = toJson(serdeContext, logicalType);
-        final LogicalType actual = toLogicalType(serdeContext, json);
+        final LogicalType actual = toObject(serdeContext, json, LogicalType.class);
 
         assertThat(actual).isEqualTo(logicalType);
     }
 
     @Test
-    public void testIdentifierSerde() throws JsonProcessingException {
+    public void testIdentifierSerde() throws IOException {
         final DataTypeFactoryMock dataTypeFactoryMock = new DataTypeFactoryMock();
         final TableConfig tableConfig = TableConfig.getDefault();
         final Configuration config = tableConfig.getConfiguration();
@@ -126,7 +125,7 @@ public class LogicalTypeJsonSerdeTest {
                 TableConfigOptions.PLAN_RESTORE_CATALOG_OBJECTS,
                 TableConfigOptions.CatalogPlanRestore.IDENTIFIER);
         dataTypeFactoryMock.logicalType = Optional.empty();
-        assertThatThrownBy(() -> toLogicalType(serdeContext, minimalJson))
+        assertThatThrownBy(() -> toObject(serdeContext, minimalJson, LogicalType.class))
                 .satisfies(anyCauseMatches(ValidationException.class, "No type found."));
 
         // catalog lookup
@@ -134,7 +133,8 @@ public class LogicalTypeJsonSerdeTest {
                 TableConfigOptions.PLAN_RESTORE_CATALOG_OBJECTS,
                 TableConfigOptions.CatalogPlanRestore.IDENTIFIER);
         dataTypeFactoryMock.logicalType = Optional.of(STRUCTURED_TYPE);
-        assertThat(toLogicalType(serdeContext, minimalJson)).isEqualTo(STRUCTURED_TYPE);
+        assertThat(toObject(serdeContext, minimalJson, LogicalType.class))
+                .isEqualTo(STRUCTURED_TYPE);
 
         // maximum plan content
         config.set(TableConfigOptions.PLAN_COMPILE_CATALOG_OBJECTS, ALL);
@@ -151,7 +151,7 @@ public class LogicalTypeJsonSerdeTest {
                 TableConfigOptions.PLAN_RESTORE_CATALOG_OBJECTS,
                 TableConfigOptions.CatalogPlanRestore.IDENTIFIER);
         dataTypeFactoryMock.logicalType = Optional.empty();
-        assertThatThrownBy(() -> toLogicalType(serdeContext, maximumJson))
+        assertThatThrownBy(() -> toObject(serdeContext, maximumJson, LogicalType.class))
                 .satisfies(anyCauseMatches(ValidationException.class, "No type found."));
 
         // catalog lookup
@@ -159,14 +159,16 @@ public class LogicalTypeJsonSerdeTest {
                 TableConfigOptions.PLAN_RESTORE_CATALOG_OBJECTS,
                 TableConfigOptions.CatalogPlanRestore.IDENTIFIER);
         dataTypeFactoryMock.logicalType = Optional.of(UPDATED_STRUCTURED_TYPE);
-        assertThat(toLogicalType(serdeContext, maximumJson)).isEqualTo(UPDATED_STRUCTURED_TYPE);
+        assertThat(toObject(serdeContext, maximumJson, LogicalType.class))
+                .isEqualTo(UPDATED_STRUCTURED_TYPE);
 
         // no lookup
         config.set(
                 TableConfigOptions.PLAN_RESTORE_CATALOG_OBJECTS,
                 TableConfigOptions.CatalogPlanRestore.ALL);
         dataTypeFactoryMock.logicalType = Optional.of(UPDATED_STRUCTURED_TYPE);
-        assertThat(toLogicalType(serdeContext, maximumJson)).isEqualTo(STRUCTURED_TYPE);
+        assertThat(toObject(serdeContext, maximumJson, LogicalType.class))
+                .isEqualTo(STRUCTURED_TYPE);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -417,29 +419,5 @@ public class LogicalTypeJsonSerdeTest {
     private static DataType convertToInternalTypeIfNeeded(
             DataType dataType, boolean isInternalType) {
         return isInternalType ? dataType.toInternal() : dataType;
-    }
-
-    // --------------------------------------------------------------------------------------------
-    // Shared utilities
-    // --------------------------------------------------------------------------------------------
-
-    static String toJson(SerdeContext serdeContext, LogicalType logicalType) {
-        final ObjectWriter objectWriter = JsonSerdeUtil.createObjectWriter(serdeContext);
-        final String json;
-        try {
-            json = objectWriter.writeValueAsString(logicalType);
-        } catch (JsonProcessingException e) {
-            throw new AssertionError(e);
-        }
-        return json;
-    }
-
-    static LogicalType toLogicalType(SerdeContext serdeContext, String json) {
-        final ObjectReader objectReader = JsonSerdeUtil.createObjectReader(serdeContext);
-        try {
-            return objectReader.readValue(json, LogicalType.class);
-        } catch (IOException e) {
-            throw new AssertionError(e);
-        }
     }
 }

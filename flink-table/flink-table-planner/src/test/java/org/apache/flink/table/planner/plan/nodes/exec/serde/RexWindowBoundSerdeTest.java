@@ -23,6 +23,7 @@ import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.table.planner.calcite.FlinkContextImpl;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable;
+import org.apache.flink.table.utils.CatalogManagerMocks;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectReader;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectWriter;
@@ -43,12 +44,13 @@ public class RexWindowBoundSerdeTest {
     public void testSerde() throws IOException {
         SerdeContext serdeCtx =
                 new SerdeContext(
+                        null,
                         new FlinkContextImpl(
                                 false,
                                 TableConfig.getDefault(),
                                 new ModuleManager(),
                                 null,
-                                null,
+                                CatalogManagerMocks.createEmptyCatalogManager(),
                                 null),
                         Thread.currentThread().getContextClassLoader(),
                         FlinkTypeFactory.INSTANCE(),

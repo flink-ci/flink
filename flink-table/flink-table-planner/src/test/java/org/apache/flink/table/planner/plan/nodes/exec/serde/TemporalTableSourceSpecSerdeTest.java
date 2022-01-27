@@ -22,6 +22,7 @@ import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.catalog.CatalogTable;
 import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ContextResolvedTable;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ResolvedCatalogTable;
 import org.apache.flink.table.catalog.ResolvedSchema;
@@ -31,14 +32,12 @@ import org.apache.flink.table.planner.calcite.FlinkContext;
 import org.apache.flink.table.planner.calcite.FlinkContextImpl;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
-import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable;
 import org.apache.flink.table.planner.plan.abilities.source.SourceAbilitySpec;
 import org.apache.flink.table.planner.plan.nodes.exec.spec.TemporalTableSourceSpec;
 import org.apache.flink.table.planner.plan.schema.TableSourceTable;
 import org.apache.flink.table.planner.plan.stats.FlinkStatistic;
 import org.apache.flink.table.utils.CatalogManagerMocks;
 
-import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectReader;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectWriter;
 
@@ -47,8 +46,6 @@ import org.apache.calcite.sql.type.SqlTypeName;
 import org.junit.Test;
 
 import java.io.IOException;
-import java.io.StringWriter;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -71,23 +68,13 @@ public class TemporalTableSourceSpecSerdeTest {
 
     @Test
     public void testTemporalTableSourceSpecSerde() throws IOException {
-        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        SerdeContext serdeCtx =
-                new SerdeContext(
-                        FLINK_CONTEXT,
-                        classLoader,
-                        FlinkTypeFactory.INSTANCE(),
-                        FlinkSqlOperatorTable.instance());
+        SerdeContext serdeCtx = JsonSerdeTestUtil.configuredSerdeContext();
         ObjectReader objectReader = JsonSerdeUtil.createObjectReader(serdeCtx);
         ObjectWriter objectWriter = JsonSerdeUtil.createObjectWriter(serdeCtx);
 
-        StringWriter writer = new StringWriter(100);
         List<TemporalTableSourceSpec> specs = testData();
         for (TemporalTableSourceSpec spec : specs) {
-            try (JsonGenerator gen = objectWriter.getFactory().createGenerator(writer)) {
-                gen.writeObject(spec);
-            }
-            String json = writer.toString();
+            String json = objectWriter.writeValueAsString(spec);
             TemporalTableSourceSpec actual =
                     objectReader.readValue(json, TemporalTableSourceSpec.class);
             assertEquals(spec.getTableSourceSpec(), actual.getTableSourceSpec());
@@ -118,16 +105,17 @@ public class TemporalTableSourceSpecSerdeTest {
         TableSourceTable tableSourceTable1 =
                 new TableSourceTable(
                         null,
-                        ObjectIdentifier.of("default_catalog", "default_db", "MyTable"),
                         relDataType1,
                         FlinkStatistic.UNKNOWN(),
                         lookupTableSource,
                         true,
-                        resolvedCatalogTable,
+                        ContextResolvedTable.temporary(
+                                ObjectIdentifier.of("default_catalog", "default_db", "MyTable"),
+                                resolvedCatalogTable),
                         FLINK_CONTEXT,
                         new SourceAbilitySpec[] {});
         TemporalTableSourceSpec temporalTableSourceSpec1 =
                 new TemporalTableSourceSpec(tableSourceTable1, new TableConfig());
-        return Arrays.asList(temporalTableSourceSpec1);
+        return Collections.singletonList(temporalTableSourceSpec1);
     }
 }

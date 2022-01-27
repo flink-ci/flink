@@ -3,11 +3,7 @@
   "nodes" : [ {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecTableSourceScan",
     "scanTableSource" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "PartitionTable"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`PartitionTable`",
       "catalogTable" : {
         "schema.2.data-type" : "VARCHAR(2147483647)",
         "connector" : "values",
@@ -44,17 +40,11 @@
     "projection" : [ {
       "kind" : "INPUT_REF",
       "inputIndex" : 0,
-      "type" : {
-        "typeName" : "BIGINT",
-        "nullable" : true
-      }
+      "type" : "BIGINT"
     }, {
       "kind" : "INPUT_REF",
       "inputIndex" : 1,
-      "type" : {
-        "typeName" : "INTEGER",
-        "nullable" : true
-      }
+      "type" : "INT"
     }, {
       "kind" : "REX_CALL",
       "operator" : {
@@ -65,17 +55,9 @@
       "operands" : [ {
         "kind" : "LITERAL",
         "value" : "A",
-        "type" : {
-          "typeName" : "VARCHAR",
-          "nullable" : false,
-          "precision" : 2147483647
-        }
+        "type" : "VARCHAR(2147483647) NOT NULL"
       } ],
-      "type" : {
-        "typeName" : "VARCHAR",
-        "nullable" : true,
-        "precision" : 2147483647
-      }
+      "type" : "VARCHAR(2147483647)"
     } ],
     "condition" : null,
     "id" : 2,
@@ -91,11 +73,7 @@
   }, {
     "class" : "org.apache.flink.table.planner.plan.nodes.exec.stream.StreamExecSink",
     "dynamicTableSink" : {
-      "identifier" : {
-        "catalogName" : "default_catalog",
-        "databaseName" : "default_database",
-        "tableName" : "MySink"
-      },
+      "identifier" : "`default_catalog`.`default_database`.`MySink`",
       "catalogTable" : {
         "table-sink-class" : "DEFAULT",
         "schema.2.data-type" : "VARCHAR(2147483647)",

@@ -20,7 +20,6 @@ package org.apache.flink.table.planner.plan.nodes.exec.serde;
 
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.EnvironmentSettings;
-import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.api.TableEnvironment;
 import org.apache.flink.table.api.internal.TableEnvironmentImpl;
 import org.apache.flink.table.catalog.CatalogTable;
@@ -28,11 +27,8 @@ import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ResolvedCatalogTable;
 import org.apache.flink.table.catalog.ResolvedSchema;
-import org.apache.flink.table.module.ModuleManager;
-import org.apache.flink.table.planner.calcite.FlinkContextImpl;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.delegation.PlannerBase;
-import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable;
 import org.apache.flink.table.planner.plan.abilities.source.FilterPushDownSpec;
 import org.apache.flink.table.planner.plan.abilities.source.LimitPushDownSpec;
 import org.apache.flink.table.planner.plan.abilities.source.PartitionPushDownSpec;
@@ -47,12 +43,12 @@ import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.TimestampKind;
 import org.apache.flink.table.types.logical.TimestampType;
-import org.apache.flink.table.utils.CatalogManagerMocks;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectReader;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectWriter;
 
 import org.apache.calcite.avatica.util.TimeUnit;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.sql.SqlIntervalQualifier;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
@@ -83,18 +79,7 @@ public class DynamicTableSourceSpecSerdeTest {
     @Test
     public void testDynamicTableSourceSpecSerde() throws IOException {
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-        SerdeContext serdeCtx =
-                new SerdeContext(
-                        new FlinkContextImpl(
-                                false,
-                                TableConfig.getDefault(),
-                                new ModuleManager(),
-                                null,
-                                CatalogManagerMocks.createEmptyCatalogManager(),
-                                null),
-                        classLoader,
-                        FlinkTypeFactory.INSTANCE(),
-                        FlinkSqlOperatorTable.instance());
+        SerdeContext serdeCtx = JsonSerdeTestUtil.configuredSerdeContext();
         ObjectReader objectReader = JsonSerdeUtil.createObjectReader(serdeCtx);
         ObjectWriter objectWriter = JsonSerdeUtil.createObjectWriter(serdeCtx);
 
@@ -221,7 +206,9 @@ public class DynamicTableSourceSpecSerdeTest {
                                                         BigDecimal.valueOf(1000),
                                                         new SqlIntervalQualifier(
                                                                 TimeUnit.SECOND,
+                                                                RelDataType.PRECISION_NOT_SPECIFIED,
                                                                 TimeUnit.SECOND,
+                                                                3,
                                                                 SqlParserPos.ZERO))),
                                         5000,
                                         RowType.of(
