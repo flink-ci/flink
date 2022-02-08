@@ -26,6 +26,7 @@ import org.apache.flink.configuration.ConfigurationUtils;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.DescribedEnum;
 import org.apache.flink.configuration.ExecutionOptions;
+import org.apache.flink.configuration.JobManagerOptions;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.configuration.ReadableConfig;
@@ -152,6 +153,8 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
 
     private RestartStrategies.RestartStrategyConfiguration restartStrategyConfiguration =
             new RestartStrategies.FallbackRestartStrategyConfiguration();
+
+    private boolean isDynamicGraph = false;
 
     private long taskCancellationIntervalMillis = -1;
 
@@ -469,6 +472,16 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
         } else {
             return restartStrategyConfiguration;
         }
+    }
+
+    @Internal
+    public void setDynamicGraph(boolean dynamicGraph) {
+        isDynamicGraph = dynamicGraph;
+    }
+
+    @Internal
+    public boolean isDynamicGraph() {
+        return isDynamicGraph;
     }
 
     /**
@@ -1180,6 +1193,14 @@ public class ExecutionConfig implements Serializable, Archiveable<ArchivedExecut
                 .getOptional(PipelineOptions.KRYO_REGISTERED_CLASSES)
                 .map(c -> loadClasses(c, classLoader, "Could not load kryo type to be registered."))
                 .ifPresent(c -> this.registeredKryoTypes = c);
+
+        configuration
+                .getOptional(JobManagerOptions.SCHEDULER)
+                .ifPresent(
+                        schedulerType ->
+                                this.setDynamicGraph(
+                                        schedulerType
+                                                == JobManagerOptions.SchedulerType.AdaptiveBatch));
     }
 
     private LinkedHashSet<Class<?>> loadClasses(
