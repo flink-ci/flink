@@ -21,7 +21,7 @@ import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 
 import java.util.Objects;
 
-/** Signals the reader the maximum watermark that emitted records should have. */
+/** Signals source operators the maximum watermark that emitted records can have. */
 public class WatermarkAlignmentEvent implements OperatorEvent {
 
     private static final long serialVersionUID = 1L;
