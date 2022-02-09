@@ -23,7 +23,7 @@ import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import java.util.Objects;
 
 /**
- * Reports {@link Watermark} from a subtask to the {@link
+ * Reports last emitted {@link Watermark} from a subtask to the {@link
  * org.apache.flink.runtime.source.coordinator.SourceCoordinator}.
  */
 public class ReportedWatermarkEvent implements OperatorEvent {
