@@ -30,7 +30,7 @@ import org.apache.nifi.remote.client.SiteToSiteClientConfig;
  * A sink that delivers data to Apache NiFi using the NiFi Site-to-Site client. The sink requires a
  * NiFiDataPacketBuilder which can create instances of NiFiDataPacket from the incoming data.
  *
- * @Deprecated The NiFi Sink has been deprecated and will be removed in a future Flink release.
+ * @deprecated The NiFi Sink has been deprecated and will be removed in a future Flink release.
  *
  */
 @Deprecated
