@@ -67,7 +67,7 @@ import org.apache.flink.streaming.api.operators.UdfStreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.YieldingOperatorFactory;
 import org.apache.flink.streaming.api.transformations.StreamExchangeMode;
 import org.apache.flink.streaming.runtime.partitioner.CustomPartitionerWrapper;
-import org.apache.flink.streaming.runtime.partitioner.ForwardForLocalKeyByPartitioner;
+import org.apache.flink.streaming.runtime.partitioner.ForwardForConsecutiveHashPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.ForwardPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.StreamPartitioner;
 import org.apache.flink.streaming.runtime.tasks.StreamIterationHead;
@@ -885,21 +885,24 @@ public class StreamingJobGraphGenerator {
     private void tryConvertPartitionerForDynamicGraph(
             List<StreamEdge> chainableOutputs, List<StreamEdge> nonChainableOutputs) {
 
-        if (!streamGraph.getExecutionConfig().isDynamicGraph()) {
-            return;
-        }
-
         for (StreamEdge edge : chainableOutputs) {
             StreamPartitioner<?> partitioner = edge.getPartitioner();
-            if (partitioner instanceof ForwardForLocalKeyByPartitioner) {
+            if (partitioner instanceof ForwardForConsecutiveHashPartitioner) {
+                checkState(
+                        streamGraph.getExecutionConfig().isDynamicGraph(),
+                        "ForwardForConsecutiveHashPartitioner should only be used in dynamic graph.");
                 edge.setPartitioner(new ForwardPartitioner<>());
             }
         }
         for (StreamEdge edge : nonChainableOutputs) {
             StreamPartitioner<?> partitioner = edge.getPartitioner();
-            if (partitioner instanceof ForwardForLocalKeyByPartitioner) {
+            if (partitioner instanceof ForwardForConsecutiveHashPartitioner) {
+                checkState(
+                        streamGraph.getExecutionConfig().isDynamicGraph(),
+                        "ForwardForConsecutiveHashPartitioner should only be used in dynamic graph.");
                 edge.setPartitioner(
-                        ((ForwardForLocalKeyByPartitioner<?>) partitioner).getHashPartitioner());
+                        ((ForwardForConsecutiveHashPartitioner<?>) partitioner)
+                                .getHashPartitioner());
             }
         }
     }

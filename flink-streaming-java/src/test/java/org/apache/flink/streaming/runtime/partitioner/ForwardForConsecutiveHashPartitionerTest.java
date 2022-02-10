@@ -36,8 +36,8 @@ import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
-/** Test for {@link ForwardForLocalKeyByPartitioner}. */
-public class ForwardForLocalKeyByPartitionerTest extends TestLogger {
+/** Test for {@link ForwardForConsecutiveHashPartitioner}. */
+public class ForwardForConsecutiveHashPartitionerTest extends TestLogger {
 
     @Test
     public void testConvertToForwardPartitioner() {
@@ -72,9 +72,9 @@ public class ForwardForLocalKeyByPartitionerTest extends TestLogger {
         final DataStream<Long> source =
                 env.fromSequence(0, 99).slotSharingGroup(sourceSlotSharingGroup).name("source");
 
-        setForwardForLocalKeyPartitioner(
+        setForwardForConsecutiveHashPartitioner(
                         source,
-                        new ForwardForLocalKeyByPartitioner<>(
+                        new ForwardForConsecutiveHashPartitioner<>(
                                 new KeyGroupStreamPartitioner<>(record -> 0L, 100)))
                 .addSink(new DiscardingSink<>())
                 .slotSharingGroup(sinkSlotSharingGroup)
@@ -83,12 +83,12 @@ public class ForwardForLocalKeyByPartitionerTest extends TestLogger {
         return env.getStreamGraph().getJobGraph();
     }
 
-    private <T> DataStream<T> setForwardForLocalKeyPartitioner(
+    private <T> DataStream<T> setForwardForConsecutiveHashPartitioner(
             DataStream<T> dataStream,
-            ForwardForLocalKeyByPartitioner<T> forwardForLocalKeyByPartitioner) {
+            ForwardForConsecutiveHashPartitioner<T> forwardForConsecutiveHashPartitioner) {
         return new DataStream<T>(
                 dataStream.getExecutionEnvironment(),
                 new PartitionTransformation<T>(
-                        dataStream.getTransformation(), forwardForLocalKeyByPartitioner));
+                        dataStream.getTransformation(), forwardForConsecutiveHashPartitioner));
     }
 }
