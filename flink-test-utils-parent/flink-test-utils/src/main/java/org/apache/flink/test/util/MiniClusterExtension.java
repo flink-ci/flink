@@ -249,7 +249,7 @@ public class MiniClusterExtension
 
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
-        startCluster(miniClusterResource);
+        miniClusterResource.before();
     }
 
     @Override
@@ -264,18 +264,10 @@ public class MiniClusterExtension
 
     @Override
     public void afterAll(ExtensionContext context) throws Exception {
-        stopCluster(miniClusterResource);
+        miniClusterResource.after();
     }
 
     // Implementation
-
-    private void startCluster(MiniClusterResource miniClusterResource) throws Exception {
-        miniClusterResource.before();
-    }
-
-    private void stopCluster(MiniClusterResource miniClusterResource) {
-        miniClusterResource.after();
-    }
 
     private void registerEnv(MiniClusterResource miniClusterResource) {
         TestEnvironment executionEnvironment =
@@ -317,6 +309,7 @@ public class MiniClusterExtension
             return autoCloseable;
         }
 
+        @Override
         public void close() throws Throwable {
             this.autoCloseable.close();
         }
