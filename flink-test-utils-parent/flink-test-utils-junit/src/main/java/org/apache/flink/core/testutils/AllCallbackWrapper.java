@@ -22,7 +22,11 @@ import org.junit.jupiter.api.extension.AfterAllCallback;
 import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
 
-/** An extension wrap logic for {@link BeforeAllCallback} and {@link AfterAllCallback}. */
+/**
+ * An extension wrap logic for {@link BeforeAllCallback} and {@link AfterAllCallback}.
+ *
+ * <p>You MUST not use this with {@code MiniClusterExtension}.
+ */
 public class AllCallbackWrapper<C extends CustomExtension>
         implements BeforeAllCallback, AfterAllCallback {
     private final C customExtension;
