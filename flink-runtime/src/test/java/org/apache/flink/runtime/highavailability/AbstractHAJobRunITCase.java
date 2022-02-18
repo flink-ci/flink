@@ -29,7 +29,7 @@ import org.apache.flink.core.testutils.EachCallbackWrapper;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.minicluster.MiniCluster;
-import org.apache.flink.runtime.testutils.MiniClusterExtension;
+import org.apache.flink.runtime.testutils.InternalMiniClusterExtension;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.runtime.zookeeper.ZooKeeperExtension;
 import org.apache.flink.testutils.TestingUtils;
@@ -58,9 +58,9 @@ public abstract class AbstractHAJobRunITCase {
             new AllCallbackWrapper<>(new ZooKeeperExtension());
 
     @RegisterExtension
-    private final EachCallbackWrapper<MiniClusterExtension> miniClusterExtension =
+    private final EachCallbackWrapper<InternalMiniClusterExtension> miniClusterExtension =
             new EachCallbackWrapper<>(
-                    new MiniClusterExtension(
+                    new InternalMiniClusterExtension(
                             new MiniClusterResourceConfiguration.Builder()
                                     .setConfiguration(getFlinkConfiguration())
                                     .build()));

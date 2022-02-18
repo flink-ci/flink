@@ -26,11 +26,16 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 
 import java.net.URI;
 
-/** An extension which starts a {@link MiniCluster} for testing purposes. */
-public class MiniClusterExtension implements CustomExtension {
+/**
+ * An extension which starts a {@link MiniCluster} for testing purposes.
+ *
+ * <p>This should only be used by tests within the flink-runtime module. Other modules should use
+ * {@code MiniClusterExtension} provided by flink-test-utils module.
+ */
+public class InternalMiniClusterExtension implements CustomExtension {
     private final MiniClusterResource miniClusterResource;
 
-    public MiniClusterExtension(
+    public InternalMiniClusterExtension(
             final MiniClusterResourceConfiguration miniClusterResourceConfiguration) {
         this.miniClusterResource = new MiniClusterResource(miniClusterResourceConfiguration);
     }

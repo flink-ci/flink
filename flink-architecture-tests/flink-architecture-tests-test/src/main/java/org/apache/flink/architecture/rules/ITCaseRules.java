@@ -19,7 +19,7 @@
 package org.apache.flink.architecture.rules;
 
 import org.apache.flink.core.testutils.AllCallbackWrapper;
-import org.apache.flink.runtime.testutils.MiniClusterExtension;
+import org.apache.flink.runtime.testutils.InternalMiniClusterExtension;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 
@@ -137,7 +137,7 @@ public class ITCaseRules {
 
     private static DescribedPredicate<JavaClass> miniClusterExtensionRule() {
         return containAnyFieldsInClassHierarchyThat(
-                arePublicStaticFinalAssignableTo(MiniClusterExtension.class));
+                arePublicStaticFinalAssignableTo(InternalMiniClusterExtension.class));
     }
 
     private static DescribedPredicate<JavaClass> allCallbackWrapper() {
