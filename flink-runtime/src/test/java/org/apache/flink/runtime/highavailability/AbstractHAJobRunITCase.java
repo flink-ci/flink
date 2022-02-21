@@ -31,6 +31,7 @@ import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.runtime.testutils.InternalMiniClusterExtension;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.runtime.zookeeper.ZooKeeperExtension;
+import org.apache.flink.test.junit5.InjectMiniCluster;
 import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.util.TestLoggerExtension;
 import org.apache.flink.util.concurrent.FutureUtils;
@@ -97,8 +98,7 @@ public abstract class AbstractHAJobRunITCase {
     protected void runAfterJobTermination() throws Exception {}
 
     @Test
-    public void testJobExecutionInHaMode(
-            @InternalMiniClusterExtension.InjectMiniCluster MiniCluster flinkCluster)
+    public void testJobExecutionInHaMode(@InjectMiniCluster MiniCluster flinkCluster)
             throws Exception {
         final JobGraph jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
 

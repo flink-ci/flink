@@ -41,6 +41,7 @@ import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
 import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.runtime.testutils.InternalMiniClusterExtension;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
+import org.apache.flink.test.junit5.InjectMiniCluster;
 import org.apache.flink.testutils.TestingUtils;
 import org.apache.flink.types.LongValue;
 import org.apache.flink.util.TestLoggerExtension;
@@ -93,8 +94,8 @@ public class TaskCancelAsyncProducerConsumerITCase {
      * the main task Thread.
      */
     @Test
-    public void testCancelAsyncProducerAndConsumer(
-            @InternalMiniClusterExtension.InjectMiniCluster MiniCluster flink) throws Exception {
+    public void testCancelAsyncProducerAndConsumer(@InjectMiniCluster MiniCluster flink)
+            throws Exception {
         Deadline deadline = Deadline.now().plus(Duration.ofMinutes(2));
 
         // Job with async producer and consumer

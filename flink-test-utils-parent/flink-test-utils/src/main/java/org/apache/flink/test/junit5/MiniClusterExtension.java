@@ -16,19 +16,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.test.util;
+package org.apache.flink.test.junit5;
 
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.MiniClusterClient;
 import org.apache.flink.client.program.rest.RestClusterClient;
-import org.apache.flink.configuration.UnmodifiableConfiguration;
 import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.runtime.testutils.InternalMiniClusterExtension;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.util.TestStreamEnvironment;
+import org.apache.flink.test.util.TestEnvironment;
 
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.extension.AfterAllCallback;
@@ -40,12 +40,6 @@ import org.junit.jupiter.api.extension.ParameterContext;
 import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 import org.junit.jupiter.params.ParameterizedTest;
-
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
-import java.net.URI;
 
 /**
  * Starts a Flink {@link MiniCluster} and registers the respective {@link ExecutionEnvironment} and
@@ -129,7 +123,7 @@ import java.net.URI;
  * ParameterizedTest} instead.
  */
 @Experimental
-public class MiniClusterExtension
+public final class MiniClusterExtension
         implements BeforeAllCallback,
                 BeforeEachCallback,
                 AfterEachCallback,
@@ -142,43 +136,7 @@ public class MiniClusterExtension
     private static final String CLUSTER_REST_CLIENT = "clusterRestClient";
     private static final String MINI_CLUSTER_CLIENT = "miniClusterClient";
 
-    /**
-     * Annotate a test method parameter with this annotation to inject the {@link MiniCluster}
-     * instance.
-     */
-    @Target(ElementType.PARAMETER)
-    @Retention(RetentionPolicy.RUNTIME)
-    @Experimental
-    public @interface InjectMiniCluster {}
-
-    /**
-     * Annotate a test method parameter with this annotation to inject the {@link ClusterClient} or
-     * the {@link RestClusterClient} instance.
-     */
-    @Target(ElementType.PARAMETER)
-    @Retention(RetentionPolicy.RUNTIME)
-    @Experimental
-    public @interface InjectClusterClient {}
-
-    /**
-     * Annotate a test method parameter with this annotation to inject the {@link
-     * UnmodifiableConfiguration} for building a cluster client.
-     */
-    @Target(ElementType.PARAMETER)
-    @Retention(RetentionPolicy.RUNTIME)
-    @Experimental
-    public @interface InjectClusterClientConfiguration {}
-
-    /**
-     * Annotate a test method parameter with this annotation to inject the {@link URI} REST address
-     * of the cluster.
-     */
-    @Target(ElementType.PARAMETER)
-    @Retention(RetentionPolicy.RUNTIME)
-    @Experimental
-    public @interface InjectClusterRESTAddress {}
-
-    private final InternalMiniClusterExtension miniClusterExtension;
+    private final InternalMiniClusterExtension internalMiniClusterExtension;
 
     public MiniClusterExtension() {
         this(
@@ -190,7 +148,7 @@ public class MiniClusterExtension
 
     public MiniClusterExtension(
             final MiniClusterResourceConfiguration miniClusterResourceConfiguration) {
-        this.miniClusterExtension =
+        this.internalMiniClusterExtension =
                 new InternalMiniClusterExtension(miniClusterResourceConfiguration);
     }
 
@@ -205,7 +163,7 @@ public class MiniClusterExtension
                 && parameterType.isAssignableFrom(ClusterClient.class)) {
             return true;
         }
-        return miniClusterExtension.supportsParameter(parameterContext, extensionContext);
+        return internalMiniClusterExtension.supportsParameter(parameterContext, extensionContext);
     }
 
     @Override
@@ -222,7 +180,8 @@ public class MiniClusterExtension
                                 k -> {
                                     try {
                                         return new CloseableParameter<>(
-                                                createRestClusterClient(miniClusterExtension));
+                                                createRestClusterClient(
+                                                        internalMiniClusterExtension));
                                     } catch (Exception e) {
                                         throw new ParameterResolutionException(
                                                 "Cannot create rest cluster client", e);
@@ -239,7 +198,7 @@ public class MiniClusterExtension
                             k -> {
                                 try {
                                     return new CloseableParameter<>(
-                                            createMiniClusterClient(miniClusterExtension));
+                                            createMiniClusterClient(internalMiniClusterExtension));
                                 } catch (Exception e) {
                                     throw new ParameterResolutionException(
                                             "Cannot create mini cluster client", e);
@@ -248,59 +207,61 @@ public class MiniClusterExtension
                             CloseableParameter.class)
                     .get();
         }
-        return miniClusterExtension.resolveParameter(parameterContext, extensionContext);
+        return internalMiniClusterExtension.resolveParameter(parameterContext, extensionContext);
     }
 
     // Lifecycle implementation
 
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
-        miniClusterExtension.beforeAll(context);
+        internalMiniClusterExtension.beforeAll(context);
     }
 
     @Override
     public void beforeEach(ExtensionContext context) throws Exception {
-        registerEnv(miniClusterExtension);
+        registerEnv(internalMiniClusterExtension);
     }
 
     @Override
     public void afterEach(ExtensionContext context) throws Exception {
-        unregisterEnv(miniClusterExtension);
+        unregisterEnv(internalMiniClusterExtension);
     }
 
     @Override
     public void afterAll(ExtensionContext context) throws Exception {
-        miniClusterExtension.afterAll(context);
+        internalMiniClusterExtension.afterAll(context);
     }
 
     // Implementation
 
-    private void registerEnv(InternalMiniClusterExtension miniClusterResource) {
+    private void registerEnv(InternalMiniClusterExtension internalMiniClusterExtension) {
         TestEnvironment executionEnvironment =
                 new TestEnvironment(
-                        miniClusterResource.getMiniCluster(),
-                        miniClusterResource.getNumberSlots(),
+                        internalMiniClusterExtension.getMiniCluster(),
+                        internalMiniClusterExtension.getNumberSlots(),
                         false);
         executionEnvironment.setAsContext();
         TestStreamEnvironment.setAsContext(
-                miniClusterResource.getMiniCluster(), miniClusterResource.getNumberSlots());
+                internalMiniClusterExtension.getMiniCluster(),
+                internalMiniClusterExtension.getNumberSlots());
     }
 
-    private void unregisterEnv(InternalMiniClusterExtension miniClusterResource) {
+    private void unregisterEnv(InternalMiniClusterExtension internalMiniClusterExtension) {
         TestStreamEnvironment.unsetAsContext();
         TestEnvironment.unsetAsContext();
     }
 
     private MiniClusterClient createMiniClusterClient(
-            InternalMiniClusterExtension miniClusterResource) {
+            InternalMiniClusterExtension internalMiniClusterExtension) {
         return new MiniClusterClient(
-                miniClusterResource.getClientConfiguration(), miniClusterResource.getMiniCluster());
+                internalMiniClusterExtension.getClientConfiguration(),
+                internalMiniClusterExtension.getMiniCluster());
     }
 
     private RestClusterClient<MiniClusterClient.MiniClusterId> createRestClusterClient(
-            InternalMiniClusterExtension miniClusterResource) throws Exception {
+            InternalMiniClusterExtension internalMiniClusterExtension) throws Exception {
         return new RestClusterClient<>(
-                miniClusterResource.getClientConfiguration(),
+                internalMiniClusterExtension.getClientConfiguration(),
                 MiniClusterClient.MiniClusterId.INSTANCE);
     }
 

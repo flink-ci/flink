@@ -38,7 +38,8 @@ import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
-import org.apache.flink.test.util.MiniClusterExtension;
+import org.apache.flink.test.junit5.InjectMiniCluster;
+import org.apache.flink.test.junit5.MiniClusterExtension;
 import org.apache.flink.testutils.logging.LoggerAuditingExtension;
 
 import org.junit.jupiter.api.Test;
@@ -49,7 +50,6 @@ import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
-import static org.apache.flink.test.util.MiniClusterExtension.InjectMiniCluster;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**

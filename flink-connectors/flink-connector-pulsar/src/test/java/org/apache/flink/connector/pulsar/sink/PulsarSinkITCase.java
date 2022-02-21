@@ -25,7 +25,7 @@ import org.apache.flink.connector.pulsar.testutils.function.ControlSource;
 import org.apache.flink.runtime.minicluster.RpcServiceSharing;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.test.util.MiniClusterExtension;
+import org.apache.flink.test.junit5.MiniClusterExtension;
 import org.apache.flink.testutils.junit.SharedObjectsExtension;
 
 import org.junit.jupiter.api.extension.RegisterExtension;
