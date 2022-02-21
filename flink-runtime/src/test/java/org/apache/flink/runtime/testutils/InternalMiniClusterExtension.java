@@ -18,12 +18,22 @@
 
 package org.apache.flink.runtime.testutils;
 
+import org.apache.flink.annotation.Experimental;
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.UnmodifiableConfiguration;
-import org.apache.flink.core.testutils.CustomExtension;
 import org.apache.flink.runtime.minicluster.MiniCluster;
 
+import org.junit.jupiter.api.extension.AfterAllCallback;
+import org.junit.jupiter.api.extension.BeforeAllCallback;
 import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.ParameterContext;
+import org.junit.jupiter.api.extension.ParameterResolutionException;
+import org.junit.jupiter.api.extension.ParameterResolver;
 
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 import java.net.URI;
 
 /**
@@ -32,7 +42,40 @@ import java.net.URI;
  * <p>This should only be used by tests within the flink-runtime module. Other modules should use
  * {@code MiniClusterExtension} provided by flink-test-utils module.
  */
-public class InternalMiniClusterExtension implements CustomExtension {
+@Internal
+public class InternalMiniClusterExtension
+        implements BeforeAllCallback, AfterAllCallback, ParameterResolver {
+
+    private static final ExtensionContext.Namespace NAMESPACE =
+            ExtensionContext.Namespace.create(InternalMiniClusterExtension.class);
+
+    /**
+     * Annotate a test method parameter with this annotation to inject the {@link MiniCluster}
+     * instance.
+     */
+    @Target(ElementType.PARAMETER)
+    @Retention(RetentionPolicy.RUNTIME)
+    @Experimental
+    public @interface InjectMiniCluster {}
+
+    /**
+     * Annotate a test method parameter with this annotation to inject the {@link URI} REST address
+     * of the cluster.
+     */
+    @Target(ElementType.PARAMETER)
+    @Retention(RetentionPolicy.RUNTIME)
+    @Experimental
+    public @interface InjectClusterRESTAddress {}
+
+    /**
+     * Annotate a test method parameter with this annotation to inject the {@link
+     * UnmodifiableConfiguration} for building a cluster client.
+     */
+    @Target(ElementType.PARAMETER)
+    @Retention(RetentionPolicy.RUNTIME)
+    @Experimental
+    public @interface InjectClusterClientConfiguration {}
+
     private final MiniClusterResource miniClusterResource;
 
     public InternalMiniClusterExtension(
@@ -57,12 +100,46 @@ public class InternalMiniClusterExtension implements CustomExtension {
     }
 
     @Override
-    public void before(ExtensionContext context) throws Exception {
+    public void beforeAll(ExtensionContext context) throws Exception {
         miniClusterResource.before();
     }
 
     @Override
-    public void after(ExtensionContext context) throws Exception {
+    public void afterAll(ExtensionContext context) throws Exception {
         miniClusterResource.after();
+    }
+
+    @Override
+    public boolean supportsParameter(
+            ParameterContext parameterContext, ExtensionContext extensionContext)
+            throws ParameterResolutionException {
+        Class<?> parameterType = parameterContext.getParameter().getType();
+        if (parameterContext.isAnnotated(InjectMiniCluster.class)
+                && parameterType.isAssignableFrom(MiniCluster.class)) {
+            return true;
+        }
+        if (parameterContext.isAnnotated(InjectClusterClientConfiguration.class)
+                && parameterType.isAssignableFrom(UnmodifiableConfiguration.class)) {
+            return true;
+        }
+        return parameterContext.isAnnotated(InjectClusterRESTAddress.class)
+                && parameterType.isAssignableFrom(URI.class);
+    }
+
+    @Override
+    public Object resolveParameter(
+            ParameterContext parameterContext, ExtensionContext extensionContext)
+            throws ParameterResolutionException {
+        Class<?> parameterType = parameterContext.getParameter().getType();
+        if (parameterContext.isAnnotated(InjectMiniCluster.class)) {
+            return miniClusterResource.getMiniCluster();
+        }
+        if (parameterContext.isAnnotated(InjectClusterClientConfiguration.class)) {
+            return miniClusterResource.getClientConfiguration();
+        }
+        if (parameterContext.isAnnotated(InjectClusterRESTAddress.class)) {
+            return miniClusterResource.getRestAddres();
+        }
+        throw new ParameterResolutionException("Unsupported parameter");
     }
 }

@@ -25,7 +25,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
-import org.apache.flink.core.testutils.AllCallbackWrapper;
 import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.io.network.api.writer.RecordWriter;
@@ -71,15 +70,12 @@ public class TaskCancelAsyncProducerConsumerITCase {
     private static volatile Thread ASYNC_PRODUCER_THREAD;
     private static volatile Thread ASYNC_CONSUMER_THREAD;
 
-    public static final InternalMiniClusterExtension MINI_CLUSTER_RESOURCE =
+    @RegisterExtension
+    private static final InternalMiniClusterExtension MINI_CLUSTER_RESOURCE =
             new InternalMiniClusterExtension(
                     new MiniClusterResourceConfiguration.Builder()
                             .setConfiguration(getFlinkConfiguration())
                             .build());
-
-    @RegisterExtension
-    public static AllCallbackWrapper allCallbackWrapper =
-            new AllCallbackWrapper(MINI_CLUSTER_RESOURCE);
 
     private static Configuration getFlinkConfiguration() {
         Configuration config = new Configuration();
@@ -97,7 +93,8 @@ public class TaskCancelAsyncProducerConsumerITCase {
      * the main task Thread.
      */
     @Test
-    public void testCancelAsyncProducerAndConsumer() throws Exception {
+    public void testCancelAsyncProducerAndConsumer(
+            @InternalMiniClusterExtension.InjectMiniCluster MiniCluster flink) throws Exception {
         Deadline deadline = Deadline.now().plus(Duration.ofMinutes(2));
 
         // Job with async producer and consumer
@@ -116,8 +113,6 @@ public class TaskCancelAsyncProducerConsumerITCase {
         consumer.setSlotSharingGroup(slot);
 
         JobGraph jobGraph = JobGraphTestUtils.streamingJobGraph(producer, consumer);
-
-        final MiniCluster flink = MINI_CLUSTER_RESOURCE.getMiniCluster();
 
         // Submit job and wait until running
         flink.runDetached(jobGraph);

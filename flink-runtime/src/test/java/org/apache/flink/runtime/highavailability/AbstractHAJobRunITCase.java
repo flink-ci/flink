@@ -25,7 +25,6 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
 import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.testutils.AllCallbackWrapper;
-import org.apache.flink.core.testutils.EachCallbackWrapper;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobGraphTestUtils;
 import org.apache.flink.runtime.minicluster.MiniCluster;
@@ -58,12 +57,11 @@ public abstract class AbstractHAJobRunITCase {
             new AllCallbackWrapper<>(new ZooKeeperExtension());
 
     @RegisterExtension
-    private final EachCallbackWrapper<InternalMiniClusterExtension> miniClusterExtension =
-            new EachCallbackWrapper<>(
-                    new InternalMiniClusterExtension(
-                            new MiniClusterResourceConfiguration.Builder()
-                                    .setConfiguration(getFlinkConfiguration())
-                                    .build()));
+    private final InternalMiniClusterExtension miniClusterExtension =
+            new InternalMiniClusterExtension(
+                    new MiniClusterResourceConfiguration.Builder()
+                            .setConfiguration(getFlinkConfiguration())
+                            .build());
 
     private Configuration getFlinkConfiguration() {
         final Configuration config = createConfiguration();
@@ -99,9 +97,9 @@ public abstract class AbstractHAJobRunITCase {
     protected void runAfterJobTermination() throws Exception {}
 
     @Test
-    public void testJobExecutionInHaMode() throws Exception {
-        final MiniCluster flinkCluster = miniClusterExtension.getCustomExtension().getMiniCluster();
-
+    public void testJobExecutionInHaMode(
+            @InternalMiniClusterExtension.InjectMiniCluster MiniCluster flinkCluster)
+            throws Exception {
         final JobGraph jobGraph = JobGraphTestUtils.singleNoOpJobGraph();
 
         // providing a timeout helps making the test fail in case some issue occurred while
