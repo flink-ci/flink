@@ -46,7 +46,7 @@ class PulsarSinkITCase extends PulsarTestSuiteBase {
     private static final int PARALLELISM = 1;
 
     @RegisterExtension
-    public static final MiniClusterExtension MINI_CLUSTER_RESOURCE =
+    private static final MiniClusterExtension MINI_CLUSTER_RESOURCE =
             new MiniClusterExtension(
                     new MiniClusterResourceConfiguration.Builder()
                             .setNumberTaskManagers(1)

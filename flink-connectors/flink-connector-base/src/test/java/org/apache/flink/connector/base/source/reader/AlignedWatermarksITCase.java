@@ -72,7 +72,7 @@ public class AlignedWatermarksITCase {
     private static final InMemoryReporter reporter = InMemoryReporter.createWithRetainedMetrics();
 
     @RegisterExtension
-    public static final MiniClusterExtension MINI_CLUSTER_RESOURCE =
+    private static final MiniClusterExtension MINI_CLUSTER_RESOURCE =
             new MiniClusterExtension(
                     new MiniClusterResourceConfiguration.Builder()
                             .setNumberTaskManagers(1)
