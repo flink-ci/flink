@@ -18,6 +18,7 @@
 
 package org.apache.flink.test.util;
 
+import org.apache.flink.annotation.Experimental;
 import org.apache.flink.api.java.ExecutionEnvironment;
 import org.apache.flink.client.program.ClusterClient;
 import org.apache.flink.client.program.MiniClusterClient;
@@ -62,7 +63,7 @@ import java.net.URI;
  * }
  * }</pre>
  *
- * Or to tune the {@link MiniCluster} parameters:
+ * <p>Or to tune the {@link MiniCluster} parameters:
  *
  * <pre>{@code
  * class MyTest {
@@ -82,7 +83,7 @@ import java.net.URI;
  * }
  * }</pre>
  *
- * You can use parameter injection with the annotations {@link InjectMiniCluster}, {@link
+ * <p>You can use parameter injection with the annotations {@link InjectMiniCluster}, {@link
  * InjectClusterClient}, {@link InjectClusterRESTAddress}, {@link InjectClusterClientConfiguration}:
  *
  * <pre>{@code
@@ -108,7 +109,8 @@ import java.net.URI;
  *
  *     @Test
  *     public void myTest(@InjectClusterClient RestClusterClient<?> restClusterClient) {
- *          // Using RestClusterClient as parameter type will force the creation of a RestClusterClient, rather than MiniClusterClient
+ *          // Using RestClusterClient as parameter type will force the creation of a RestClusterClient,
+ *          //  rather than MiniClusterClient
  *     }
  * }
  * }</pre>
@@ -126,6 +128,7 @@ import java.net.URI;
  * href="https://github.com/junit-team/junit5/issues/378">some limitations</a>. Use {@link
  * ParameterizedTest} instead.
  */
+@Experimental
 public class MiniClusterExtension
         implements BeforeAllCallback,
                 BeforeEachCallback,
@@ -139,20 +142,40 @@ public class MiniClusterExtension
     private static final String CLUSTER_REST_CLIENT = "clusterRestClient";
     private static final String MINI_CLUSTER_CLIENT = "miniClusterClient";
 
+    /**
+     * Annotate a test method parameter with this annotation to inject the {@link MiniCluster}
+     * instance.
+     */
     @Target(ElementType.PARAMETER)
     @Retention(RetentionPolicy.RUNTIME)
+    @Experimental
     public @interface InjectMiniCluster {}
 
+    /**
+     * Annotate a test method parameter with this annotation to inject the {@link ClusterClient} or
+     * the {@link RestClusterClient} instance.
+     */
     @Target(ElementType.PARAMETER)
     @Retention(RetentionPolicy.RUNTIME)
+    @Experimental
     public @interface InjectClusterClient {}
 
+    /**
+     * Annotate a test method parameter with this annotation to inject the {@link
+     * UnmodifiableConfiguration} for building a cluster client.
+     */
     @Target(ElementType.PARAMETER)
     @Retention(RetentionPolicy.RUNTIME)
+    @Experimental
     public @interface InjectClusterClientConfiguration {}
 
+    /**
+     * Annotate a test method parameter with this annotation to inject the {@link URI} REST address
+     * of the cluster.
+     */
     @Target(ElementType.PARAMETER)
     @Retention(RetentionPolicy.RUNTIME)
+    @Experimental
     public @interface InjectClusterRESTAddress {}
 
     private final MiniClusterResource miniClusterResource;
