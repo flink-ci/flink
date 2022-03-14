@@ -25,6 +25,7 @@ import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.groups.OperatorIOMetricGroup;
 import org.apache.flink.metrics.groups.SinkWriterMetricGroup;
 import org.apache.flink.metrics.testutils.MetricListener;
+import org.apache.flink.runtime.metrics.MetricNames;
 import org.apache.flink.runtime.metrics.groups.InternalSinkWriterMetricGroup;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.util.DockerImageVersions;
@@ -201,6 +202,28 @@ class ElasticsearchWriterITCase {
 
             writer.blockingFlushAllActions();
             assertTrue(numBytesOut.getCount() > first);
+        }
+    }
+
+    @Test
+    void testIncrementRecordsSendMetric() throws Exception {
+        final String index = "test-inc-records-send";
+        final int flushAfterNActions = 2;
+        final BulkProcessorConfig bulkProcessorConfig =
+                new BulkProcessorConfig(flushAfterNActions, -1, -1, FlushBackoffType.NONE, 0, 0);
+
+        try (final ElasticsearchWriter<Tuple2<Integer, String>> writer =
+                createWriter(index, false, bulkProcessorConfig)) {
+            final Optional<Counter> recordsSend =
+                    metricListener.getCounter(MetricNames.NUM_RECORDS_SEND);
+            writer.write(Tuple2.of(1, buildMessage(1)), null);
+            writer.write(Tuple2.of(2, buildMessage(2)), null);
+            writer.write(Tuple2.of(2, buildMessage(3)), null);
+
+            writer.blockingFlushAllActions();
+
+            assertTrue(recordsSend.isPresent());
+            assertEquals(recordsSend.get().getCount(), 3L);
         }
     }
 
