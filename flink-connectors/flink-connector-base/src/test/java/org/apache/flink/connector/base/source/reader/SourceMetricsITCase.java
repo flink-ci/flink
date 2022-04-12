@@ -29,6 +29,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.source.reader.mocks.MockBaseSource;
 import org.apache.flink.connector.base.source.reader.mocks.MockRecordEmitter;
 import org.apache.flink.core.execution.JobClient;
+import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.groups.OperatorMetricGroup;
@@ -39,26 +40,26 @@ import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.sink.DiscardingSink;
-import org.apache.flink.test.util.MiniClusterWithClientResource;
-import org.apache.flink.testutils.junit.SharedObjects;
+import org.apache.flink.test.junit5.MiniClusterExtension;
+import org.apache.flink.testutils.junit.SharedObjectsExtension;
 import org.apache.flink.testutils.junit.SharedReference;
-import org.apache.flink.util.TestLogger;
+import org.apache.flink.util.function.TriFunction;
 
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
+import org.assertj.core.api.Condition;
+import org.assertj.core.api.InstanceOfAssertFactories;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CyclicBarrier;
 
-import static org.apache.flink.metrics.testutils.MetricAssertions.assertThatCounter;
 import static org.apache.flink.metrics.testutils.MetricAssertions.assertThatGauge;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests whether all provided metrics of a {@link Source} are of the expected values (FLIP-33). */
-public class SourceMetricsITCase extends TestLogger {
+class SourceMetricsITCase {
     private static final int DEFAULT_PARALLELISM = 4;
     // since integration tests depend on wall clock time, use huge lags
     private static final long EVENTTIME_LAG = Duration.ofDays(100).toMillis();
@@ -66,20 +67,23 @@ public class SourceMetricsITCase extends TestLogger {
     private static final long EVENTTIME_EPSILON = Duration.ofDays(20).toMillis();
     // this basically is the time a build is allowed to be frozen before the test fails
     private static final long WATERMARK_EPSILON = Duration.ofHours(6).toMillis();
-    @Rule public final SharedObjects sharedObjects = SharedObjects.create();
+    @RegisterExtension SharedObjectsExtension sharedObjects = SharedObjectsExtension.create();
     private static final InMemoryReporter reporter = InMemoryReporter.createWithRetainedMetrics();
 
-    @ClassRule
-    public static final MiniClusterWithClientResource MINI_CLUSTER_RESOURCE =
-            new MiniClusterWithClientResource(
+    @RegisterExtension
+    private static final MiniClusterExtension MINI_CLUSTER_RESOURCE =
+            new MiniClusterExtension(
                     new MiniClusterResourceConfiguration.Builder()
                             .setNumberTaskManagers(1)
                             .setNumberSlotsPerTaskManager(DEFAULT_PARALLELISM)
                             .setConfiguration(reporter.addToConfiguration(new Configuration()))
                             .build());
 
+    private static final TriFunction<Long, Long, Long, Boolean> CLOSE_TO =
+            (value, lag, epsilon) -> value > lag - epsilon && value < lag + epsilon;
+
     @Test
-    public void testMetricsWithTimestamp() throws Exception {
+    void testMetricsWithTimestamp() throws Exception {
         long baseTime = System.currentTimeMillis() - EVENTTIME_LAG;
         WatermarkStrategy<Integer> strategy =
                 WatermarkStrategy.forGenerator(
@@ -90,7 +94,7 @@ public class SourceMetricsITCase extends TestLogger {
     }
 
     @Test
-    public void testMetricsWithoutTimestamp() throws Exception {
+    void testMetricsWithoutTimestamp() throws Exception {
         testMetrics(WatermarkStrategy.noWatermarks(), false);
     }
 
@@ -170,29 +174,48 @@ public class SourceMetricsITCase extends TestLogger {
             // there are only 2 splits assigned; so two groups will not update metrics
             if (group.getIOMetricGroup().getNumRecordsInCounter().getCount() == 0) {
                 // assert that optional metrics are not initialized when no split assigned
-                assertThatGauge(metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG))
-                        .isEqualTo(InternalSourceReaderMetricGroup.UNDEFINED);
-                assertThat(metrics.get(MetricNames.WATERMARK_LAG)).isNull();
+                assertThatGauge(metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG));
+                assertThat(metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG))
+                        .asInstanceOf(InstanceOfAssertFactories.type(Gauge.class))
+                        .extracting(Gauge::getValue);
+                assertThat(metrics).doesNotContainKey(MetricNames.WATERMARK_LAG);
                 continue;
             }
             subtaskWithMetrics++;
             // I/O metrics
-
-            assertThatCounter(group.getIOMetricGroup().getNumRecordsInCounter())
+            assertThat(group.getIOMetricGroup().getNumRecordsInCounter())
+                    .asInstanceOf(InstanceOfAssertFactories.type(Counter.class))
+                    .extracting(Counter::getCount)
                     .isEqualTo(processedRecordsPerSubtask);
-            assertThatCounter(group.getIOMetricGroup().getNumBytesInCounter())
+            assertThat(group.getIOMetricGroup().getNumBytesInCounter())
+                    .asInstanceOf(InstanceOfAssertFactories.type(Counter.class))
+                    .extracting(Counter::getCount)
                     .isEqualTo(processedRecordsPerSubtask * MockRecordEmitter.RECORD_SIZE_IN_BYTES);
             // MockRecordEmitter is just incrementing errors every even record
-            assertThatCounter(metrics.get(MetricNames.NUM_RECORDS_IN_ERRORS))
+            assertThat(metrics.get(MetricNames.NUM_RECORDS_IN_ERRORS))
+                    .asInstanceOf(InstanceOfAssertFactories.type(Counter.class))
+                    .extracting(Counter::getCount)
                     .isEqualTo(processedRecordsPerSubtask / 2);
             if (hasTimestamps) {
                 // Timestamp assigner subtracting EVENTTIME_LAG from wall clock
-                assertThatGauge(metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG))
-                        .isCloseTo(EVENTTIME_LAG, EVENTTIME_EPSILON);
+                assertThat(metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG))
+                        .asInstanceOf(InstanceOfAssertFactories.type(Gauge.class))
+                        .extracting(Gauge::getValue)
+                        .asInstanceOf(InstanceOfAssertFactories.LONG)
+                        .is(
+                                new Condition<>(
+                                        t -> CLOSE_TO.apply(t, EVENTTIME_LAG, EVENTTIME_EPSILON),
+                                        "Value should be close to " + EVENTTIME_LAG));
                 // Watermark is derived from timestamp, so it has to be in the same order of
                 // magnitude
-                assertThatGauge(metrics.get(MetricNames.WATERMARK_LAG))
-                        .isCloseTo(EVENTTIME_LAG, EVENTTIME_EPSILON);
+                assertThat(metrics.get(MetricNames.WATERMARK_LAG))
+                        .asInstanceOf(InstanceOfAssertFactories.type(Gauge.class))
+                        .extracting(Gauge::getValue)
+                        .asInstanceOf(InstanceOfAssertFactories.LONG)
+                        .is(
+                                new Condition<>(
+                                        t -> CLOSE_TO.apply(t, EVENTTIME_LAG, EVENTTIME_EPSILON),
+                                        "Value should be close to " + EVENTTIME_LAG));
                 // Calculate the additional watermark lag (on top of event time lag)
                 Long watermarkLag =
                         ((Gauge<Long>) metrics.get(MetricNames.WATERMARK_LAG)).getValue()
@@ -202,21 +225,33 @@ public class SourceMetricsITCase extends TestLogger {
                                         .getValue();
                 // That should correspond to the out-of-order boundedness
                 assertThat(watermarkLag)
-                        .isGreaterThan(WATERMARK_LAG - WATERMARK_EPSILON)
-                        .isLessThan(WATERMARK_LAG + WATERMARK_EPSILON);
+                        .is(
+                                new Condition<>(
+                                        t -> CLOSE_TO.apply(t, WATERMARK_LAG, WATERMARK_EPSILON),
+                                        "Value should be close to " + WATERMARK_LAG));
             } else {
                 // assert that optional metrics are not initialized when no timestamp assigned
-                assertThatGauge(metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG))
+                assertThat(metrics.get(MetricNames.CURRENT_EMIT_EVENT_TIME_LAG))
+                        .asInstanceOf(InstanceOfAssertFactories.type(Gauge.class))
+                        .extracting(Gauge::getValue)
                         .isEqualTo(InternalSourceReaderMetricGroup.UNDEFINED);
-                assertThat(metrics.get(MetricNames.WATERMARK_LAG)).isNull();
+                assertThat(metrics).doesNotContainKey(MetricNames.WATERMARK_LAG);
             }
 
             long pendingRecords = numTotalPerSubtask - processedRecordsPerSubtask;
-            assertThatGauge(metrics.get(MetricNames.PENDING_RECORDS)).isEqualTo(pendingRecords);
-            assertThatGauge(metrics.get(MetricNames.PENDING_BYTES))
+            assertThat(metrics.get(MetricNames.PENDING_RECORDS))
+                    .asInstanceOf(InstanceOfAssertFactories.type(Gauge.class))
+                    .extracting(Gauge::getValue)
+                    .isEqualTo(pendingRecords);
+            assertThat(metrics.get(MetricNames.PENDING_BYTES))
+                    .asInstanceOf(InstanceOfAssertFactories.type(Gauge.class))
+                    .extracting(Gauge::getValue)
                     .isEqualTo(pendingRecords * MockRecordEmitter.RECORD_SIZE_IN_BYTES);
             // test is keeping source idle time metric busy with the barrier
-            assertThatGauge(metrics.get(MetricNames.SOURCE_IDLE_TIME)).isEqualTo(0L);
+            assertThat(metrics.get(MetricNames.SOURCE_IDLE_TIME))
+                    .asInstanceOf(InstanceOfAssertFactories.type(Gauge.class))
+                    .extracting(Gauge::getValue)
+                    .isEqualTo(0L);
         }
         assertThat(subtaskWithMetrics).isEqualTo(numSplits);
     }

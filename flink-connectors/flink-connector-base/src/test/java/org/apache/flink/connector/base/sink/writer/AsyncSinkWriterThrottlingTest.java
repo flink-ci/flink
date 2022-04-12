@@ -24,7 +24,7 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
 
 import org.assertj.core.api.Assertions;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -36,10 +36,10 @@ import java.util.stream.Collectors;
 import java.util.stream.LongStream;
 
 /** Test class for rate limiting functionalities of {@link AsyncSinkWriter}. */
-public class AsyncSinkWriterThrottlingTest {
+class AsyncSinkWriterThrottlingTest {
 
     @Test
-    public void testSinkThroughputShouldThrottleToHalfBatchSize() throws Exception {
+    void testSinkThroughputShouldThrottleToHalfBatchSize() throws Exception {
         int maxBatchSize = 32;
         int maxInFlightRequest = 10;
         int numberOfBatchesToSend = 1000;
@@ -65,13 +65,10 @@ public class AsyncSinkWriterThrottlingTest {
             currentTime += 50L;
         }
 
-        /**
-         * Throttling limit should be maxBatchSize/2 , worst case margin on throttling (maxBatchSize
-         * / 2 + 1)->(maxBatchSize/4) or when scaling up (maxBatchSize/2) -> (maxBatchSize/2 + 10).
-         */
+        // Throttling limit should be maxBatchSize/2 , worst case margin on throttling (maxBatchSize
+        // / 2 + 1)->(maxBatchSize/4) or when scaling up (maxBatchSize/2) -> (maxBatchSize/2 + 10).
         Assertions.assertThat(writer.getInflightMessagesLimit())
-                .isGreaterThanOrEqualTo(maxBatchSize / 4);
-        Assertions.assertThat(writer.getInflightMessagesLimit())
+                .isGreaterThanOrEqualTo(maxBatchSize / 4)
                 .isLessThanOrEqualTo(maxBatchSize / 2 + 10);
     }
 

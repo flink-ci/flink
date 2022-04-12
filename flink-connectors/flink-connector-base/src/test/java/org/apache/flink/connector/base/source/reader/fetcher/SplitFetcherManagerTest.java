@@ -29,7 +29,7 @@ import org.apache.flink.connector.base.source.reader.splitreader.SplitsChange;
 import org.apache.flink.connector.base.source.reader.synchronization.FutureCompletingBlockingQueue;
 import org.apache.flink.core.testutils.OneShotLatch;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -39,25 +39,24 @@ import java.util.Queue;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.fail;
 
 /** Unit tests for the {@link SplitFetcherManager}. */
-public class SplitFetcherManagerTest {
+class SplitFetcherManagerTest {
 
     @Test
-    public void testExceptionPropagationFirstFetch() throws Exception {
+    void testExceptionPropagationFirstFetch() throws Exception {
         testExceptionPropagation();
     }
 
     @Test
-    public void testExceptionPropagationSuccessiveFetch() throws Exception {
+    void testExceptionPropagationSuccessiveFetch() throws Exception {
         testExceptionPropagation(
                 new TestingRecordsWithSplitIds<>("testSplit", 1, 2, 3, 4),
                 new TestingRecordsWithSplitIds<>("testSplit", 5, 6, 7, 8));
     }
 
     @Test
-    public void testCloseFetcherWithException() throws Exception {
+    void testCloseFetcherWithException() throws Exception {
         TestingSplitReader<Object, TestingSourceSplit> reader = new TestingSplitReader<>();
         reader.setCloseWithException();
         SplitFetcherManager<Object, TestingSourceSplit> fetcherManager =
@@ -68,7 +67,6 @@ public class SplitFetcherManagerTest {
     }
 
     // the final modifier is important so that '@SafeVarargs' is accepted on Java 8
-    @SuppressWarnings("FinalPrivateMethod")
     @SafeVarargs
     private final void testExceptionPropagation(
             final RecordsWithSplitIds<Integer>... fetchesBeforeError) throws Exception {
@@ -90,14 +88,12 @@ public class SplitFetcherManagerTest {
         // await the error propagation
         queue.getAvailabilityFuture().get();
 
-        try {
-            fetcher.checkErrors();
-            fail("expected exception");
-        } catch (Exception e) {
-            assertThat(e.getCause().getCause()).isSameAs(testingException);
-        } finally {
-            fetcher.close(20_000L);
-        }
+        assertThatThrownBy(fetcher::checkErrors)
+                .isInstanceOf(Exception.class)
+                .cause()
+                .cause()
+                .isInstanceOf(testingException.getClass());
+        fetcher.close(20_000L);
     }
 
     // ------------------------------------------------------------------------
@@ -162,7 +158,7 @@ public class SplitFetcherManagerTest {
         public void wakeUp() {}
 
         @Override
-        public void close() throws Exception {}
+        public void close() {}
 
         public void awaitAllRecordsReturned() throws InterruptedException {
             inBlocking.await();

@@ -37,7 +37,7 @@ import org.apache.flink.connector.testutils.source.reader.TestingReaderOutput;
 import org.apache.flink.core.io.InputStatus;
 import org.apache.flink.mock.Whitebox;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
 import java.util.Collections;
@@ -48,10 +48,10 @@ import java.util.function.Supplier;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link HybridSourceReader}. */
-public class HybridSourceReaderTest {
+class HybridSourceReaderTest {
 
     @Test
-    public void testReader() throws Exception {
+    void testReader() throws Exception {
         TestingReaderContext readerContext = new TestingReaderContext();
         TestingReaderOutput<Integer> readerOutput = new TestingReaderOutput<>();
         MockBaseSource source = new MockBaseSource(1, 1, Boundedness.BOUNDED);
@@ -68,7 +68,7 @@ public class HybridSourceReaderTest {
         reader.start();
         assertAndClearSourceReaderFinishedEvent(readerContext, -1);
         assertThat(currentReader(reader)).isNull();
-        assertThat(reader.pollNext(readerOutput)).isEqualTo(InputStatus.NOTHING_AVAILABLE);
+        assertThat(InputStatus.NOTHING_AVAILABLE).isEqualTo(reader.pollNext(readerOutput));
 
         Source source1 =
                 new MockSource(null, 0) {
@@ -130,7 +130,7 @@ public class HybridSourceReaderTest {
     }
 
     @Test
-    public void testAvailabilityFutureSwitchover() throws Exception {
+    void testAvailabilityFutureSwitchover() throws Exception {
         TestingReaderContext readerContext = new TestingReaderContext();
         TestingReaderOutput<Integer> readerOutput = new TestingReaderOutput<>();
         MockBaseSource source = new MockBaseSource(1, 1, Boundedness.BOUNDED);
@@ -239,12 +239,16 @@ public class HybridSourceReaderTest {
         assertThat(futureReader2)
                 .isSameAs(reader.isAvailable())
                 .as("future should not have been refreshed");
+        assertThat(mockSplitReader2).isEqualTo(currentReader(reader));
+
+        reader.notifyNoMoreSplits();
+        assertThat(InputStatus.END_OF_INPUT).isEqualTo(reader.pollNext(readerOutput));
 
         reader.close();
     }
 
     @Test
-    public void testReaderRecovery() throws Exception {
+    void testReaderRecovery() throws Exception {
         TestingReaderContext readerContext = new TestingReaderContext();
         TestingReaderOutput<Integer> readerOutput = new TestingReaderOutput<>();
         MockBaseSource source = new MockBaseSource(1, 1, Boundedness.BOUNDED);
@@ -284,7 +288,7 @@ public class HybridSourceReaderTest {
     }
 
     @Test
-    public void testDefaultMethodDelegation() throws Exception {
+    void testDefaultMethodDelegation() throws Exception {
         TestingReaderContext readerContext = new TestingReaderContext();
         TestingReaderOutput<Integer> readerOutput = new TestingReaderOutput<>();
         MockBaseSource source =
@@ -320,8 +324,9 @@ public class HybridSourceReaderTest {
     private static void assertAndClearSourceReaderFinishedEvent(
             TestingReaderContext context, int sourceIndex) {
         assertThat(context.getSentEvents()).hasSize(1);
-        assertThat(((SourceReaderFinishedEvent) context.getSentEvents().get(0)).sourceIndex())
-                .isEqualTo(sourceIndex);
+        assertThat(sourceIndex)
+                .isEqualTo(
+                        ((SourceReaderFinishedEvent) context.getSentEvents().get(0)).sourceIndex());
         context.clearSentEvents();
     }
 

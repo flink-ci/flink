@@ -69,7 +69,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** A unit test class for {@link SourceReaderBase}. */
-public class SourceReaderBaseTest extends SourceReaderTestBase<MockSourceSplit> {
+class SourceReaderBaseTest extends SourceReaderTestBase<MockSourceSplit> {
 
     private static final Logger LOG = LoggerFactory.getLogger(SourceReaderBaseTest.class);
 
@@ -332,7 +332,6 @@ public class SourceReaderBaseTest extends SourceReaderTestBase<MockSourceSplit> 
                 String.format(
                         "%d out of 6 records are received within timeout", output.numRecords));
 
-        assertThat(output.watermarks).hasSize(3);
         assertThat(output.watermarks).containsExactly(150L, 250L, 300L);
     }
 

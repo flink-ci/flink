@@ -21,7 +21,7 @@ package org.apache.flink.connector.base.source.reader.synchronization;
 import org.apache.flink.connector.base.source.reader.SourceReaderOptions;
 import org.apache.flink.runtime.io.AvailabilityProvider;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -34,35 +34,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /** The unit test for {@link FutureCompletingBlockingQueue}. */
-public class FutureCompletingBlockingQueueTest {
+class FutureCompletingBlockingQueueTest {
 
     private static final int DEFAULT_CAPACITY = 2;
 
     @Test
-    public void testBasics() throws InterruptedException {
+    void testBasics() throws InterruptedException {
         FutureCompletingBlockingQueue<Integer> queue = new FutureCompletingBlockingQueue<>(5);
 
         CompletableFuture<Void> future = queue.getAvailabilityFuture();
         assertThat(queue.isEmpty()).isTrue();
-        assertThat(queue.size()).isEqualTo(0);
+        assertThat(queue.size()).isZero();
 
         queue.put(0, 1234);
 
         assertThat(future.isDone()).isTrue();
-        assertThat(queue.size()).isEqualTo(1);
+        assertThat(queue.size()).isOne();
         assertThat(queue.isEmpty()).isFalse();
         assertThat(queue.remainingCapacity()).isEqualTo(4);
         assertThat(queue.peek()).isNotNull();
         assertThat((int) queue.peek()).isEqualTo(1234);
         assertThat((int) queue.poll()).isEqualTo(1234);
 
-        assertThat(queue.size()).isEqualTo(0);
+        assertThat(queue.size()).isZero();
         assertThat(queue.isEmpty()).isTrue();
         assertThat(queue.remainingCapacity()).isEqualTo(5);
     }
 
     @Test
-    public void testPoll() throws InterruptedException {
+    void testPoll() throws InterruptedException {
         FutureCompletingBlockingQueue<Integer> queue = new FutureCompletingBlockingQueue<>();
         queue.put(0, 1234);
         Integer value = queue.poll();
@@ -71,7 +71,7 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testPollEmptyQueue() throws InterruptedException {
+    void testPollEmptyQueue() throws InterruptedException {
         FutureCompletingBlockingQueue<Integer> queue = new FutureCompletingBlockingQueue<>();
         queue.put(0, 1234);
 
@@ -81,7 +81,7 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testWakeUpPut() throws InterruptedException {
+    void testWakeUpPut() throws InterruptedException {
         FutureCompletingBlockingQueue<Integer> queue = new FutureCompletingBlockingQueue<>(1);
 
         CountDownLatch latch = new CountDownLatch(1);
@@ -99,11 +99,11 @@ public class FutureCompletingBlockingQueueTest {
 
         queue.wakeUpPuttingThread(0);
         latch.await();
-        assertThat(latch.getCount()).isEqualTo(0);
+        assertThat(latch.getCount()).isZero();
     }
 
     @Test
-    public void testConcurrency() throws InterruptedException {
+    void testConcurrency() throws InterruptedException {
         FutureCompletingBlockingQueue<Integer> queue = new FutureCompletingBlockingQueue<>(5);
         final int numValuesPerThread = 10000;
         final int numPuttingThreads = 5;
@@ -156,7 +156,7 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testSpecifiedQueueCapacity() {
+    void testSpecifiedQueueCapacity() {
         final int capacity = 8_000;
         final FutureCompletingBlockingQueue<Object> queue =
                 new FutureCompletingBlockingQueue<>(capacity);
@@ -164,7 +164,7 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testQueueDefaultCapacity() {
+    void testQueueDefaultCapacity() {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         assertThat(queue.remainingCapacity()).isEqualTo(DEFAULT_CAPACITY);
         assertThat(SourceReaderOptions.ELEMENT_QUEUE_CAPACITY.defaultValue().intValue())
@@ -172,20 +172,20 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testUnavailableWhenEmpty() {
+    void testUnavailableWhenEmpty() {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         assertThat(queue.getAvailabilityFuture().isDone()).isFalse();
     }
 
     @Test
-    public void testImmediatelyAvailableAfterPut() throws InterruptedException {
+    void testImmediatelyAvailableAfterPut() throws InterruptedException {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         queue.put(0, new Object());
         assertThat(queue.getAvailabilityFuture().isDone()).isTrue();
     }
 
     @Test
-    public void testFutureBecomesAvailableAfterPut() throws InterruptedException {
+    void testFutureBecomesAvailableAfterPut() throws InterruptedException {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         final CompletableFuture<?> future = queue.getAvailabilityFuture();
         queue.put(0, new Object());
@@ -193,7 +193,7 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testUnavailableWhenBecomesEmpty() throws InterruptedException {
+    void testUnavailableWhenBecomesEmpty() throws InterruptedException {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         queue.put(0, new Object());
         queue.poll();
@@ -201,14 +201,14 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testAvailableAfterNotifyAvailable() throws InterruptedException {
+    void testAvailableAfterNotifyAvailable() {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         queue.notifyAvailable();
         assertThat(queue.getAvailabilityFuture().isDone()).isTrue();
     }
 
     @Test
-    public void testFutureBecomesAvailableAfterNotifyAvailable() throws InterruptedException {
+    void testFutureBecomesAvailableAfterNotifyAvailable() {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         final CompletableFuture<?> future = queue.getAvailabilityFuture();
         queue.notifyAvailable();
@@ -216,7 +216,7 @@ public class FutureCompletingBlockingQueueTest {
     }
 
     @Test
-    public void testPollResetsAvailability() throws InterruptedException {
+    void testPollResetsAvailability() {
         final FutureCompletingBlockingQueue<Object> queue = new FutureCompletingBlockingQueue<>();
         queue.notifyAvailable();
 
@@ -234,7 +234,7 @@ public class FutureCompletingBlockingQueueTest {
      * scope does not.
      */
     @Test
-    public void testQueueUsesShortCircuitFuture() {
+    void testQueueUsesShortCircuitFuture() {
         assertThat(FutureCompletingBlockingQueue.AVAILABLE)
                 .isSameAs(AvailabilityProvider.AVAILABLE);
     }
