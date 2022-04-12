@@ -988,7 +988,7 @@ public abstract class Dispatcher extends PermanentlyFencedRpcEndpoint<Dispatcher
             case GLOBAL:
                 return globalResourceCleaner
                         .cleanupAsync(jobId)
-                        .thenRun(() -> markJobAsClean(jobId));
+                        .thenRunAsync(() -> markJobAsClean(jobId), ioExecutor);
             default:
                 throw new IllegalStateException("Invalid cleanup state: " + cleanupJobState);
         }
