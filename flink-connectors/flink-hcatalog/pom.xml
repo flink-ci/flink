@@ -104,7 +104,7 @@ under the License.
 					<scala>
 						<scalafmt>
 							<version>${spotless.scalafmt.version}</version>
-							<file>${project.basedDir}/../../.scalafmt.conf</file>
+							<file>${project.baseDir}/../../.scalafmt.conf</file>
 						</scalafmt>
 						<licenseHeader>
 							<content>${spotless.license.header}</content>
