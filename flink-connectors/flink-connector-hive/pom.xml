@@ -1000,11 +1000,11 @@ under the License.
 								<relocations>
 									<relocation>
 										<pattern>com.facebook.fb303</pattern>
-										<shadedPattern>org.apache.flink.facebook.shaded.fb303</shadedPattern>
+										<shadedPattern>org.apache.flink.hive.shaded.fb303</shadedPattern>
 									</relocation>
 									<relocation>
 										<pattern>org.apache.thrift</pattern>
-										<shadedPattern>org.apache.flink.shaded.thrift</shadedPattern>
+										<shadedPattern>org.apache.flink.hive.shaded.thrift</shadedPattern>
 									</relocation>
 								</relocations>
 							</relocations>
