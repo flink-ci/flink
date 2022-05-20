@@ -28,6 +28,7 @@ import org.apache.flink.table.api.JsonQueryWrapper;
 import org.apache.flink.table.api.JsonType;
 import org.apache.flink.table.api.JsonValueOnEmptyOrError;
 import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.expressions.TimePointUnit;
 import org.apache.flink.table.types.inference.ArgumentTypeStrategy;
 import org.apache.flink.table.types.inference.ConstantArgumentCount;
 import org.apache.flink.table.types.inference.InputTypeStrategies;
@@ -48,9 +49,18 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+import static org.apache.flink.table.api.DataTypes.BIGINT;
+import static org.apache.flink.table.api.DataTypes.BOOLEAN;
+import static org.apache.flink.table.api.DataTypes.DATE;
+import static org.apache.flink.table.api.DataTypes.INT;
+import static org.apache.flink.table.api.DataTypes.STRING;
+import static org.apache.flink.table.api.DataTypes.TIME;
+import static org.apache.flink.table.api.DataTypes.TIMESTAMP;
+import static org.apache.flink.table.api.DataTypes.TIMESTAMP_LTZ;
 import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
 import static org.apache.flink.table.functions.FunctionKind.OTHER;
 import static org.apache.flink.table.functions.FunctionKind.SCALAR;
+import static org.apache.flink.table.functions.FunctionKind.TABLE;
 import static org.apache.flink.table.types.inference.InputTypeStrategies.ANY;
 import static org.apache.flink.table.types.inference.InputTypeStrategies.COMMON_ARG_NULLABLE;
 import static org.apache.flink.table.types.inference.InputTypeStrategies.LITERAL;
@@ -76,6 +86,7 @@ import static org.apache.flink.table.types.inference.TypeStrategies.matchFamily;
 import static org.apache.flink.table.types.inference.TypeStrategies.nullableIfAllArgs;
 import static org.apache.flink.table.types.inference.TypeStrategies.nullableIfArgs;
 import static org.apache.flink.table.types.inference.TypeStrategies.varyingString;
+import static org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies.ARRAY_ELEMENT_ARG;
 import static org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies.JSON_ARGUMENT;
 import static org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies.TWO_EQUALS_COMPARABLE;
 import static org.apache.flink.table.types.inference.strategies.SpecificInputTypeStrategies.TWO_FULLY_COMPARABLE;
@@ -112,10 +123,8 @@ public final class BuiltInFunctionDefinitions {
                     .kind(SCALAR)
                     .inputTypeStrategy(
                             sequence(
-                                    new String[] {"input", "null_replacement"},
-                                    new ArgumentTypeStrategy[] {
-                                        COMMON_ARG_NULLABLE, COMMON_ARG_NULLABLE
-                                    }))
+                                    Arrays.asList("input", "null_replacement"),
+                                    Arrays.asList(COMMON_ARG_NULLABLE, COMMON_ARG_NULLABLE)))
                     .outputTypeStrategy(SpecificTypeStrategies.IF_NULL)
                     .runtimeClass("org.apache.flink.table.runtime.functions.scalar.IfNullFunction")
                     .build();
@@ -138,6 +147,42 @@ public final class BuiltInFunctionDefinitions {
                     .outputTypeStrategy(nullableIfAllArgs(COMMON))
                     .runtimeClass(
                             "org.apache.flink.table.runtime.functions.scalar.CoalesceFunction")
+                    .build();
+
+    public static final BuiltInFunctionDefinition ARRAY_CONTAINS =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("ARRAY_CONTAINS")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(
+                            sequence(
+                                    Arrays.asList("haystack", "needle"),
+                                    Arrays.asList(
+                                            logical(LogicalTypeRoot.ARRAY), ARRAY_ELEMENT_ARG)))
+                    .outputTypeStrategy(
+                            nullableIfArgs(
+                                    ConstantArgumentCount.of(0), explicit(DataTypes.BOOLEAN())))
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.scalar.ArrayContainsFunction")
+                    .build();
+
+    public static final BuiltInFunctionDefinition INTERNAL_REPLICATE_ROWS =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("$REPLICATE_ROWS$1")
+                    .kind(TABLE)
+                    .outputTypeStrategy(SpecificTypeStrategies.INTERNAL_REPLICATE_ROWS)
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.table.ReplicateRowsFunction")
+                    .internal()
+                    .build();
+
+    public static final BuiltInFunctionDefinition INTERNAL_UNNEST_ROWS =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("$UNNEST_ROWS$1")
+                    .kind(TABLE)
+                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .runtimeClass(
+                            "org.apache.flink.table.runtime.functions.table.UnnestRowsFunction")
+                    .internal()
                     .build();
 
     // --------------------------------------------------------------------------------------------
@@ -344,7 +389,7 @@ public final class BuiltInFunctionDefinitions {
                     .name("count")
                     .kind(AGGREGATE)
                     .inputTypeStrategy(sequence(ANY)) // COUNT(*) is not supported yet
-                    .outputTypeStrategy(explicit(DataTypes.BIGINT().notNull()))
+                    .outputTypeStrategy(explicit(BIGINT().notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition MAX =
@@ -442,7 +487,7 @@ public final class BuiltInFunctionDefinitions {
                     .name("charLength")
                     .kind(SCALAR)
                     .inputTypeStrategy(sequence(logical(LogicalTypeFamily.CHARACTER_STRING)))
-                    .outputTypeStrategy(nullableIfArgs(explicit(DataTypes.INT())))
+                    .outputTypeStrategy(nullableIfArgs(explicit(INT())))
                     .build();
 
     public static final BuiltInFunctionDefinition INIT_CAP =
@@ -560,7 +605,7 @@ public final class BuiltInFunctionDefinitions {
                             sequence(
                                     logical(LogicalTypeFamily.CHARACTER_STRING),
                                     logical(LogicalTypeFamily.CHARACTER_STRING)))
-                    .outputTypeStrategy(nullableIfArgs(explicit(DataTypes.INT())))
+                    .outputTypeStrategy(nullableIfArgs(explicit(INT())))
                     .build();
 
     public static final BuiltInFunctionDefinition OVERLAY =
@@ -1158,7 +1203,7 @@ public final class BuiltInFunctionDefinitions {
                                     sequence(
                                             logical(LogicalTypeRoot.INTEGER),
                                             logical(LogicalTypeRoot.INTEGER))))
-                    .outputTypeStrategy(explicit(DataTypes.INT().notNull()))
+                    .outputTypeStrategy(explicit(INT().notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition BIN =
@@ -1201,76 +1246,103 @@ public final class BuiltInFunctionDefinitions {
             BuiltInFunctionDefinition.newBuilder()
                     .name("extract")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .inputTypeStrategy(SpecificInputTypeStrategies.EXTRACT)
+                    .outputTypeStrategy(nullableIfArgs(explicit(BIGINT())))
                     .build();
 
     public static final BuiltInFunctionDefinition CURRENT_DATE =
             BuiltInFunctionDefinition.newBuilder()
                     .name("currentDate")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .outputTypeStrategy(explicit(DATE().notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition CURRENT_TIME =
             BuiltInFunctionDefinition.newBuilder()
                     .name("currentTime")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .outputTypeStrategy(explicit(TIME().notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition CURRENT_TIMESTAMP =
             BuiltInFunctionDefinition.newBuilder()
                     .name("currentTimestamp")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .outputTypeStrategy(explicit(TIMESTAMP_LTZ(3).notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition CURRENT_ROW_TIMESTAMP =
             BuiltInFunctionDefinition.newBuilder()
                     .name("currentRowTimestamp")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .outputTypeStrategy(explicit(TIMESTAMP_LTZ(3).notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition LOCAL_TIME =
             BuiltInFunctionDefinition.newBuilder()
                     .name("localTime")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .outputTypeStrategy(explicit(TIME().notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition LOCAL_TIMESTAMP =
             BuiltInFunctionDefinition.newBuilder()
                     .name("localTimestamp")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .outputTypeStrategy(explicit(TIMESTAMP(3).notNull()))
                     .build();
 
     public static final BuiltInFunctionDefinition TEMPORAL_OVERLAPS =
             BuiltInFunctionDefinition.newBuilder()
                     .name("temporalOverlaps")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .inputTypeStrategy(SpecificInputTypeStrategies.TEMPORAL_OVERLAPS)
+                    .outputTypeStrategy(nullableIfArgs(explicit(BOOLEAN())))
                     .build();
 
     public static final BuiltInFunctionDefinition DATE_FORMAT =
             BuiltInFunctionDefinition.newBuilder()
                     .name("dateFormat")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .inputTypeStrategy(
+                            or(
+                                    sequence(
+                                            logical(LogicalTypeFamily.TIMESTAMP),
+                                            logical(LogicalTypeFamily.CHARACTER_STRING)),
+                                    sequence(
+                                            logical(LogicalTypeFamily.CHARACTER_STRING),
+                                            logical(LogicalTypeFamily.CHARACTER_STRING))))
+                    .outputTypeStrategy(nullableIfArgs(explicit(STRING())))
                     .build();
 
     public static final BuiltInFunctionDefinition TIMESTAMP_DIFF =
             BuiltInFunctionDefinition.newBuilder()
                     .name("timestampDiff")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .inputTypeStrategy(
+                            sequence(
+                                    symbol(
+                                            TimePointUnit.YEAR,
+                                            TimePointUnit.QUARTER,
+                                            TimePointUnit.MONTH,
+                                            TimePointUnit.WEEK,
+                                            TimePointUnit.DAY,
+                                            TimePointUnit.HOUR,
+                                            TimePointUnit.MINUTE,
+                                            TimePointUnit.SECOND),
+                                    logical(LogicalTypeFamily.DATETIME),
+                                    logical(LogicalTypeFamily.DATETIME)))
+                    .outputTypeStrategy(nullableIfArgs(explicit(INT())))
                     .build();
     public static final BuiltInFunctionDefinition TO_TIMESTAMP_LTZ =
             BuiltInFunctionDefinition.newBuilder()
                     .name("toTimestampLtz")
                     .kind(SCALAR)
-                    .outputTypeStrategy(TypeStrategies.MISSING)
+                    .inputTypeStrategy(
+                            sequence(
+                                    logical(LogicalTypeFamily.NUMERIC),
+                                    logical(LogicalTypeFamily.INTEGER_NUMERIC, false)))
+                    .outputTypeStrategy(SpecificTypeStrategies.TO_TIMESTAMP_LTZ)
                     .build();
 
     // --------------------------------------------------------------------------------------------
@@ -1695,6 +1767,14 @@ public final class BuiltInFunctionDefinitions {
                     .inputTypeStrategy(SpecificInputTypeStrategies.CAST)
                     .outputTypeStrategy(
                             nullableIfArgs(ConstantArgumentCount.to(0), TypeStrategies.argument(1)))
+                    .build();
+
+    public static final BuiltInFunctionDefinition TRY_CAST =
+            BuiltInFunctionDefinition.newBuilder()
+                    .name("TRY_CAST")
+                    .kind(SCALAR)
+                    .inputTypeStrategy(SpecificInputTypeStrategies.CAST)
+                    .outputTypeStrategy(forceNullable(TypeStrategies.argument(1)))
                     .build();
 
     public static final BuiltInFunctionDefinition REINTERPRET_CAST =

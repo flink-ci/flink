@@ -94,7 +94,7 @@ public class MySqlCatalogITCase extends MySqlCatalogTestBase {
                             Timestamp.valueOf("2021-08-04 01:54:16").toLocalDateTime(),
                             "col_tinytext",
                             Byte.parseByte("-1"),
-                            Byte.parseByte("1"),
+                            Short.parseShort("1"),
                             null,
                             "col_varchar",
                             Timestamp.valueOf("2021-08-04 01:54:16.463").toLocalDateTime(),
@@ -142,7 +142,7 @@ public class MySqlCatalogITCase extends MySqlCatalogTestBase {
                             Timestamp.valueOf("2021-08-04 01:53:19").toLocalDateTime(),
                             "col_tinytext",
                             Byte.parseByte("-1"),
-                            Byte.parseByte("1"),
+                            Short.parseShort("1"),
                             null,
                             "col_varchar",
                             Timestamp.valueOf("2021-08-04 01:53:19.098").toLocalDateTime(),
@@ -155,9 +155,7 @@ public class MySqlCatalogITCase extends MySqlCatalogTestBase {
     @Before
     public void setup() {
         this.tEnv = TableEnvironment.create(EnvironmentSettings.inStreamingMode());
-        tEnv.getConfig()
-                .getConfiguration()
-                .setInteger(TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM.key(), 1);
+        tEnv.getConfig().set(TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, 1);
 
         // Use mysql catalog.
         tEnv.registerCatalog(TEST_CATALOG_NAME, catalog);

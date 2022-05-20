@@ -28,11 +28,10 @@ import pickle
 from typing import List, Union
 
 import cloudpickle
-import pyarrow as pa
 
 from pyflink.common import Row, RowKind
 from pyflink.common.time import Instant
-from pyflink.datastream.window import CountWindow, TimeWindow
+from pyflink.datastream.window import CountWindow, TimeWindow, GlobalWindow
 from pyflink.fn_execution.ResettableIO import ResettableIO
 from pyflink.table.utils import pandas_to_arrow, arrow_to_pandas
 
@@ -386,7 +385,7 @@ cdef class RowCoderImpl(FieldCoderImpl):
             row_kind_value = <unsigned char> value.row_kind
         else:
             # the type is Row
-            list_values = <list> value._values
+            list_values = <list> value.get_fields_by_names(self._field_names)
             row_kind_value = <unsigned char> value.get_row_kind().value
         # encode mask value
         self._mask_utils.write_mask(list_values, row_kind_value, out_stream)
@@ -437,6 +436,8 @@ cdef class ArrowCoderImpl(FieldCoderImpl):
         self._batch_reader = self._load_from_stream(self._resettable_io)
 
     cpdef encode_to_stream(self, cols, OutputStream out_stream):
+        import pyarrow as pa
+
         self._resettable_io.set_output_stream(out_stream)
         batch_writer = pa.RecordBatchStreamWriter(self._resettable_io, self._schema)
         batch_writer.write_batch(
@@ -451,6 +452,8 @@ cdef class ArrowCoderImpl(FieldCoderImpl):
         return arrow_to_pandas(self._timezone, self._field_types, [next(self._batch_reader)])
 
     def _load_from_stream(self, stream):
+        import pyarrow as pa
+
         while stream.readable():
             reader = pa.ipc.open_stream(stream)
             yield reader.read_next_batch()
@@ -905,6 +908,18 @@ cdef class CountWindowCoderImpl(FieldCoderImpl):
 
     cpdef decode_from_stream(self, InputStream in_stream, size_t size):
         return CountWindow(in_stream.read_int64())
+
+cdef class GlobalWindowCoderImpl(FieldCoderImpl):
+    """
+    A coder for GlobalWindow.
+    """
+
+    cpdef encode_to_stream(self, value, OutputStream out_stream):
+        out_stream.write_byte(0)
+
+    cpdef decode_from_stream(self, InputStream in_stream, size_t size):
+        in_stream.read_byte()
+        return GlobalWindow()
 
 cdef class DataViewFilterCoderImpl(FieldCoderImpl):
     """

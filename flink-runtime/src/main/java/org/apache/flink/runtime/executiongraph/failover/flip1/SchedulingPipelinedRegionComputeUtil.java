@@ -32,12 +32,13 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
+import static org.apache.flink.runtime.executiongraph.VertexGroupComputeUtil.mergeVertexGroups;
+import static org.apache.flink.runtime.executiongraph.VertexGroupComputeUtil.uniqueVertexGroups;
 import static org.apache.flink.runtime.executiongraph.failover.flip1.PipelinedRegionComputeUtil.buildRawRegions;
-import static org.apache.flink.runtime.executiongraph.failover.flip1.PipelinedRegionComputeUtil.mergeRegions;
-import static org.apache.flink.runtime.executiongraph.failover.flip1.PipelinedRegionComputeUtil.uniqueRegions;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /** Utils for computing {@link SchedulingPipelinedRegion}s. */
@@ -72,7 +73,7 @@ public final class SchedulingPipelinedRegionComputeUtil {
                     executionVertexRetriever) {
 
         final List<Set<SchedulingExecutionVertex>> regionList =
-                new ArrayList<>(uniqueRegions(vertexToRegion));
+                new ArrayList<>(uniqueVertexGroups(vertexToRegion));
         final List<List<Integer>> outEdges =
                 buildOutEdgesDesc(vertexToRegion, regionList, executionVertexRetriever);
         final Set<Set<Integer>> sccs =
@@ -87,7 +88,8 @@ public final class SchedulingPipelinedRegionComputeUtil {
             Set<SchedulingExecutionVertex> mergedRegion = new HashSet<>();
             for (int regionIndex : scc) {
                 mergedRegion =
-                        mergeRegions(mergedRegion, regionList.get(regionIndex), vertexToRegion);
+                        mergeVertexGroups(
+                                mergedRegion, regionList.get(regionIndex), vertexToRegion);
             }
             mergedRegions.add(mergedRegion);
         }
@@ -114,9 +116,13 @@ public final class SchedulingPipelinedRegionComputeUtil {
                     if (!producedResult.getResultType().isReconnectable()) {
                         continue;
                     }
-                    final ConsumerVertexGroup consumerVertexGroup =
+                    final Optional<ConsumerVertexGroup> consumerVertexGroup =
                             producedResult.getConsumerVertexGroup();
-                    for (ExecutionVertexID consumerVertexId : consumerVertexGroup) {
+                    if (!consumerVertexGroup.isPresent()) {
+                        continue;
+                    }
+
+                    for (ExecutionVertexID consumerVertexId : consumerVertexGroup.get()) {
                         SchedulingExecutionVertex consumerVertex =
                                 executionVertexRetriever.apply(consumerVertexId);
                         // Skip the ConsumerVertexGroup if its vertices are outside current

@@ -25,10 +25,10 @@ import org.apache.flink.runtime.rpc.akka.exceptions.AkkaHandshakeException;
 import org.apache.flink.runtime.rpc.akka.exceptions.AkkaRpcException;
 import org.apache.flink.runtime.rpc.akka.exceptions.AkkaRpcInvalidStateException;
 import org.apache.flink.runtime.rpc.akka.exceptions.AkkaUnknownMessageException;
+import org.apache.flink.runtime.rpc.exceptions.EndpointNotStartedException;
 import org.apache.flink.runtime.rpc.exceptions.RpcConnectionException;
 import org.apache.flink.runtime.rpc.messages.CallAsync;
 import org.apache.flink.runtime.rpc.messages.HandshakeSuccessMessage;
-import org.apache.flink.runtime.rpc.messages.LocalRpcInvocation;
 import org.apache.flink.runtime.rpc.messages.RemoteHandshakeMessage;
 import org.apache.flink.runtime.rpc.messages.RpcInvocation;
 import org.apache.flink.runtime.rpc.messages.RunAsync;
@@ -64,11 +64,11 @@ import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * Akka rpc actor which receives {@link LocalRpcInvocation}, {@link RunAsync} and {@link CallAsync}
+ * Akka rpc actor which receives {@link RpcInvocation}, {@link RunAsync} and {@link CallAsync}
  * {@link ControlMessages} messages.
  *
- * <p>The {@link LocalRpcInvocation} designates a rpc and is dispatched to the given {@link
- * RpcEndpoint} instance.
+ * <p>The {@link RpcInvocation} designates a rpc and is dispatched to the given {@link RpcEndpoint}
+ * instance.
  *
  * <p>The {@link RunAsync} and {@link CallAsync} messages contain executable code which is executed
  * in the context of the actor thread.
@@ -168,13 +168,13 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
             log.info(
                     "The rpc endpoint {} has not been started yet. Discarding message {} until processing is started.",
                     rpcEndpoint.getClass().getName(),
-                    message.getClass().getName());
+                    message);
 
             sendErrorIfSender(
-                    new AkkaRpcException(
+                    new EndpointNotStartedException(
                             String.format(
-                                    "Discard message, because the rpc endpoint %s has not been started yet.",
-                                    rpcEndpoint.getAddress())));
+                                    "Discard message %s, because the rpc endpoint %s has not been started yet.",
+                                    message, rpcEndpoint.getAddress())));
         }
     }
 
@@ -276,18 +276,6 @@ class AkkaRpcActor<T extends RpcEndpoint & RpcGateway> extends AbstractActor {
             Class<?>[] parameterTypes = rpcInvocation.getParameterTypes();
 
             rpcMethod = lookupRpcMethod(methodName, parameterTypes);
-        } catch (ClassNotFoundException e) {
-            log.error("Could not load method arguments.", e);
-
-            RpcConnectionException rpcException =
-                    new RpcConnectionException("Could not load method arguments.", e);
-            getSender().tell(new Status.Failure(rpcException), getSelf());
-        } catch (IOException e) {
-            log.error("Could not deserialize rpc invocation message.", e);
-
-            RpcConnectionException rpcException =
-                    new RpcConnectionException("Could not deserialize rpc invocation message.", e);
-            getSender().tell(new Status.Failure(rpcException), getSelf());
         } catch (final NoSuchMethodException e) {
             log.error("Could not find rpc method for rpc invocation.", e);
 

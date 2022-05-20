@@ -18,7 +18,6 @@
 
 package org.apache.flink.test.recovery;
 
-import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.ClusterOptions;
 import org.apache.flink.configuration.Configuration;
@@ -28,16 +27,24 @@ import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.entrypoint.ClusterEntrypointUtils;
 import org.apache.flink.runtime.taskexecutor.TaskManagerRunner;
 import org.apache.flink.runtime.testutils.CommonTestUtils;
+import org.apache.flink.test.recovery.utils.TaskExecutorProcessEntryPoint;
 import org.apache.flink.test.util.TestProcessBuilder;
 import org.apache.flink.util.TestLogger;
+
+import org.apache.flink.shaded.guava30.com.google.common.collect.Iterables;
 
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /** Integration tests for the {@link TaskManagerRunner}. */
@@ -46,7 +53,7 @@ public class TaskManagerRunnerITCase extends TestLogger {
     @ClassRule public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
     @Test
-    public void testWorkingDirIsNotDeletedInCaseOfProcessFailure() throws Exception {
+    public void testDeterministicWorkingDirIsNotDeletedInCaseOfProcessFailure() throws Exception {
         final File workingDirBase = TEMPORARY_FOLDER.newFolder();
         final ResourceID resourceId = ResourceID.generate();
 
@@ -62,23 +69,63 @@ public class TaskManagerRunnerITCase extends TestLogger {
                         configuration, resourceId);
 
         final TestProcessBuilder.TestProcess taskManagerProcess =
-                new TestProcessBuilder(
-                                AbstractTaskManagerProcessFailureRecoveryTest
-                                        .TaskExecutorProcessEntryPoint.class
-                                        .getName())
+                new TestProcessBuilder(TaskExecutorProcessEntryPoint.class.getName())
                         .addConfigAsMainClassArgs(configuration)
                         .start();
 
         boolean success = false;
         try {
-            CommonTestUtils.waitUntilCondition(
-                    workingDirectory::exists, Deadline.fromNow(Duration.ofMinutes(1L)));
+            CommonTestUtils.waitUntilCondition(workingDirectory::exists);
 
             taskManagerProcess.getProcess().destroy();
 
             taskManagerProcess.getProcess().waitFor();
 
             assertTrue(workingDirectory.exists());
+            success = true;
+        } finally {
+            if (!success) {
+                AbstractTaskManagerProcessFailureRecoveryTest.printProcessLog(
+                        "TaskManager", taskManagerProcess);
+            }
+        }
+    }
+
+    @Test
+    public void testNondeterministicWorkingDirIsDeletedInCaseOfProcessFailure() throws Exception {
+        final File workingDirBase = TEMPORARY_FOLDER.newFolder();
+
+        final Configuration configuration = new Configuration();
+        configuration.set(
+                ClusterOptions.PROCESS_WORKING_DIR_BASE, workingDirBase.getAbsolutePath());
+        configuration.set(JobManagerOptions.ADDRESS, "localhost");
+        configuration.set(AkkaOptions.LOOKUP_TIMEOUT_DURATION, Duration.ZERO);
+
+        final TestProcessBuilder.TestProcess taskManagerProcess =
+                new TestProcessBuilder(TaskExecutorProcessEntryPoint.class.getName())
+                        .addConfigAsMainClassArgs(configuration)
+                        .start();
+
+        boolean success = false;
+        try {
+            CommonTestUtils.waitUntilCondition(
+                    () -> {
+                        try (Stream<Path> files = Files.list(workingDirBase.toPath())) {
+                            return files.findAny().isPresent();
+                        }
+                    });
+
+            final File workingDirectory =
+                    Iterables.getOnlyElement(
+                                    Files.list(workingDirBase.toPath())
+                                            .collect(Collectors.toList()))
+                            .toFile();
+
+            taskManagerProcess.getProcess().destroy();
+
+            taskManagerProcess.getProcess().waitFor();
+
+            assertFalse(workingDirectory.exists());
             success = true;
         } finally {
             if (!success) {

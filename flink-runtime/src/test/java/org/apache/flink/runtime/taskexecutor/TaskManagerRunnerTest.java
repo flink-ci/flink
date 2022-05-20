@@ -71,7 +71,6 @@ public class TaskManagerRunnerTest extends TestLogger {
 
     @After
     public void after() throws Exception {
-        System.setSecurityManager(null);
         if (taskManagerRunner != null) {
             taskManagerRunner.close();
         }
@@ -109,7 +108,7 @@ public class TaskManagerRunnerTest extends TestLogger {
         final String metadata = "test";
         configuration.set(TaskManagerOptionsInternal.TASK_MANAGER_RESOURCE_ID_METADATA, metadata);
         final ResourceID taskManagerResourceID =
-                TaskManagerRunner.getTaskManagerResourceID(configuration, "", -1);
+                TaskManagerRunner.getTaskManagerResourceID(configuration, "", -1).unwrap();
 
         assertThat(taskManagerResourceID.getMetadata(), equalTo(metadata));
     }
@@ -120,7 +119,7 @@ public class TaskManagerRunnerTest extends TestLogger {
         final String resourceID = "test";
         configuration.set(TaskManagerOptions.TASK_MANAGER_RESOURCE_ID, resourceID);
         final ResourceID taskManagerResourceID =
-                TaskManagerRunner.getTaskManagerResourceID(configuration, "", -1);
+                TaskManagerRunner.getTaskManagerResourceID(configuration, "", -1).unwrap();
 
         assertThat(taskManagerResourceID.getMetadata(), equalTo(""));
         assertThat(taskManagerResourceID.getStringWithMetadata(), equalTo("test"));
@@ -132,7 +131,7 @@ public class TaskManagerRunnerTest extends TestLogger {
         final String resourceID = "test";
         configuration.set(TaskManagerOptions.TASK_MANAGER_RESOURCE_ID, resourceID);
         final ResourceID taskManagerResourceID =
-                TaskManagerRunner.getTaskManagerResourceID(configuration, "", -1);
+                TaskManagerRunner.getTaskManagerResourceID(configuration, "", -1).unwrap();
 
         assertThat(taskManagerResourceID.getResourceIdString(), equalTo(resourceID));
     }
@@ -143,7 +142,8 @@ public class TaskManagerRunnerTest extends TestLogger {
         final String rpcAddress = "flink";
         final int rpcPort = 9090;
         final ResourceID taskManagerResourceID =
-                TaskManagerRunner.getTaskManagerResourceID(configuration, rpcAddress, rpcPort);
+                TaskManagerRunner.getTaskManagerResourceID(configuration, rpcAddress, rpcPort)
+                        .unwrap();
 
         assertThat(taskManagerResourceID, notNullValue());
         assertThat(
@@ -157,7 +157,8 @@ public class TaskManagerRunnerTest extends TestLogger {
         final String rpcAddress = "";
         final int rpcPort = -1;
         final ResourceID taskManagerResourceID =
-                TaskManagerRunner.getTaskManagerResourceID(configuration, rpcAddress, rpcPort);
+                TaskManagerRunner.getTaskManagerResourceID(configuration, rpcAddress, rpcPort)
+                        .unwrap();
 
         assertThat(taskManagerResourceID, notNullValue());
         assertThat(

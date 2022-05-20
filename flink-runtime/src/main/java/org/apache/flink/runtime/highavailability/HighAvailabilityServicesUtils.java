@@ -32,8 +32,9 @@ import org.apache.flink.runtime.dispatcher.Dispatcher;
 import org.apache.flink.runtime.highavailability.nonha.embedded.EmbeddedHaServices;
 import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneClientHAServices;
 import org.apache.flink.runtime.highavailability.nonha.standalone.StandaloneHaServices;
+import org.apache.flink.runtime.highavailability.zookeeper.CuratorFrameworkWithUnhandledErrorListener;
 import org.apache.flink.runtime.highavailability.zookeeper.ZooKeeperClientHAServices;
-import org.apache.flink.runtime.highavailability.zookeeper.ZooKeeperHaServices;
+import org.apache.flink.runtime.highavailability.zookeeper.ZooKeeperMultipleComponentLeaderElectionHaServices;
 import org.apache.flink.runtime.jobmanager.HighAvailabilityMode;
 import org.apache.flink.runtime.resourcemanager.ResourceManager;
 import org.apache.flink.runtime.rpc.AddressResolution;
@@ -65,13 +66,7 @@ public class HighAvailabilityServicesUtils {
                 return new EmbeddedHaServices(executor);
 
             case ZOOKEEPER:
-                BlobStoreService blobStoreService = BlobUtils.createBlobStoreFromConfig(config);
-
-                return new ZooKeeperHaServices(
-                        ZooKeeperUtils.startCuratorFramework(config, fatalErrorHandler),
-                        executor,
-                        config,
-                        blobStoreService);
+                return createZooKeeperHaServices(config, executor, fatalErrorHandler);
 
             case FACTORY_CLASS:
                 return createCustomHAServices(config, executor);
@@ -80,6 +75,22 @@ public class HighAvailabilityServicesUtils {
                 throw new Exception(
                         "High availability mode " + highAvailabilityMode + " is not supported.");
         }
+    }
+
+    private static HighAvailabilityServices createZooKeeperHaServices(
+            Configuration configuration, Executor executor, FatalErrorHandler fatalErrorHandler)
+            throws Exception {
+        BlobStoreService blobStoreService = BlobUtils.createBlobStoreFromConfig(configuration);
+
+        final CuratorFrameworkWithUnhandledErrorListener curatorFrameworkWrapper =
+                ZooKeeperUtils.startCuratorFramework(configuration, fatalErrorHandler);
+
+        return new ZooKeeperMultipleComponentLeaderElectionHaServices(
+                curatorFrameworkWrapper,
+                configuration,
+                executor,
+                blobStoreService,
+                fatalErrorHandler);
     }
 
     public static HighAvailabilityServices createHighAvailabilityServices(
@@ -117,14 +128,7 @@ public class HighAvailabilityServicesUtils {
                 return new StandaloneHaServices(
                         resourceManagerRpcUrl, dispatcherRpcUrl, webMonitorAddress);
             case ZOOKEEPER:
-                BlobStoreService blobStoreService =
-                        BlobUtils.createBlobStoreFromConfig(configuration);
-
-                return new ZooKeeperHaServices(
-                        ZooKeeperUtils.startCuratorFramework(configuration, fatalErrorHandler),
-                        executor,
-                        configuration,
-                        blobStoreService);
+                return createZooKeeperHaServices(configuration, executor, fatalErrorHandler);
 
             case FACTORY_CLASS:
                 return createCustomHAServices(configuration, executor);

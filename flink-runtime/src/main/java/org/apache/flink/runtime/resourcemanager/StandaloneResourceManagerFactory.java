@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.resourcemanager;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
@@ -30,6 +31,7 @@ import org.apache.flink.runtime.io.network.partition.ResourceManagerPartitionTra
 import org.apache.flink.runtime.metrics.groups.ResourceManagerMetricGroup;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.security.token.DelegationTokenManager;
 import org.apache.flink.util.ConfigurationException;
 
 import org.slf4j.Logger;
@@ -61,6 +63,7 @@ public final class StandaloneResourceManagerFactory extends ResourceManagerFacto
             RpcService rpcService,
             UUID leaderSessionId,
             HeartbeatServices heartbeatServices,
+            DelegationTokenManager delegationTokenManager,
             FatalErrorHandler fatalErrorHandler,
             ClusterInformation clusterInformation,
             @Nullable String webInterfaceUrl,
@@ -76,6 +79,7 @@ public final class StandaloneResourceManagerFactory extends ResourceManagerFacto
                 leaderSessionId,
                 resourceId,
                 heartbeatServices,
+                delegationTokenManager,
                 resourceManagerRuntimeServices.getSlotManager(),
                 ResourceManagerPartitionTrackerImpl::new,
                 resourceManagerRuntimeServices.getJobLeaderIdService(),
@@ -102,7 +106,8 @@ public final class StandaloneResourceManagerFactory extends ResourceManagerFacto
      * @param configuration configuration object
      * @return the configuration for standalone ResourceManager
      */
-    private static Configuration getConfigurationWithoutMaxSlotNumberIfSet(
+    @VisibleForTesting
+    public static Configuration getConfigurationWithoutMaxSlotNumberIfSet(
             Configuration configuration) {
         final Configuration copiedConfig = new Configuration(configuration);
         // The max slot limit should not take effect for standalone cluster, we overwrite the

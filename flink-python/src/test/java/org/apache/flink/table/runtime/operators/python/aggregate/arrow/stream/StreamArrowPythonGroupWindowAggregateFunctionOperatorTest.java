@@ -25,7 +25,6 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.TimestampData;
@@ -50,12 +49,11 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.TimestampType;
 import org.apache.flink.table.types.logical.VarCharType;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.time.ZoneId;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 /**
@@ -69,13 +67,13 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   <li>Watermarks are buffered and only sent to downstream when finishedBundle is triggered
  * </ul>
  */
-public class StreamArrowPythonGroupWindowAggregateFunctionOperatorTest
+class StreamArrowPythonGroupWindowAggregateFunctionOperatorTest
         extends AbstractStreamArrowPythonAggregateFunctionOperatorTest {
 
     private static final ZoneId UTC_ZONE_ID = ZoneId.of("UTC");
 
     @Test
-    public void testGroupWindowAggregateFunction() throws Exception {
+    void testGroupWindowAggregateFunction() throws Exception {
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness =
                 getTestHarness(new Configuration());
         long initialTime = 0L;
@@ -155,7 +153,7 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperatorTest
     }
 
     @Test
-    public void testFinishBundleTriggeredOnCheckpoint() throws Exception {
+    void testFinishBundleTriggeredOnCheckpoint() throws Exception {
         Configuration conf = new Configuration();
         conf.setInteger(PythonOptions.MAX_BUNDLE_SIZE, 10);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = getTestHarness(conf);
@@ -244,7 +242,7 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperatorTest
     }
 
     @Test
-    public void testFinishBundleTriggeredByCount() throws Exception {
+    void testFinishBundleTriggeredByCount() throws Exception {
         Configuration conf = new Configuration();
         conf.setInteger(PythonOptions.MAX_BUNDLE_SIZE, 4);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = getTestHarness(conf);
@@ -329,7 +327,7 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperatorTest
     }
 
     @Test
-    public void testFinishBundleTriggeredByTime() throws Exception {
+    void testFinishBundleTriggeredByTime() throws Exception {
         Configuration conf = new Configuration();
         conf.setInteger(PythonOptions.MAX_BUNDLE_SIZE, 10);
         conf.setLong(PythonOptions.MAX_BUNDLE_TIME_MILLS, 1000L);
@@ -475,7 +473,7 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperatorTest
                 },
                 UTC_ZONE_ID,
                 ProjectionCodeGenerator.generateProjection(
-                        CodeGeneratorContext.apply(new TableConfig()),
+                        CodeGeneratorContext.apply(new Configuration()),
                         "UdafInputProjection",
                         inputType,
                         udfInputType,
@@ -517,12 +515,11 @@ public class StreamArrowPythonGroupWindowAggregateFunctionOperatorTest
         public PythonFunctionRunner createPythonFunctionRunner() {
             return new PassThroughPythonAggregateFunctionRunner(
                     getRuntimeContext().getTaskName(),
-                    PythonTestUtils.createTestEnvironmentManager(),
+                    PythonTestUtils.createTestProcessEnvironmentManager(),
                     udfInputType,
                     udfOutputType,
                     getFunctionUrn(),
                     getUserDefinedFunctionsProto(),
-                    new HashMap<>(),
                     PythonTestUtils.createMockFlinkMetricContainer(),
                     false);
         }

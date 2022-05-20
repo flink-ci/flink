@@ -28,7 +28,6 @@ import org.apache.flink.runtime.JobException;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.execution.ExecutionState;
-import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
@@ -36,8 +35,7 @@ import org.apache.flink.runtime.scheduler.strategy.ConsumedPartitionGroup;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.util.EvictingBoundedList;
-
-import org.slf4j.Logger;
+import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
 
@@ -51,8 +49,6 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import static org.apache.flink.runtime.execution.ExecutionState.FINISHED;
-import static org.apache.flink.util.Preconditions.checkArgument;
-import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * The ExecutionVertex is a parallel subtask of the execution. It may be executed once, or several
@@ -60,8 +56,6 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public class ExecutionVertex
         implements AccessExecutionVertex, Archiveable<ArchivedExecutionVertex> {
-
-    private static final Logger LOG = DefaultExecutionGraph.LOG;
 
     public static final int MAX_DISTINCT_LOCATIONS_TO_CONSIDER = 8;
 
@@ -86,6 +80,11 @@ public class ExecutionVertex
     private Execution currentExecution; // this field must never be null
 
     private final ArrayList<InputSplit> inputSplits;
+
+    /** This field holds the allocation id of the last successful assignment. */
+    @Nullable private TaskManagerLocation lastAssignedLocation;
+
+    @Nullable private AllocationID lastAssignedAllocationID;
 
     // --------------------------------------------------------------------------------------------
 
@@ -283,33 +282,23 @@ public class ExecutionVertex
         }
     }
 
-    public ArchivedExecution getLatestPriorExecution() {
-        synchronized (priorExecutions) {
-            final int size = priorExecutions.size();
-            if (size > 0) {
-                return priorExecutions.get(size - 1);
-            } else {
-                return null;
-            }
-        }
+    void setLatestPriorSlotAllocation(
+            TaskManagerLocation taskManagerLocation, AllocationID lastAssignedAllocationID) {
+        this.lastAssignedLocation = Preconditions.checkNotNull(taskManagerLocation);
+        this.lastAssignedAllocationID = Preconditions.checkNotNull(lastAssignedAllocationID);
     }
 
     /**
-     * Gets the location where the latest completed/canceled/failed execution of the vertex's task
-     * happened.
+     * Gets the location that an execution of this vertex was assigned to.
      *
-     * @return The latest prior execution location, or null, if there is none, yet.
+     * @return The last execution location, or null, if there is none, yet.
      */
-    public TaskManagerLocation getLatestPriorLocation() {
-        ArchivedExecution latestPriorExecution = getLatestPriorExecution();
-        return latestPriorExecution != null
-                ? latestPriorExecution.getAssignedResourceLocation()
-                : null;
+    public Optional<TaskManagerLocation> findLastLocation() {
+        return Optional.ofNullable(lastAssignedLocation);
     }
 
-    public AllocationID getLatestPriorAllocation() {
-        ArchivedExecution latestPriorExecution = getLatestPriorExecution();
-        return latestPriorExecution != null ? latestPriorExecution.getAssignedAllocationID() : null;
+    public Optional<AllocationID> findLastAllocation() {
+        return Optional.ofNullable(lastAssignedAllocationID);
     }
 
     EvictingBoundedList<ArchivedExecution> getCopyOfPriorExecutionsList() {
@@ -345,7 +334,7 @@ public class ExecutionVertex
         // only restore to same execution if it has state
         if (currentExecution.getTaskRestore() != null
                 && currentExecution.getTaskRestore().getTaskStateSnapshot().hasState()) {
-            return Optional.ofNullable(getLatestPriorLocation());
+            return findLastLocation();
         }
 
         return Optional.empty();
@@ -474,20 +463,6 @@ public class ExecutionVertex
         currentExecution.markFailed(t);
     }
 
-    void notifyPartitionDataAvailable(ResultPartitionID partitionId) {
-        checkArgument(partitionId.getProducerId().equals(currentExecution.getAttemptId()));
-
-        final IntermediateResultPartition partition =
-                resultPartitions.get(partitionId.getPartitionId());
-        checkState(partition != null, "Unknown partition " + partitionId + ".");
-        checkState(
-                partition.getResultType().isPipelined(),
-                "partition data available notification is "
-                        + "only valid for pipelined partitions.");
-
-        partition.markDataProduced();
-    }
-
     void cachePartitionInfo(PartitionInfo partitionInfo) {
         getCurrentExecutionAttempt().cachePartitionInfo(partitionInfo);
     }
@@ -552,11 +527,12 @@ public class ExecutionVertex
     }
 
     /** Simply forward this notification. */
-    void notifyStateTransition(Execution execution, ExecutionState newState) {
+    void notifyStateTransition(
+            Execution execution, ExecutionState previousState, ExecutionState newState) {
         // only forward this notification if the execution is still the current execution
         // otherwise we have an outdated execution
         if (isCurrentExecution(execution)) {
-            getExecutionGraphAccessor().notifyExecutionChange(execution, newState);
+            getExecutionGraphAccessor().notifyExecutionChange(execution, previousState, newState);
         }
     }
 

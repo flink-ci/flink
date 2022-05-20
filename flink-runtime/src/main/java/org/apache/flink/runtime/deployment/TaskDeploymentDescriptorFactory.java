@@ -63,12 +63,10 @@ import static org.apache.flink.util.Preconditions.checkArgument;
  */
 public class TaskDeploymentDescriptorFactory {
     private final ExecutionAttemptID executionId;
-    private final int attemptNumber;
     private final MaybeOffloaded<JobInformation> serializedJobInformation;
     private final MaybeOffloaded<TaskInformation> taskInfo;
     private final JobID jobID;
     private final PartitionLocationConstraint partitionDeploymentConstraint;
-    private final int subtaskIndex;
     private final List<ConsumedPartitionGroup> consumedPartitionGroups;
     private final Function<IntermediateResultPartitionID, IntermediateResultPartition>
             resultPartitionRetriever;
@@ -76,23 +74,19 @@ public class TaskDeploymentDescriptorFactory {
 
     private TaskDeploymentDescriptorFactory(
             ExecutionAttemptID executionId,
-            int attemptNumber,
             MaybeOffloaded<JobInformation> serializedJobInformation,
             MaybeOffloaded<TaskInformation> taskInfo,
             JobID jobID,
             PartitionLocationConstraint partitionDeploymentConstraint,
-            int subtaskIndex,
             List<ConsumedPartitionGroup> consumedPartitionGroups,
             Function<IntermediateResultPartitionID, IntermediateResultPartition>
                     resultPartitionRetriever,
             BlobWriter blobWriter) {
         this.executionId = executionId;
-        this.attemptNumber = attemptNumber;
         this.serializedJobInformation = serializedJobInformation;
         this.taskInfo = taskInfo;
         this.jobID = jobID;
         this.partitionDeploymentConstraint = partitionDeploymentConstraint;
-        this.subtaskIndex = subtaskIndex;
         this.consumedPartitionGroups = consumedPartitionGroups;
         this.resultPartitionRetriever = resultPartitionRetriever;
         this.blobWriter = blobWriter;
@@ -109,8 +103,6 @@ public class TaskDeploymentDescriptorFactory {
                 taskInfo,
                 executionId,
                 allocationID,
-                subtaskIndex,
-                attemptNumber,
                 taskRestore,
                 new ArrayList<>(producedPartitions),
                 createInputGateDeploymentDescriptors());
@@ -128,17 +120,10 @@ public class TaskDeploymentDescriptorFactory {
             IntermediateResultPartition resultPartition =
                     resultPartitionRetriever.apply(consumedPartitionGroup.getFirst());
 
-            int numConsumers = resultPartition.getConsumerVertexGroup().size();
             IntermediateResult consumedIntermediateResult = resultPartition.getIntermediateResult();
-            int consumerIndex = subtaskIndex % numConsumers;
-            int numSubpartitions = resultPartition.getNumberOfSubpartitions();
             SubpartitionIndexRange consumedSubpartitionRange =
                     computeConsumedSubpartitionRange(
-                            consumerIndex,
-                            numConsumers,
-                            numSubpartitions,
-                            consumedIntermediateResult.getProducer().getGraph().isDynamic(),
-                            consumedIntermediateResult.isBroadcast());
+                            resultPartition, executionId.getSubtaskIndex());
 
             IntermediateDataSetID resultId = consumedIntermediateResult.getId();
             ResultPartitionType partitionType = consumedIntermediateResult.getResultType();
@@ -153,6 +138,20 @@ public class TaskDeploymentDescriptorFactory {
         }
 
         return inputGates;
+    }
+
+    public static SubpartitionIndexRange computeConsumedSubpartitionRange(
+            IntermediateResultPartition resultPartition, int consumerSubtaskIndex) {
+        int numConsumers = resultPartition.getConsumerVertexGroup().size();
+        int consumerIndex = consumerSubtaskIndex % numConsumers;
+        IntermediateResult consumedIntermediateResult = resultPartition.getIntermediateResult();
+        int numSubpartitions = resultPartition.getNumberOfSubpartitions();
+        return computeConsumedSubpartitionRange(
+                consumerIndex,
+                numConsumers,
+                numSubpartitions,
+                consumedIntermediateResult.getProducer().getGraph().isDynamic(),
+                consumedIntermediateResult.isBroadcast());
     }
 
     @VisibleForTesting
@@ -232,19 +231,17 @@ public class TaskDeploymentDescriptorFactory {
     }
 
     public static TaskDeploymentDescriptorFactory fromExecutionVertex(
-            ExecutionVertex executionVertex, int attemptNumber) throws IOException {
+            ExecutionVertex executionVertex) throws IOException {
         InternalExecutionGraphAccessor internalExecutionGraphAccessor =
                 executionVertex.getExecutionGraphAccessor();
 
         return new TaskDeploymentDescriptorFactory(
                 executionVertex.getCurrentExecutionAttempt().getAttemptId(),
-                attemptNumber,
                 getSerializedJobInformation(internalExecutionGraphAccessor),
                 getSerializedTaskInformation(
                         executionVertex.getJobVertex().getTaskInformationOrBlobKey()),
                 internalExecutionGraphAccessor.getJobID(),
                 internalExecutionGraphAccessor.getPartitionLocationConstraint(),
-                executionVertex.getParallelSubtaskIndex(),
                 executionVertex.getAllConsumedPartitionGroups(),
                 internalExecutionGraphAccessor::getResultPartitionOrThrow,
                 internalExecutionGraphAccessor.getBlobWriter());

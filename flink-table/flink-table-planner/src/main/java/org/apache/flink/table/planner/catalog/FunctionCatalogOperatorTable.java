@@ -21,6 +21,7 @@ package org.apache.flink.table.planner.catalog;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.java.typeutils.GenericTypeInfo;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.ContextResolvedFunction;
 import org.apache.flink.table.catalog.DataTypeFactory;
 import org.apache.flink.table.catalog.FunctionCatalog;
 import org.apache.flink.table.catalog.UnresolvedIdentifier;
@@ -32,6 +33,7 @@ import org.apache.flink.table.functions.FunctionKind;
 import org.apache.flink.table.functions.ScalarFunctionDefinition;
 import org.apache.flink.table.functions.TableFunctionDefinition;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
+import org.apache.flink.table.planner.calcite.RexFactory;
 import org.apache.flink.table.planner.functions.bridging.BridgingSqlAggFunction;
 import org.apache.flink.table.planner.functions.bridging.BridgingSqlFunction;
 import org.apache.flink.table.planner.functions.utils.HiveAggSqlFunction;
@@ -66,18 +68,19 @@ import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoT
 public class FunctionCatalogOperatorTable implements SqlOperatorTable {
 
     private final FunctionCatalog functionCatalog;
-
     private final DataTypeFactory dataTypeFactory;
-
     private final FlinkTypeFactory typeFactory;
+    private final RexFactory rexFactory;
 
     public FunctionCatalogOperatorTable(
             FunctionCatalog functionCatalog,
             DataTypeFactory dataTypeFactory,
-            FlinkTypeFactory typeFactory) {
+            FlinkTypeFactory typeFactory,
+            RexFactory rexFactory) {
         this.functionCatalog = functionCatalog;
         this.dataTypeFactory = dataTypeFactory;
         this.typeFactory = typeFactory;
+        this.rexFactory = rexFactory;
     }
 
     @Override
@@ -95,19 +98,14 @@ public class FunctionCatalogOperatorTable implements SqlOperatorTable {
 
         functionCatalog
                 .lookupFunction(identifier)
-                .flatMap(
-                        lookupResult ->
-                                convertToSqlFunction(
-                                        category,
-                                        lookupResult.getFunctionIdentifier(),
-                                        lookupResult.getFunctionDefinition()))
+                .flatMap(resolvedFunction -> convertToSqlFunction(category, resolvedFunction))
                 .ifPresent(operatorList::add);
     }
 
     private Optional<SqlFunction> convertToSqlFunction(
-            @Nullable SqlFunctionCategory category,
-            FunctionIdentifier identifier,
-            FunctionDefinition definition) {
+            @Nullable SqlFunctionCategory category, ContextResolvedFunction resolvedFunction) {
+        final FunctionDefinition definition = resolvedFunction.getDefinition();
+        final FunctionIdentifier identifier = resolvedFunction.getIdentifier().orElse(null);
         // legacy
         if (definition instanceof AggregateFunctionDefinition) {
             AggregateFunctionDefinition def = (AggregateFunctionDefinition) definition;
@@ -143,15 +141,14 @@ public class FunctionCatalogOperatorTable implements SqlOperatorTable {
             }
         }
         // new stack
-        return convertToBridgingSqlFunction(category, identifier, definition);
+        return convertToBridgingSqlFunction(category, resolvedFunction);
     }
 
     private Optional<SqlFunction> convertToBridgingSqlFunction(
-            @Nullable SqlFunctionCategory category,
-            FunctionIdentifier identifier,
-            FunctionDefinition definition) {
+            @Nullable SqlFunctionCategory category, ContextResolvedFunction resolvedFunction) {
+        final FunctionDefinition definition = resolvedFunction.getDefinition();
 
-        if (!verifyFunctionKind(category, identifier, definition)) {
+        if (!verifyFunctionKind(category, resolvedFunction)) {
             return Optional.empty();
         }
 
@@ -162,7 +159,7 @@ public class FunctionCatalogOperatorTable implements SqlOperatorTable {
             throw new ValidationException(
                     String.format(
                             "An error occurred in the type inference logic of function '%s'.",
-                            identifier.asSummaryString()),
+                            resolvedFunction),
                     t);
         }
         if (typeInference.getOutputTypeStrategy() == TypeStrategies.MISSING) {
@@ -177,17 +174,16 @@ public class FunctionCatalogOperatorTable implements SqlOperatorTable {
                             dataTypeFactory,
                             typeFactory,
                             SqlKind.OTHER_FUNCTION,
-                            identifier,
-                            definition,
+                            resolvedFunction,
                             typeInference);
         } else {
             function =
                     BridgingSqlFunction.of(
                             dataTypeFactory,
                             typeFactory,
+                            rexFactory,
                             SqlKind.OTHER_FUNCTION,
-                            identifier,
-                            definition,
+                            resolvedFunction,
                             typeInference);
         }
         return Optional.of(function);
@@ -198,9 +194,8 @@ public class FunctionCatalogOperatorTable implements SqlOperatorTable {
      * context information.
      */
     private boolean verifyFunctionKind(
-            @Nullable SqlFunctionCategory category,
-            FunctionIdentifier identifier,
-            FunctionDefinition definition) {
+            @Nullable SqlFunctionCategory category, ContextResolvedFunction resolvedFunction) {
+        final FunctionDefinition definition = resolvedFunction.getDefinition();
 
         // built-in functions without implementation are handled separately
         if (definition instanceof BuiltInFunctionDefinition) {
@@ -222,7 +217,7 @@ public class FunctionCatalogOperatorTable implements SqlOperatorTable {
                 throw new ValidationException(
                         String.format(
                                 "Function '%s' cannot be used as a table function.",
-                                identifier.asSummaryString()));
+                                resolvedFunction));
             }
             return true;
         }

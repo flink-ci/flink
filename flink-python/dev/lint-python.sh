@@ -35,7 +35,7 @@ function download() {
         DOWNLOAD_STATUS="$?"
     fi
     if [ $DOWNLOAD_STATUS -ne 0 ]; then
-        echo "Dowload failed.You can try again"
+        echo "Download failed.You can try again"
         exit $DOWNLOAD_STATUS
     fi
 }
@@ -322,7 +322,7 @@ function install_sphinx() {
         fi
     fi
 
-    $CURRENT_DIR/install_command.sh -q Sphinx==2.4.4 Docutils==0.17.1 2>&1 >/dev/null
+    $CURRENT_DIR/install_command.sh -q Sphinx==2.4.4 Docutils==0.17.1 "Jinja2<3.1.0" 2>&1 >/dev/null
     if [ $? -ne 0 ]; then
         echo "pip install sphinx failed \
         please try to exec the script again.\

@@ -59,8 +59,12 @@ import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.CheckpointCoordinatorConfiguration;
+import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
+import org.apache.flink.runtime.operators.coordination.CoordinatorStore;
+import org.apache.flink.runtime.operators.coordination.CoordinatorStoreImpl;
 import org.apache.flink.runtime.query.KvStateLocationRegistry;
 import org.apache.flink.runtime.scheduler.InternalFailuresListener;
+import org.apache.flink.runtime.scheduler.SsgNetworkMemoryCalculationUtils;
 import org.apache.flink.runtime.scheduler.VertexParallelismInformation;
 import org.apache.flink.runtime.scheduler.VertexParallelismStore;
 import org.apache.flink.runtime.scheduler.adapter.DefaultExecutionTopology;
@@ -117,6 +121,13 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
     // --------------------------------------------------------------------------------------------
 
+    /**
+     * The unique id of an execution graph. It is different from JobID, because there can be
+     * multiple execution graphs created from one job graph, in cases like job re-submission, job
+     * master failover and job rescaling.
+     */
+    private final ExecutionGraphID executionGraphId;
+
     /** Job specific information like the job id, job name, job configuration, etc. */
     private final JobInformation jobInformation;
 
@@ -128,6 +139,9 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
     /** The executor which is used to execute blocking io operations. */
     private final Executor ioExecutor;
+
+    /** {@link CoordinatorStore} shared across all operator coordinators within this execution. */
+    private final CoordinatorStore coordinatorStore = new CoordinatorStoreImpl();
 
     /** Executor that runs tasks in the job manager's main thread. */
     @Nonnull private ComponentMainThreadExecutor jobMasterMainThreadExecutor;
@@ -253,6 +267,8 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
     @Nullable private String checkpointStorageName;
 
+    @Nullable private String changelogStorageName;
+
     private String jsonPlan;
 
     /** Shuffle master to register partitions for task deployment. */
@@ -292,6 +308,8 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
             VertexParallelismStore vertexParallelismStore,
             boolean isDynamic)
             throws IOException {
+
+        this.executionGraphId = new ExecutionGraphID();
 
         this.jobInformation = checkNotNull(jobInformation);
 
@@ -355,6 +373,11 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
         this.resultPartitionsById = new HashMap<>();
 
         this.isDynamic = isDynamic;
+
+        LOG.info(
+                "Created execution graph {} for job {}.",
+                executionGraphId,
+                jobInformation.getJobId());
     }
 
     @Override
@@ -394,6 +417,11 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     }
 
     @Override
+    public Optional<String> getChangelogStorageName() {
+        return Optional.ofNullable(changelogStorageName);
+    }
+
+    @Override
     public void enableCheckpointing(
             CheckpointCoordinatorConfiguration chkConfig,
             List<MasterTriggerRestoreHook<?>> masterHooks,
@@ -402,7 +430,8 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
             StateBackend checkpointStateBackend,
             CheckpointStorage checkpointStorage,
             CheckpointStatsTracker statsTracker,
-            CheckpointsCleaner checkpointsCleaner) {
+            CheckpointsCleaner checkpointsCleaner,
+            String changelogStorageName) {
 
         checkState(state == JobStatus.CREATED, "Job must be in CREATED state");
         checkState(checkpointCoordinator == null, "checkpointing already enabled");
@@ -476,6 +505,7 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
         this.stateBackendName = checkpointStateBackend.getClass().getSimpleName();
         this.checkpointStorageName = checkpointStorage.getClass().getSimpleName();
+        this.changelogStorageName = changelogStorageName;
     }
 
     private CheckpointPlanCalculator createCheckpointPlanCalculator(
@@ -761,6 +791,11 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     // --------------------------------------------------------------------------------------------
 
     @Override
+    public void notifyNewlyInitializedJobVertices(List<ExecutionJobVertex> vertices) {
+        executionTopology.notifyExecutionGraphUpdated(this, vertices);
+    }
+
+    @Override
     public void attachJobGraph(List<JobVertex> topologicallySorted) throws JobException {
         if (isDynamic) {
             attachJobGraph(topologicallySorted, Collections.emptyList());
@@ -838,7 +873,8 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
                 maxPriorAttemptsHistoryLength,
                 rpcTimeout,
                 createTimestamp,
-                this.initialAttemptCounts.getAttemptCounts(ejv.getJobVertexId()));
+                this.initialAttemptCounts.getAttemptCounts(ejv.getJobVertexId()),
+                coordinatorStore);
 
         ejv.connectToPredecessors(this.intermediateResults);
 
@@ -854,6 +890,24 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
         }
 
         registerExecutionVerticesAndResultPartitionsFor(ejv);
+
+        // enrich network memory.
+        SlotSharingGroup slotSharingGroup = ejv.getSlotSharingGroup();
+        if (areJobVerticesAllInitialized(slotSharingGroup)) {
+            SsgNetworkMemoryCalculationUtils.enrichNetworkMemory(
+                    slotSharingGroup, this::getJobVertex, shuffleMaster);
+        }
+    }
+
+    private boolean areJobVerticesAllInitialized(final SlotSharingGroup group) {
+        for (JobVertexID jobVertexId : group.getJobVertexIds()) {
+            final ExecutionJobVertex jobVertex = getJobVertex(jobVertexId);
+            checkNotNull(jobVertex, "Unknown job vertex %s", jobVertexId);
+            if (!jobVertex.isInitialized()) {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
@@ -1382,19 +1436,6 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     }
 
     @Override
-    public void notifyPartitionDataAvailable(ResultPartitionID partitionId) {
-        assertRunningInJobMasterMainThread();
-
-        final Execution execution = currentExecutions.get(partitionId.getProducerId());
-
-        checkState(
-                execution != null,
-                "Cannot find execution for execution Id " + partitionId.getPartitionId() + ".");
-
-        execution.getVertex().notifyPartitionDataAvailable(partitionId);
-    }
-
-    @Override
     public Map<ExecutionAttemptID, Execution> getRegisteredExecutions() {
         return Collections.unmodifiableMap(currentExecutions);
     }
@@ -1481,8 +1522,11 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
 
     @Override
     public void notifyExecutionChange(
-            final Execution execution, final ExecutionState newExecutionState) {
-        executionStateUpdateListener.onStateUpdate(execution.getAttemptId(), newExecutionState);
+            final Execution execution,
+            ExecutionState previousState,
+            final ExecutionState newExecutionState) {
+        executionStateUpdateListener.onStateUpdate(
+                execution.getAttemptId(), previousState, newExecutionState);
     }
 
     private void assertRunningInJobMasterMainThread() {
@@ -1541,5 +1585,21 @@ public class DefaultExecutionGraph implements ExecutionGraph, InternalExecutionG
     @Override
     public boolean isDynamic() {
         return isDynamic;
+    }
+
+    @Override
+    public Optional<String> findVertexWithAttempt(ExecutionAttemptID attemptId) {
+        return Optional.ofNullable(currentExecutions.get(attemptId))
+                .map(Execution::getVertexWithAttempt);
+    }
+
+    @Override
+    public Optional<AccessExecution> findExecution(ExecutionAttemptID attemptId) {
+        return Optional.ofNullable(currentExecutions.get(attemptId));
+    }
+
+    @Override
+    public ExecutionGraphID getExecutionGraphID() {
+        return executionGraphId;
     }
 }
