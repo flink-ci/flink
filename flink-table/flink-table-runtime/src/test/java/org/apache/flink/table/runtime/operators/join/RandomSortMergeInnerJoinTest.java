@@ -47,46 +47,38 @@ import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.util.MutableObjectIterator;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /** Test for sort merge inner join. */
-@RunWith(Parameterized.class)
-public class RandomSortMergeInnerJoinTest {
+class RandomSortMergeInnerJoinTest {
 
     private static final long SEED1 = 561349061987311L;
     private static final long SEED2 = 231434613412342L;
     private static final int INPUT_FIRST_SIZE = 20000;
     private static final int INPUT_SECOND_SIZE = 1000;
 
-    private boolean leftIsSmall;
     private TypeComparator<Tuple2<Integer, String>> comparator1;
     private TypeComparator<Tuple2<Integer, String>> comparator2;
 
-    public RandomSortMergeInnerJoinTest(boolean leftIsSmall) {
-        this.leftIsSmall = leftIsSmall;
+    private static Stream<Boolean> parameters() {
+        return Stream.of(true, false);
     }
 
-    @Parameterized.Parameters
-    public static Collection<Boolean> parameters() {
-        return Arrays.asList(true, false);
-    }
-
-    @Before
-    public void before() {
+    @BeforeEach
+    void before() {
         comparator1 =
                 new TupleComparator<>(
                         new int[] {0},
@@ -99,8 +91,9 @@ public class RandomSortMergeInnerJoinTest {
                         new TypeSerializer<?>[] {IntSerializer.INSTANCE});
     }
 
-    @Test
-    public void test() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void test(boolean leftIsSmall) throws Exception {
         final TupleGenerator generator1 =
                 new TupleGenerator(SEED1, 500, 4096, KeyMode.SORTED, ValueMode.RANDOM_LENGTH);
         final TupleGenerator generator2 =
@@ -121,7 +114,7 @@ public class RandomSortMergeInnerJoinTest {
         input1.reset();
         input2.reset();
 
-        StreamOperator operator = getOperator();
+        StreamOperator operator = getOperator(leftIsSmall);
 
         match(expectedMatchesMap, transformToBinary(join(operator, input1, input2)));
 
@@ -129,8 +122,9 @@ public class RandomSortMergeInnerJoinTest {
         assertThat(expectedMatchesMap).allSatisfy((i, e) -> assertThat(e).isEmpty());
     }
 
-    @Test
-    public void testMergeWithHighNumberOfCommonKeys() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testMergeWithHighNumberOfCommonKeys(boolean leftIsSmall) throws Exception {
         // the size of the left and right inputs
         final int input1Size = 200;
         final int input2Size = 100;
@@ -194,7 +188,7 @@ public class RandomSortMergeInnerJoinTest {
         input1 = new MergeIterator<>(inList1, comparator1.duplicate());
         input2 = new MergeIterator<>(inList2, comparator2.duplicate());
 
-        StreamOperator operator = getOperator();
+        StreamOperator operator = getOperator(leftIsSmall);
 
         match(expectedMatchesMap, transformToBinary(join(operator, input1, input2)));
 
@@ -378,7 +372,7 @@ public class RandomSortMergeInnerJoinTest {
         return map;
     }
 
-    private StreamOperator getOperator() {
+    private StreamOperator getOperator(boolean leftIsSmall) {
         return Int2SortMergeJoinOperatorTest.newOperator(FlinkJoinType.INNER, leftIsSmall);
     }
 

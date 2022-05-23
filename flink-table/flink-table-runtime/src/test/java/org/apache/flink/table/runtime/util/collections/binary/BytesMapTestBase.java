@@ -27,7 +27,7 @@ import org.apache.flink.table.types.logical.RowType;
 import java.util.Random;
 
 /** Test case for {@link BytesMap}. */
-public class BytesMapTestBase {
+class BytesMapTestBase {
     protected static final long RANDOM_SEED = 76518743207143L;
     protected static final int PAGE_SIZE = 32 * 1024;
     protected static final int NUM_ENTRIES = 10000;

@@ -24,7 +24,7 @@ import org.apache.flink.table.runtime.typeutils.BinaryRowDataSerializer;
 import org.apache.flink.table.types.logical.LogicalType;
 
 /** Test case for {@link BytesHashMap}. */
-public class BytesHashMapTest extends BytesHashMapTestBase<BinaryRowData> {
+class BytesHashMapTest extends BytesHashMapTestBase<BinaryRowData> {
 
     public BytesHashMapTest() {
         super(new BinaryRowDataSerializer(KEY_TYPES.length));

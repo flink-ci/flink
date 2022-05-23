@@ -24,7 +24,7 @@ import org.apache.flink.table.runtime.hashtable.BinaryHashTableTest;
 import org.apache.flink.table.runtime.util.UniformBinaryRowGenerator;
 import org.apache.flink.util.MutableObjectIterator;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;

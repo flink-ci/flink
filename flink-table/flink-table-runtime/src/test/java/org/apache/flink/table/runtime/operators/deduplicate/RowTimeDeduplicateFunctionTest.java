@@ -27,14 +27,12 @@ import org.apache.flink.table.runtime.operators.bundle.KeyedMapBundleOperator;
 import org.apache.flink.table.runtime.operators.bundle.trigger.CountBundleTrigger;
 import org.apache.flink.types.RowKind;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.insertRecord;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.record;
@@ -43,17 +41,11 @@ import static org.apache.flink.table.runtime.util.StreamRecordUtils.record;
  * Harness tests for {@link RowTimeDeduplicateFunction} and {@link
  * RowTimeMiniBatchDeduplicateFunction}.
  */
-@RunWith(Parameterized.class)
-public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTestBase {
+class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTestBase {
 
-    private final boolean miniBatchEnable;
-
-    public RowTimeDeduplicateFunctionTest(boolean miniBacthEnable) {
-        this.miniBatchEnable = miniBacthEnable;
-    }
-
-    @Test
-    public void testRowTimeDeduplicateKeepFirstRow() throws Exception {
+    @ParameterizedTest(name = "miniBatchEnable = {0}")
+    @MethodSource("runMode")
+    void testRowTimeDeduplicateKeepFirstRow(boolean miniBatchEnable) throws Exception {
         List<Object> expectedOutput = new ArrayList<>();
         expectedOutput.add(record(RowKind.INSERT, "key1", 13, 99L));
         expectedOutput.add(record(RowKind.INSERT, "key2", 11, 101L));
@@ -65,13 +57,13 @@ public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTe
         expectedOutput.add(new Watermark(402));
 
         // generateUpdateBefore: true, generateInsert: true
-        testRowTimeDeduplicateKeepFirstRow(true, true, expectedOutput);
+        testRowTimeDeduplicateKeepFirstRow(true, true, expectedOutput, miniBatchEnable);
 
         // generateUpdateBefore: true, generateInsert: false
-        testRowTimeDeduplicateKeepFirstRow(true, false, expectedOutput);
+        testRowTimeDeduplicateKeepFirstRow(true, false, expectedOutput, miniBatchEnable);
 
         // generateUpdateBefore: false, generateInsert: true
-        testRowTimeDeduplicateKeepFirstRow(false, true, expectedOutput);
+        testRowTimeDeduplicateKeepFirstRow(false, true, expectedOutput, miniBatchEnable);
 
         // generateUpdateBefore: false, generateInsert: false
         expectedOutput.clear();
@@ -83,11 +75,12 @@ public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTe
         expectedOutput.add(record(RowKind.UPDATE_AFTER, "key1", 12, 400L));
         expectedOutput.add(record(RowKind.UPDATE_AFTER, "key2", 11, 401L));
         expectedOutput.add(new Watermark(402));
-        testRowTimeDeduplicateKeepFirstRow(false, false, expectedOutput);
+        testRowTimeDeduplicateKeepFirstRow(false, false, expectedOutput, miniBatchEnable);
     }
 
-    @Test
-    public void testRowTimeDeduplicateKeepLastRow() throws Exception {
+    @ParameterizedTest(name = "miniBatchEnable = {0}")
+    @MethodSource("runMode")
+    void testRowTimeDeduplicateKeepLastRow(boolean miniBatchEnable) throws Exception {
         List<Object> expectedOutput = new ArrayList<>();
         expectedOutput.add(record(RowKind.INSERT, "key1", 13, 99L));
         expectedOutput.add(record(RowKind.UPDATE_BEFORE, "key1", 13, 99L));
@@ -105,10 +98,10 @@ public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTe
         expectedOutput.add(new Watermark(402));
 
         // generateUpdateBefore: true, generateInsert: true
-        testRowTimeDeduplicateKeepLastRow(true, true, expectedOutput);
+        testRowTimeDeduplicateKeepLastRow(true, true, expectedOutput, miniBatchEnable);
 
         // generateUpdateBefore: true, generateInsert: false
-        testRowTimeDeduplicateKeepLastRow(true, false, expectedOutput);
+        testRowTimeDeduplicateKeepLastRow(true, false, expectedOutput, miniBatchEnable);
 
         // generateUpdateBefore: false, generateInsert: true
         expectedOutput.clear();
@@ -123,7 +116,7 @@ public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTe
         expectedOutput.add(record(RowKind.INSERT, "key1", 12, 400L));
         expectedOutput.add(record(RowKind.INSERT, "key2", 11, 401L));
         expectedOutput.add(new Watermark(402));
-        testRowTimeDeduplicateKeepLastRow(false, true, expectedOutput);
+        testRowTimeDeduplicateKeepLastRow(false, true, expectedOutput, miniBatchEnable);
 
         // generateUpdateBefore: false, generateInsert: false
         expectedOutput.clear();
@@ -138,11 +131,14 @@ public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTe
         expectedOutput.add(record(RowKind.UPDATE_AFTER, "key1", 12, 400L));
         expectedOutput.add(record(RowKind.UPDATE_AFTER, "key2", 11, 401L));
         expectedOutput.add(new Watermark(402));
-        testRowTimeDeduplicateKeepLastRow(false, false, expectedOutput);
+        testRowTimeDeduplicateKeepLastRow(false, false, expectedOutput, miniBatchEnable);
     }
 
     private void testRowTimeDeduplicateKeepFirstRow(
-            boolean generateUpdateBefore, boolean generateInsert, List<Object> expectedOutput)
+            boolean generateUpdateBefore,
+            boolean generateInsert,
+            List<Object> expectedOutput,
+            boolean miniBatchEnable)
             throws Exception {
         final boolean keepLastRow = false;
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness;
@@ -222,7 +218,10 @@ public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTe
     }
 
     private void testRowTimeDeduplicateKeepLastRow(
-            boolean generateUpdateBefore, boolean generateInsert, List<Object> expectedOutput)
+            boolean generateUpdateBefore,
+            boolean generateInsert,
+            List<Object> expectedOutput,
+            boolean miniBatchEnable)
             throws Exception {
         final boolean keepLastRow = true;
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness;
@@ -300,8 +299,7 @@ public class RowTimeDeduplicateFunctionTest extends RowTimeDeduplicateFunctionTe
         testHarness.close();
     }
 
-    @Parameterized.Parameters(name = "miniBatchEnable = {0}")
-    public static Collection<Boolean[]> runMode() {
-        return Arrays.asList(new Boolean[] {false}, new Boolean[] {true});
+    private static Stream<Boolean> runMode() {
+        return Stream.of(false, true);
     }
 }

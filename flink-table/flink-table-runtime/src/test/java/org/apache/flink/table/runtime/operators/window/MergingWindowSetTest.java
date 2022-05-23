@@ -26,7 +26,7 @@ import org.apache.flink.table.runtime.operators.window.assigners.MergingWindowAs
 import org.apache.flink.table.runtime.operators.window.assigners.SessionWindowAssigner;
 import org.apache.flink.table.runtime.operators.window.internal.MergingWindowSet;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -46,7 +46,7 @@ import static org.assertj.core.api.Assertions.fail;
  * Tests for verifying that {@link MergingWindowSet} correctly merges windows in various situations
  * and that the merge callback is called with the correct sets of windows.
  */
-public class MergingWindowSetTest {
+class MergingWindowSetTest {
 
     /**
      * This test uses a special (misbehaving) {@code MergingWindowAssigner} that produces cases
@@ -54,7 +54,7 @@ public class MergingWindowSetTest {
      * the merging window set is nevertheless correct and contains all added windows.
      */
     @Test
-    public void testNonEagerMerging() throws Exception {
+    void testNonEagerMerging() throws Exception {
         MapState<TimeWindow, TimeWindow> mockState = new HeapMapState<>();
 
         MergingWindowSet<TimeWindow> windowSet =
@@ -83,7 +83,7 @@ public class MergingWindowSetTest {
     }
 
     @Test
-    public void testIncrementalMerging() throws Exception {
+    void testIncrementalMerging() throws Exception {
         MapState<TimeWindow, TimeWindow> mockState = new HeapMapState<>();
 
         MergingWindowSet<TimeWindow> windowSet =
@@ -99,8 +99,7 @@ public class MergingWindowSetTest {
                 .isEqualTo(new TimeWindow(0, 4));
         assertThat(mergeFunction.hasMerged()).isFalse();
 
-        assertThat(windowSet.getStateWindow(new TimeWindow(0, 4)).equals(new TimeWindow(0, 4)))
-                .isTrue();
+        assertThat(windowSet.getStateWindow(new TimeWindow(0, 4))).isEqualTo(new TimeWindow(0, 4));
 
         // add some more windows
         mergeFunction.reset();
@@ -197,12 +196,12 @@ public class MergingWindowSetTest {
 
         assertThat(windowSet.getStateWindow(new TimeWindow(0, 6))).isNull();
 
-        assertThat(windowSet.getStateWindow(new TimeWindow(10, 15)).equals(new TimeWindow(11, 14)))
-                .isTrue();
+        assertThat(windowSet.getStateWindow(new TimeWindow(10, 15)))
+                .isEqualTo(new TimeWindow(11, 14));
     }
 
     @Test
-    public void testLateMerging() throws Exception {
+    void testLateMerging() throws Exception {
         MapState<TimeWindow, TimeWindow> mockState = new HeapMapState<>();
 
         MergingWindowSet<TimeWindow> windowSet =
@@ -244,8 +243,8 @@ public class MergingWindowSetTest {
                 .containsExactlyInAnyOrder(new TimeWindow(5, 8), new TimeWindow(10, 13));
         assertThat(mergeFunction.mergedStateWindows())
                 .hasSize(1)
-                .containsAnyOf(new TimeWindow(10, 13), new TimeWindow(5, 8));
-        assertThat(mergeFunction.mergedStateWindows()).doesNotContain(mergeFunction.mergeTarget());
+                .containsAnyOf(new TimeWindow(10, 13), new TimeWindow(5, 8))
+                .doesNotContain(mergeFunction.mergeTarget());
 
         assertThat(windowSet.getStateWindow(new TimeWindow(0, 3))).isEqualTo(new TimeWindow(0, 3));
 
@@ -279,8 +278,8 @@ public class MergingWindowSetTest {
                 .containsExactlyInAnyOrder(new TimeWindow(0, 3), new TimeWindow(5, 13));
         assertThat(mergeFunction.mergedStateWindows())
                 .hasSize(1)
-                .containsAnyOf(new TimeWindow(0, 3), new TimeWindow(5, 8), new TimeWindow(10, 13));
-        assertThat(mergeFunction.mergedStateWindows()).doesNotContain(mergeFunction.mergeTarget());
+                .containsAnyOf(new TimeWindow(0, 3), new TimeWindow(5, 8), new TimeWindow(10, 13))
+                .doesNotContain(mergeFunction.mergeTarget());
 
         assertThat(windowSet.getStateWindow(new TimeWindow(0, 13)))
                 .isIn(new TimeWindow(0, 3), new TimeWindow(5, 8), new TimeWindow(10, 13));
@@ -288,7 +287,7 @@ public class MergingWindowSetTest {
 
     /** Test merging of a large new window that covers one existing windows. */
     @Test
-    public void testMergeLargeWindowCoveringSingleWindow() throws Exception {
+    void testMergeLargeWindowCoveringSingleWindow() throws Exception {
         MapState<TimeWindow, TimeWindow> mockState = new HeapMapState<>();
 
         MergingWindowSet<TimeWindow> windowSet =
@@ -320,7 +319,7 @@ public class MergingWindowSetTest {
      * merge.
      */
     @Test
-    public void testAddingIdenticalWindows() throws Exception {
+    void testAddingIdenticalWindows() throws Exception {
         MapState<TimeWindow, TimeWindow> mockState = new HeapMapState<>();
 
         MergingWindowSet<TimeWindow> windowSet =
@@ -345,7 +344,7 @@ public class MergingWindowSetTest {
 
     /** Test merging of a large new window that covers multiple existing windows. */
     @Test
-    public void testMergeLargeWindowCoveringMultipleWindows() throws Exception {
+    void testMergeLargeWindowCoveringMultipleWindows() throws Exception {
         MapState<TimeWindow, TimeWindow> mockState = new HeapMapState<>();
 
         MergingWindowSet<TimeWindow> windowSet =

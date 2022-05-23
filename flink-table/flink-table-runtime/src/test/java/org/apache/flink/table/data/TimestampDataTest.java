@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.data;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -27,10 +27,10 @@ import java.util.TimeZone;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link TimestampData}. */
-public class TimestampDataTest {
+class TimestampDataTest {
 
     @Test
-    public void testNormal() {
+    void testNormal() {
         // From long to TimestampData and vice versa
         assertThat(TimestampData.fromEpochMillis(1123L).getMillisecond()).isEqualTo(1123L);
         assertThat(TimestampData.fromEpochMillis(-1123L).getMillisecond()).isEqualTo(-1123L);
@@ -93,7 +93,7 @@ public class TimestampDataTest {
     }
 
     @Test
-    public void testDaylightSavingTime() {
+    void testDaylightSavingTime() {
         TimeZone tz = TimeZone.getDefault();
         TimeZone.setDefault(TimeZone.getTimeZone("America/Los_Angeles"));
 
@@ -107,28 +107,24 @@ public class TimestampDataTest {
     }
 
     @Test
-    public void testToString() {
+    void testToString() {
 
         java.sql.Timestamp t = java.sql.Timestamp.valueOf("1969-01-02 00:00:00.123456789");
-        assertThat(TimestampData.fromTimestamp(t).toString())
-                .isEqualTo("1969-01-02T00:00:00.123456789");
+        assertThat(TimestampData.fromTimestamp(t)).hasToString("1969-01-02T00:00:00.123456789");
 
-        assertThat(TimestampData.fromEpochMillis(123L).toString())
-                .isEqualTo("1970-01-01T00:00:00.123");
-        assertThat(TimestampData.fromEpochMillis(123L, 456789).toString())
-                .isEqualTo("1970-01-01T00:00:00.123456789");
+        assertThat(TimestampData.fromEpochMillis(123L)).hasToString("1970-01-01T00:00:00.123");
+        assertThat(TimestampData.fromEpochMillis(123L, 456789))
+                .hasToString("1970-01-01T00:00:00.123456789");
 
-        assertThat(TimestampData.fromEpochMillis(-123L).toString())
-                .isEqualTo("1969-12-31T23:59:59.877");
-        assertThat(TimestampData.fromEpochMillis(-123L, 456789).toString())
-                .isEqualTo("1969-12-31T23:59:59.877456789");
+        assertThat(TimestampData.fromEpochMillis(-123L)).hasToString("1969-12-31T23:59:59.877");
+        assertThat(TimestampData.fromEpochMillis(-123L, 456789))
+                .hasToString("1969-12-31T23:59:59.877456789");
 
         LocalDateTime ldt = LocalDateTime.of(1969, 1, 2, 0, 0, 0, 123456789);
-        assertThat(TimestampData.fromLocalDateTime(ldt).toString())
-                .isEqualTo("1969-01-02T00:00:00.123456789");
+        assertThat(TimestampData.fromLocalDateTime(ldt))
+                .hasToString("1969-01-02T00:00:00.123456789");
 
         Instant instant = Instant.ofEpochSecond(0L, 123456789L);
-        assertThat(TimestampData.fromInstant(instant).toString())
-                .isEqualTo("1970-01-01T00:00:00.123456789");
+        assertThat(TimestampData.fromInstant(instant)).hasToString("1970-01-01T00:00:00.123456789");
     }
 }

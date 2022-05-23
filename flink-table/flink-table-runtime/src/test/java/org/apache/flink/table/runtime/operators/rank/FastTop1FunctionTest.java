@@ -22,7 +22,7 @@ import org.apache.flink.runtime.checkpoint.OperatorSubtaskState;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
 import org.apache.flink.table.data.RowData;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +32,7 @@ import static org.apache.flink.table.runtime.util.StreamRecordUtils.updateAfterR
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.updateBeforeRecord;
 
 /** Tests for {@link FastTop1Function}. */
-public class FastTop1FunctionTest extends TopNFunctionTestBase {
+class FastTop1FunctionTest extends TopNFunctionTestBase {
     @Override
     AbstractTopNFunction createFunction(
             RankType rankType,
@@ -51,6 +51,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
                 cacheSize);
     }
 
+    @Test
     @Override
     public void testDisableGenerateUpdateBefore() throws Exception {
         AbstractTopNFunction func =
@@ -77,6 +78,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
                 "output wrong.", expectedOutput, testHarness.getOutput());
     }
 
+    @Test
     @Override
     public void testOutputRankNumberWithConstantRankRange() throws Exception {
         AbstractTopNFunction func =
@@ -103,6 +105,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
                 "output wrong.", expectedOutput, testHarness.getOutput());
     }
 
+    @Test
     @Override
     public void testDisableGenerateUpdateBeforeAndOutputRankNumber() throws Exception {
         AbstractTopNFunction func =
@@ -128,6 +131,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
                 "output wrong.", expectedOutput, testHarness.getOutput());
     }
 
+    @Test
     @Override
     public void testConstantRankRangeWithoutOffset() throws Exception {
         AbstractTopNFunction func =
@@ -174,7 +178,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
     // ------------ Tests with UPDATE input records ---------------
 
     @Test
-    public void testVariableRankRange() throws Exception {
+    void testVariableRankRange() throws Exception {
         AbstractTopNFunction func =
                 createFunction(RankType.ROW_NUMBER, new ConstantRankRange(1, 1), true, false);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = createTestHarness(func);
@@ -200,7 +204,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
     }
 
     @Test
-    public void testOutputRankNumberWithUpdateInputs() throws Exception {
+    void testOutputRankNumberWithUpdateInputs() throws Exception {
         AbstractTopNFunction func =
                 createFunction(RankType.ROW_NUMBER, new ConstantRankRange(1, 1), true, true);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = createTestHarness(func);
@@ -229,7 +233,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
     }
 
     @Test
-    public void testSortKeyChangesWhenOutputRankNumber() throws Exception {
+    void testSortKeyChangesWhenOutputRankNumber() throws Exception {
         AbstractTopNFunction func =
                 createFunction(RankType.ROW_NUMBER, new ConstantRankRange(1, 1), true, true);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = createTestHarness(func);
@@ -263,8 +267,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
     }
 
     @Test
-    public void testSortKeyChangesWhenOutputRankNumberAndNotGenerateUpdateBefore()
-            throws Exception {
+    void testSortKeyChangesWhenOutputRankNumberAndNotGenerateUpdateBefore() throws Exception {
         AbstractTopNFunction func =
                 createFunction(RankType.ROW_NUMBER, new ConstantRankRange(1, 1), false, true);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = createTestHarness(func);
@@ -294,7 +297,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
     }
 
     @Test
-    public void testSortKeyChangesWhenNotOutputRankNumber() throws Exception {
+    void testSortKeyChangesWhenNotOutputRankNumber() throws Exception {
         AbstractTopNFunction func =
                 createFunction(RankType.ROW_NUMBER, new ConstantRankRange(1, 1), true, false);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = createTestHarness(func);
@@ -323,8 +326,7 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
     }
 
     @Test
-    public void testSortKeyChangesWhenNotOutputRankNumberAndNotGenerateUpdateBefore()
-            throws Exception {
+    void testSortKeyChangesWhenNotOutputRankNumberAndNotGenerateUpdateBefore() throws Exception {
         AbstractTopNFunction func =
                 createFunction(RankType.ROW_NUMBER, new ConstantRankRange(1, 1), false, false);
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness = createTestHarness(func);
@@ -348,11 +350,13 @@ public class FastTop1FunctionTest extends TopNFunctionTestBase {
                 "output wrong.", expectedOutput, testHarness.getOutput());
     }
 
+    @Test
     @Override
     public void testConstantRankRangeWithOffset() throws Exception {
         // skip
     }
 
+    @Test
     @Override
     public void testOutputRankNumberWithVariableRankRange() throws Exception {
         // skip

@@ -30,11 +30,8 @@ import org.apache.flink.types.Row;
 import org.apache.flink.types.RowKind;
 import org.apache.flink.util.InstantiationUtil;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameter;
-import org.junit.runners.Parameterized.Parameters;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import javax.annotation.Nullable;
 
@@ -59,8 +56,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
-import static java.util.Arrays.asList;
 import static org.apache.flink.table.api.DataTypes.ARRAY;
 import static org.apache.flink.table.api.DataTypes.BINARY;
 import static org.apache.flink.table.api.DataTypes.BOOLEAN;
@@ -89,13 +86,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Tests for {@link DataStructureConverters}. */
-@RunWith(Parameterized.class)
-public class DataStructureConvertersTest {
+class DataStructureConvertersTest {
 
-    @Parameters(name = "{index}: {0}")
-    public static List<TestSpec> testData() {
+    private static Stream<TestSpec> testData() {
         // ordered by definition in DataStructureConverters
-        return asList(
+        return Stream.of(
                 TestSpec.forDataType(CHAR(5))
                         .convertedTo(String.class, "12345")
                         .convertedTo(byte[].class, "12345".getBytes(StandardCharsets.UTF_8))
@@ -371,10 +366,9 @@ public class DataStructureConvertersTest {
                                 GenericPojo.class, new GenericPojo<>(LocalDate.ofEpochDay(123))));
     }
 
-    @Parameter public TestSpec testSpec;
-
-    @Test
-    public void testConversions() {
+    @ParameterizedTest(name = "{index}: {0}")
+    @MethodSource("testData")
+    void testConversions(TestSpec testSpec) {
         for (Map.Entry<Class<?>, Object> from : testSpec.conversions.entrySet()) {
             DataType fromDataType = testSpec.dataType;
             if (testSpec.bridgeToTargetClass) {

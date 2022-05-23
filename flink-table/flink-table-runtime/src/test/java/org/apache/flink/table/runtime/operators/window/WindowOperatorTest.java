@@ -51,17 +51,16 @@ import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 import org.apache.flink.util.Collector;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.data.StringData.fromString;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.insertRecord;
@@ -78,26 +77,17 @@ import static org.assertj.core.api.Assertions.fail;
  * <p>To simplify the testing logic, the table aggregate outputs same value with the aggregate
  * except that the table aggregate outputs two same records each time.
  */
-@RunWith(Parameterized.class)
-public class WindowOperatorTest {
+class WindowOperatorTest {
 
     private static final ZoneId UTC_ZONE_ID = ZoneId.of("UTC");
     private static final ZoneId SHANGHAI_ZONE_ID = ZoneId.of("Asia/Shanghai");
-    private final boolean isTableAggregate;
-    private final ZoneId shiftTimeZone;
 
-    @Parameterized.Parameters(name = "isTableAggregate = {0}, TimeZone = {1}")
-    public static Collection<Object[]> runMode() {
-        return Arrays.asList(
-                new Object[] {false, UTC_ZONE_ID},
-                new Object[] {true, UTC_ZONE_ID},
-                new Object[] {false, SHANGHAI_ZONE_ID},
-                new Object[] {true, SHANGHAI_ZONE_ID});
-    }
-
-    public WindowOperatorTest(boolean isTableAggregate, ZoneId shiftTimeZone) {
-        this.isTableAggregate = isTableAggregate;
-        this.shiftTimeZone = shiftTimeZone;
+    private static Stream<TestSpec> runMode() {
+        return Stream.of(
+                TestSpec.zone(UTC_ZONE_ID).tableAggregate(false),
+                TestSpec.zone(UTC_ZONE_ID).tableAggregate(true),
+                TestSpec.zone(SHANGHAI_ZONE_ID).tableAggregate(false),
+                TestSpec.zone(SHANGHAI_ZONE_ID).tableAggregate(true));
     }
 
     private static final SumAndCountAggTimeWindow sumAndCountAggTimeWindow =
@@ -109,14 +99,6 @@ public class WindowOperatorTest {
 
     private static final SumAndCountTableAggCountWindow sumAndCountTableAggCountWindow =
             new SumAndCountTableAggCountWindow();
-
-    private NamespaceAggsHandleFunctionBase getTimeWindowAggFunction() {
-        return isTableAggregate ? sumAndCountTableAggTimeWindow : sumAndCountAggTimeWindow;
-    }
-
-    private NamespaceAggsHandleFunctionBase getCountWindowAggFunction() {
-        return isTableAggregate ? sumAndCountTableAggCountWindow : sumAndCountAggCountWindow;
-    }
 
     // For counting if close() is called the correct number of times on the SumReducer
     private static AtomicInteger closeCalled = new AtomicInteger(0);
@@ -156,8 +138,11 @@ public class WindowOperatorTest {
         return results;
     }
 
-    @Test
-    public void testEventTimeSlidingWindows() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testEventTimeSlidingWindows(TestSpec testSpec) throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
         closeCalled.set(0);
 
         WindowOperator operator =
@@ -167,7 +152,7 @@ public class WindowOperatorTest {
                         .sliding(Duration.ofSeconds(3), Duration.ofSeconds(1))
                         .withEventTime(2)
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -201,9 +186,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(-2000L),
-                                localMills(1000L),
-                                localMills(999L))));
+                                testSpec.localMills(-2000L),
+                                testSpec.localMills(1000L),
+                                testSpec.localMills(999L))));
         expectedOutput.add(new Watermark(999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -216,9 +201,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(-1000L),
-                                localMills(2000L),
-                                localMills(1999L))));
+                                testSpec.localMills(-1000L),
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(1999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -226,9 +211,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(-1000L),
-                                localMills(2000L),
-                                localMills(1999L))));
+                                testSpec.localMills(-1000L),
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(1999L))));
         expectedOutput.add(new Watermark(1999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -241,9 +226,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -251,9 +236,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.add(new Watermark(2999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -276,9 +261,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 5L,
                                 5L,
-                                localMills(1000L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(1000L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
         expectedOutput.add(new Watermark(3999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -291,9 +276,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 2L,
                                 2L,
-                                localMills(2000L),
-                                localMills(5000L),
-                                localMills(4999L))));
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(5000L),
+                                testSpec.localMills(4999L))));
         expectedOutput.add(new Watermark(4999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -306,9 +291,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 2L,
                                 2L,
-                                localMills(3000L),
-                                localMills(6000L),
-                                localMills(5999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(6000L),
+                                testSpec.localMills(5999L))));
         expectedOutput.add(new Watermark(5999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -328,9 +313,12 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
-    public void testProcessingTimeSlidingWindows() throws Throwable {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testProcessingTimeSlidingWindows(TestSpec testSpec) throws Throwable {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -339,7 +327,7 @@ public class WindowOperatorTest {
                         .sliding(Duration.ofSeconds(3), Duration.ofSeconds(1))
                         .withProcessingTime()
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -365,9 +353,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(-2000L),
-                                localMills(1000L),
-                                localMills(999L))));
+                                testSpec.localMills(-2000L),
+                                testSpec.localMills(1000L),
+                                testSpec.localMills(999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -384,9 +372,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(-1000L),
-                                localMills(2000L),
-                                localMills(1999L))));
+                                testSpec.localMills(-1000L),
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(1999L))));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
 
@@ -402,9 +390,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -412,9 +400,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 2L,
                                 2L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -432,9 +420,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 2L,
                                 2L,
-                                localMills(1000L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(1000L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -442,9 +430,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 5L,
                                 5L,
-                                localMills(1000L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(1000L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -452,9 +440,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 5L,
                                 5L,
-                                localMills(2000L),
-                                localMills(5000L),
-                                localMills(4999L))));
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(5000L),
+                                testSpec.localMills(4999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -462,9 +450,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(3000L),
-                                localMills(6000L),
-                                localMills(5999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(6000L),
+                                testSpec.localMills(5999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -472,9 +460,12 @@ public class WindowOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testEventTimeCumulativeWindows() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testEventTimeCumulativeWindows(TestSpec testSpec) throws Exception {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -483,7 +474,7 @@ public class WindowOperatorTest {
                         .cumulative(Duration.ofSeconds(3), Duration.ofSeconds(1))
                         .withEventTime(2)
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -517,9 +508,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(1000L),
-                                localMills(999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(1000L),
+                                testSpec.localMills(999L))));
         expectedOutput.add(new Watermark(999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -532,9 +523,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(2000L),
-                                localMills(1999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(1999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -542,9 +533,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(2000L),
-                                localMills(1999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(1999L))));
         expectedOutput.add(new Watermark(1999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -557,9 +548,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -567,9 +558,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 4L,
                                 4L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.add(new Watermark(2999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -592,9 +583,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(3000L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
         expectedOutput.add(new Watermark(3999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -607,9 +598,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(3000L),
-                                localMills(5000L),
-                                localMills(4999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(5000L),
+                                testSpec.localMills(4999L))));
         expectedOutput.add(new Watermark(4999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -622,9 +613,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(3000L),
-                                localMills(6000L),
-                                localMills(5999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(6000L),
+                                testSpec.localMills(5999L))));
         expectedOutput.add(new Watermark(5999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -644,8 +635,10 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
-    public void testEventTimeCumulativeWindowsWithLateArrival() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testEventTimeCumulativeWindowsWithLateArrival(TestSpec testSpec) throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
                         .withInputFields(inputFieldTypes)
@@ -672,14 +665,26 @@ public class WindowOperatorTest {
         testHarness.processWatermark(new Watermark(1500));
 
         expectedOutput.add(
-                insertRecord("key2", 1L, 1L, localMills(0L), localMills(1000L), localMills(999L)));
+                insertRecord(
+                        "key2",
+                        1L,
+                        1L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(1000L),
+                        testSpec.localMills(999L)));
         expectedOutput.add(new Watermark(1500));
 
         testHarness.processElement(insertRecord("key2", 1, 1300L));
         testHarness.processWatermark(new Watermark(2300));
 
         expectedOutput.add(
-                insertRecord("key2", 2L, 2L, localMills(0L), localMills(2000L), localMills(1999L)));
+                insertRecord(
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(2000L),
+                        testSpec.localMills(1999L)));
         expectedOutput.add(new Watermark(2300));
 
         // this will not be dropped because window.maxTimestamp() + allowedLateness >
@@ -690,12 +695,28 @@ public class WindowOperatorTest {
         // this is 1 and not 3 because the trigger fires and purges
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key2", 2L, 2L, localMills(0L), localMills(2000L), localMills(1999L)));
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(2000L),
+                        testSpec.localMills(1999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key2", 3L, 3L, localMills(0L), localMills(2000L), localMills(1999L)));
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(2000L),
+                        testSpec.localMills(1999L)));
         expectedOutput.add(
-                insertRecord("key2", 3L, 3L, localMills(0L), localMills(3000L), localMills(2999L)));
+                insertRecord(
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
         expectedOutput.add(new Watermark(6000));
 
         // this will be dropped because window.maxTimestamp() + allowedLateness < currentWatermark
@@ -712,9 +733,12 @@ public class WindowOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testProcessingTimeCumulativeWindows() throws Throwable {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testProcessingTimeCumulativeWindows(TestSpec testSpec) throws Throwable {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -723,7 +747,7 @@ public class WindowOperatorTest {
                         .cumulative(Duration.ofSeconds(3), Duration.ofSeconds(1))
                         .withProcessingTime()
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -749,9 +773,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(0L),
-                                localMills(1000L),
-                                localMills(999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(1000L),
+                                testSpec.localMills(999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -768,9 +792,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(2000L),
-                                localMills(1999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(2000L),
+                                testSpec.localMills(1999L))));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
 
@@ -786,9 +810,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -796,9 +820,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 2L,
                                 2L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -816,9 +840,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 2L,
                                 2L,
-                                localMills(3000L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -826,9 +850,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(3000L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -836,9 +860,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 2L,
                                 2L,
-                                localMills(3000L),
-                                localMills(5000L),
-                                localMills(4999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(5000L),
+                                testSpec.localMills(4999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -846,9 +870,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(3000L),
-                                localMills(5000L),
-                                localMills(4999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(5000L),
+                                testSpec.localMills(4999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -856,9 +880,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 2L,
                                 2L,
-                                localMills(3000L),
-                                localMills(6000L),
-                                localMills(5999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(6000L),
+                                testSpec.localMills(5999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -866,9 +890,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 1L,
                                 1L,
-                                localMills(3000L),
-                                localMills(6000L),
-                                localMills(5999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(6000L),
+                                testSpec.localMills(5999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -876,10 +900,13 @@ public class WindowOperatorTest {
         testHarness.close();
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
     @SuppressWarnings("unchecked")
-    public void testEventTimeTumblingWindows() throws Exception {
+    void testEventTimeTumblingWindows(TestSpec testSpec) throws Exception {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -888,7 +915,7 @@ public class WindowOperatorTest {
                         .tumble(Duration.ofSeconds(3))
                         .withEventTime(2)
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -941,9 +968,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -951,9 +978,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.add(new Watermark(2999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -976,9 +1003,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 2L,
                                 2L,
-                                localMills(3000L),
-                                localMills(6000L),
-                                localMills(5999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(6000L),
+                                testSpec.localMills(5999L))));
         expectedOutput.add(new Watermark(5999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -998,10 +1025,13 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
     @SuppressWarnings("unchecked")
-    public void testEventTimeTumblingWindowsWithEarlyFiring() throws Exception {
+    void testEventTimeTumblingWindowsWithEarlyFiring(TestSpec testSpec) throws Exception {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -1047,7 +1077,12 @@ public class WindowOperatorTest {
         testHarness.setProcessingTime(1000);
         expectedOutput.add(
                 insertRecord(
-                        "key2", 2L, 2L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         testHarness.processWatermark(new Watermark(999));
         expectedOutput.add(new Watermark(999));
         assertor.assertOutputEqualsSorted(
@@ -1055,9 +1090,21 @@ public class WindowOperatorTest {
 
         testHarness.setProcessingTime(1001);
         expectedOutput.add(
-                insertRecord("key1", 3L, 3L, localMills(0L), localMills(3000L), localMills(2999L)));
+                insertRecord(
+                        "key1",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
         expectedOutput.add(
-                insertRecord("key2", 3L, 3L, localMills(0L), localMills(3000L), localMills(2999L)));
+                insertRecord(
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
 
         testHarness.processWatermark(new Watermark(1999));
         testHarness.setProcessingTime(2001);
@@ -1090,10 +1137,20 @@ public class WindowOperatorTest {
         expectedOutput.add(new Watermark(3999));
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key2", 2L, 2L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key2", 3L, 3L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
 
@@ -1114,10 +1171,20 @@ public class WindowOperatorTest {
         testHarness.processWatermark(new Watermark(5999));
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key2", 3L, 3L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key2", 4L, 4L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        4L,
+                        4L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         expectedOutput.add(new Watermark(5999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -1147,10 +1214,13 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
     @SuppressWarnings("unchecked")
-    public void testEventTimeTumblingWindowsWithEarlyAndLateFirings() throws Exception {
+    void testEventTimeTumblingWindowsWithEarlyAndLateFirings(TestSpec testSpec) throws Exception {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -1197,7 +1267,12 @@ public class WindowOperatorTest {
         testHarness.setProcessingTime(1000);
         expectedOutput.add(
                 insertRecord(
-                        "key2", 2L, 2L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         testHarness.processWatermark(new Watermark(999));
         expectedOutput.add(new Watermark(999));
 
@@ -1206,9 +1281,21 @@ public class WindowOperatorTest {
 
         testHarness.setProcessingTime(1001);
         expectedOutput.add(
-                insertRecord("key1", 3L, 3L, localMills(0L), localMills(3000L), localMills(2999L)));
+                insertRecord(
+                        "key1",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
         expectedOutput.add(
-                insertRecord("key2", 3L, 3L, localMills(0L), localMills(3000L), localMills(2999L)));
+                insertRecord(
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
 
         testHarness.processWatermark(new Watermark(1999));
         testHarness.setProcessingTime(2001);
@@ -1241,10 +1328,20 @@ public class WindowOperatorTest {
         expectedOutput.add(new Watermark(3999));
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key2", 2L, 2L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key2", 3L, 3L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
 
@@ -1252,10 +1349,20 @@ public class WindowOperatorTest {
         testHarness.processElement(insertRecord("key2", 1, 2001L));
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key2", 3L, 3L, localMills(0L), localMills(3000L), localMills(2999L)));
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key2", 4L, 4L, localMills(0L), localMills(3000L), localMills(2999L)));
+                        "key2",
+                        4L,
+                        4L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
 
@@ -1263,10 +1370,20 @@ public class WindowOperatorTest {
         testHarness.processElement(insertRecord("key1", 1, 2030L));
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key1", 3L, 3L, localMills(0L), localMills(3000L), localMills(2999L)));
+                        "key1",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key1", 4L, 4L, localMills(0L), localMills(3000L), localMills(2999L)));
+                        "key1",
+                        4L,
+                        4L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(2999L)));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
 
@@ -1280,10 +1397,20 @@ public class WindowOperatorTest {
         testHarness.processWatermark(new Watermark(5999));
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key2", 3L, 3L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key2", 4L, 4L, localMills(3000L), localMills(6000L), localMills(5999L)));
+                        "key2",
+                        4L,
+                        4L,
+                        testSpec.localMills(3000L),
+                        testSpec.localMills(6000L),
+                        testSpec.localMills(5999L)));
         expectedOutput.add(new Watermark(5999));
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -1313,10 +1440,13 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
     @SuppressWarnings("unchecked")
-    public void testProcessingTimeTumblingWindows() throws Exception {
+    void testProcessingTimeTumblingWindows(TestSpec testSpec) throws Exception {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -1325,7 +1455,7 @@ public class WindowOperatorTest {
                         .tumble(Duration.ofSeconds(3))
                         .withProcessingTime()
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -1357,9 +1487,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 3L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -1367,9 +1497,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 2L,
                                 2L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -1387,9 +1517,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(3000L),
-                                localMills(6000L),
-                                localMills(5999L))));
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(6000L),
+                                testSpec.localMills(5999L))));
 
         assertThat(operator.getWatermarkLatency().getValue()).isEqualTo(0L);
         assertor.assertOutputEqualsSorted(
@@ -1398,10 +1528,13 @@ public class WindowOperatorTest {
         testHarness.close();
     }
 
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
     @SuppressWarnings("unchecked")
-    public void testEventTimeSessionWindows() throws Exception {
+    void testEventTimeSessionWindows(TestSpec testSpec) throws Exception {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -1410,7 +1543,7 @@ public class WindowOperatorTest {
                         .session(Duration.ofSeconds(3))
                         .withEventTime(2)
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -1459,9 +1592,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 6L,
                                 3L,
-                                localMills(10L),
-                                localMills(5500L),
-                                localMills(5499L))));
+                                testSpec.localMills(10L),
+                                testSpec.localMills(5500L),
+                                testSpec.localMills(5499L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -1469,9 +1602,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 6L,
                                 3L,
-                                localMills(0L),
-                                localMills(5500L),
-                                localMills(5499L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(5500L),
+                                testSpec.localMills(5499L))));
 
         expectedOutput.addAll(
                 doubleRecord(
@@ -1480,9 +1613,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 20L,
                                 4L,
-                                localMills(5501L),
-                                localMills(9050L),
-                                localMills(9049L))));
+                                testSpec.localMills(5501L),
+                                testSpec.localMills(9050L),
+                                testSpec.localMills(9049L))));
         expectedOutput.add(new Watermark(12000));
 
         // add a late data
@@ -1499,9 +1632,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 30L,
                                 2L,
-                                localMills(15000L),
-                                localMills(18000L),
-                                localMills(17999L))));
+                                testSpec.localMills(15000L),
+                                testSpec.localMills(18000L),
+                                testSpec.localMills(17999L))));
         expectedOutput.add(new Watermark(17999));
 
         assertor.assertOutputEqualsSorted(
@@ -1517,9 +1650,12 @@ public class WindowOperatorTest {
         assertThat(operator.getNumLateRecordsDropped().getCount()).isEqualTo(1);
     }
 
-    @Test
-    public void testProcessingTimeSessionWindows() throws Throwable {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testProcessingTimeSessionWindows(TestSpec testSpec) throws Throwable {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -1528,7 +1664,7 @@ public class WindowOperatorTest {
                         .session(Duration.ofSeconds(3))
                         .withProcessingTime()
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -1562,9 +1698,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 2L,
                                 2L,
-                                localMills(3L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(3L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -1584,9 +1720,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 2L,
                                 2L,
-                                localMills(5000L),
-                                localMills(8000L),
-                                localMills(7999L))));
+                                testSpec.localMills(5000L),
+                                testSpec.localMills(8000L),
+                                testSpec.localMills(7999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -1594,9 +1730,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 3L,
                                 3L,
-                                localMills(5000L),
-                                localMills(8000L),
-                                localMills(7999L))));
+                                testSpec.localMills(5000L),
+                                testSpec.localMills(8000L),
+                                testSpec.localMills(7999L))));
 
         assertor.assertOutputEqualsSorted(
                 "Output was not correct.", expectedOutput, testHarness.getOutput());
@@ -1611,10 +1747,13 @@ public class WindowOperatorTest {
      * <p>In this test, elements that have 33 as the second tuple field will be put into a point
      * window.
      */
-    @Test
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
     @SuppressWarnings("unchecked")
-    public void testPointSessions() throws Exception {
+    void testPointSessions(TestSpec testSpec) throws Exception {
         closeCalled.set(0);
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
 
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
@@ -1623,7 +1762,7 @@ public class WindowOperatorTest {
                         .assigner(new PointSessionWindowAssigner(3000))
                         .withEventTime(2)
                         .aggregateAndBuild(
-                                getTimeWindowAggFunction(),
+                                testSpec.getTimeWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -1664,9 +1803,9 @@ public class WindowOperatorTest {
                                 "key1",
                                 36L,
                                 3L,
-                                localMills(10L),
-                                localMills(4000L),
-                                localMills(3999L))));
+                                testSpec.localMills(10L),
+                                testSpec.localMills(4000L),
+                                testSpec.localMills(3999L))));
         expectedOutput.addAll(
                 doubleRecord(
                         isTableAggregate,
@@ -1674,9 +1813,9 @@ public class WindowOperatorTest {
                                 "key2",
                                 67L,
                                 3L,
-                                localMills(0L),
-                                localMills(3000L),
-                                localMills(2999L))));
+                                testSpec.localMills(0L),
+                                testSpec.localMills(3000L),
+                                testSpec.localMills(2999L))));
         expectedOutput.add(new Watermark(12000));
 
         assertor.assertOutputEqualsSorted(
@@ -1688,8 +1827,10 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
-    public void testLateness() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testLateness(TestSpec testSpec) throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
         WindowOperator operator =
                 WindowOperatorBuilder.builder()
                         .withInputFields(inputFieldTypes)
@@ -1721,7 +1862,13 @@ public class WindowOperatorTest {
         testHarness.processWatermark(new Watermark(2300));
 
         expectedOutput.add(
-                insertRecord("key2", 2L, 2L, localMills(0L), localMills(2000L), localMills(1999L)));
+                insertRecord(
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(2000L),
+                        testSpec.localMills(1999L)));
         expectedOutput.add(new Watermark(2300));
 
         // this will not be dropped because window.maxTimestamp() + allowedLateness >
@@ -1732,10 +1879,20 @@ public class WindowOperatorTest {
         // this is 1 and not 3 because the trigger fires and purges
         expectedOutput.add(
                 updateBeforeRecord(
-                        "key2", 2L, 2L, localMills(0L), localMills(2000L), localMills(1999L)));
+                        "key2",
+                        2L,
+                        2L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(2000L),
+                        testSpec.localMills(1999L)));
         expectedOutput.add(
                 updateAfterRecord(
-                        "key2", 3L, 3L, localMills(0L), localMills(2000L), localMills(1999L)));
+                        "key2",
+                        3L,
+                        3L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(2000L),
+                        testSpec.localMills(1999L)));
         expectedOutput.add(new Watermark(6000));
 
         // this will be dropped because window.maxTimestamp() + allowedLateness < currentWatermark
@@ -1752,8 +1909,11 @@ public class WindowOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testCleanupTimerWithEmptyReduceStateForTumblingWindows() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testCleanupTimerWithEmptyReduceStateForTumblingWindows(TestSpec testSpec)
+            throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
         final int windowSize = 2;
         final long lateness = 1;
 
@@ -1788,7 +1948,13 @@ public class WindowOperatorTest {
 
         expected.add(new Watermark(1599));
         expected.add(
-                insertRecord("key2", 1L, 1L, localMills(0L), localMills(2000L), localMills(1999L)));
+                insertRecord(
+                        "key2",
+                        1L,
+                        1L,
+                        testSpec.localMills(0L),
+                        testSpec.localMills(2000L),
+                        testSpec.localMills(1999L)));
         expected.add(new Watermark(1999)); // here it fires and purges
         expected.add(new Watermark(2000)); // here is the cleanup timer
         expected.add(new Watermark(5000));
@@ -1798,8 +1964,10 @@ public class WindowOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testCleanupTimeOverflow() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testCleanupTimeOverflow(TestSpec testSpec) throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
         if (!UTC_ZONE_ID.equals(shiftTimeZone)) {
             return;
         }
@@ -1838,10 +2006,11 @@ public class WindowOperatorTest {
         testHarness.processElement(insertRecord("key2", 1, timestamp));
 
         // the garbage collection timer would wrap-around
-        assertThat(window.maxTimestamp() + lateness).isLessThan(window.maxTimestamp());
 
-        // and it would prematurely fire with watermark (Long.MAX_VALUE - 1500)
-        assertThat(window.maxTimestamp() + lateness).isLessThan(Long.MAX_VALUE - 1500);
+        assertThat(window.maxTimestamp() + lateness)
+                .isLessThan(window.maxTimestamp())
+                // and it would prematurely fire with watermark (Long.MAX_VALUE - 1500)
+                .isLessThan(Long.MAX_VALUE - 1500);
 
         // if we don't correctly prevent wrap-around in the garbage collection
         // timers this watermark will clean our window state for the just-added
@@ -1849,8 +2018,9 @@ public class WindowOperatorTest {
         testHarness.processWatermark(new Watermark(Long.MAX_VALUE - 1500));
 
         // this watermark is before the end timestamp of our only window
-        assertThat(Long.MAX_VALUE - 1500).isLessThan(window.maxTimestamp());
-        assertThat(window.maxTimestamp()).isLessThan(Long.MAX_VALUE);
+        assertThat(window.maxTimestamp())
+                .isGreaterThanOrEqualTo(Long.MAX_VALUE - 1500)
+                .isLessThan(Long.MAX_VALUE);
 
         // push in a watermark that will trigger computation of our window
         testHarness.processWatermark(new Watermark(window.maxTimestamp()));
@@ -1866,8 +2036,11 @@ public class WindowOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testTumblingCountWindow() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testTumblingCountWindow(TestSpec testSpec) throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
         if (!UTC_ZONE_ID.equals(shiftTimeZone)) {
             return;
         }
@@ -1881,7 +2054,7 @@ public class WindowOperatorTest {
                         .withShiftTimezone(shiftTimeZone)
                         .countWindow(windowSize)
                         .aggregateAndBuild(
-                                getCountWindowAggFunction(),
+                                testSpec.getCountWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -1950,8 +2123,11 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
-    public void testSlidingCountWindow() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testSlidingCountWindow(TestSpec testSpec) throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
+        final boolean isTableAggregate = testSpec.isTableAggregate;
         if (!UTC_ZONE_ID.equals(shiftTimeZone)) {
             return;
         }
@@ -1966,7 +2142,7 @@ public class WindowOperatorTest {
                         .withShiftTimezone(shiftTimeZone)
                         .countWindow(windowSize, windowSlide)
                         .aggregateAndBuild(
-                                getCountWindowAggFunction(),
+                                testSpec.getCountWindowAggFunction(),
                                 equaliser,
                                 accTypes,
                                 aggResultTypes,
@@ -2035,8 +2211,10 @@ public class WindowOperatorTest {
         assertThat(closeCalled.get()).as("Close was not called.").isEqualTo(2);
     }
 
-    @Test
-    public void testWindowCloseWithoutOpen() throws Exception {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("runMode")
+    void testWindowCloseWithoutOpen(TestSpec testSpec) throws Exception {
+        final ZoneId shiftTimeZone = testSpec.shiftTimeZone;
         if (!UTC_ZONE_ID.equals(shiftTimeZone)) {
             return;
         }
@@ -2061,11 +2239,6 @@ public class WindowOperatorTest {
     }
 
     // --------------------------------------------------------------------------------
-
-    /** Get the timestamp in mills by given epoch mills and timezone. */
-    private long localMills(long epochMills) {
-        return toUtcTimestampMills(epochMills, shiftTimeZone);
-    }
 
     private static class PointSessionWindowAssigner extends SessionWindowAssigner {
         private static final long serialVersionUID = 1L;
@@ -2335,5 +2508,41 @@ public class WindowOperatorTest {
             WindowOperator operator) throws Exception {
         return new KeyedOneInputStreamOperatorTestHarness<RowData, RowData, RowData>(
                 operator, keySelector, keyType);
+    }
+
+    private static class TestSpec {
+        private ZoneId shiftTimeZone;
+        private boolean isTableAggregate;
+
+        private TestSpec(ZoneId shiftTimeZone) {
+            this.shiftTimeZone = shiftTimeZone;
+        }
+
+        public static TestSpec zone(ZoneId shiftTimeZone) {
+            return new TestSpec(shiftTimeZone);
+        }
+
+        public TestSpec tableAggregate(boolean isTableAggregate) {
+            this.isTableAggregate = isTableAggregate;
+            return this;
+        }
+
+        NamespaceAggsHandleFunctionBase getTimeWindowAggFunction() {
+            return isTableAggregate ? sumAndCountTableAggTimeWindow : sumAndCountAggTimeWindow;
+        }
+
+        NamespaceAggsHandleFunctionBase getCountWindowAggFunction() {
+            return isTableAggregate ? sumAndCountTableAggCountWindow : sumAndCountAggCountWindow;
+        }
+
+        /** Get the timestamp in mills by given epoch mills and timezone. */
+        long localMills(long epochMills) {
+            return toUtcTimestampMills(epochMills, shiftTimeZone);
+        }
+
+        @Override
+        public String toString() {
+            return "isTableAggregate = " + isTableAggregate + ", TimeZone = " + shiftTimeZone;
+        }
     }
 }

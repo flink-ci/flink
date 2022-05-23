@@ -39,8 +39,8 @@ import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.OutputTag;
 
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +51,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /** Test for {@link NonBufferOverWindowOperator}. */
-public class NonBufferOverWindowOperatorTest {
+class NonBufferOverWindowOperatorTest {
 
     static GeneratedAggsHandleFunction function =
             new GeneratedAggsHandleFunction("Function1", "", new Object[0]) {
@@ -86,13 +86,13 @@ public class NonBufferOverWindowOperatorTest {
     private NonBufferOverWindowOperator operator;
     private List<GenericRowData> collect;
 
-    @Before
-    public void before() throws Exception {
+    @BeforeEach
+    void before() throws Exception {
         collect = new ArrayList<>();
     }
 
     @Test
-    public void testNormal() throws Exception {
+    void testNormal() throws Exception {
         test(
                 new boolean[] {false, false},
                 new GenericRowData[] {
@@ -105,7 +105,7 @@ public class NonBufferOverWindowOperatorTest {
     }
 
     @Test
-    public void testResetAccumulators() throws Exception {
+    void testResetAccumulators() throws Exception {
         test(
                 new boolean[] {true, false},
                 new GenericRowData[] {

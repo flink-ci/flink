@@ -18,46 +18,28 @@
 
 package org.apache.flink.table.runtime.operators.window.slicing;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.Duration;
 import java.time.ZoneId;
-import java.util.Arrays;
-import java.util.Collection;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link SliceAssigners.WindowedSliceAssigner}. */
-@RunWith(Parameterized.class)
-public class WindowedSliceAssignerTest extends SliceAssignerTestBase {
+class WindowedSliceAssignerTest extends SliceAssignerTestBase {
 
-    @Parameterized.Parameter public ZoneId shiftTimeZone;
-
-    @Parameterized.Parameters(name = "timezone = {0}")
-    public static Collection<ZoneId> parameters() {
-        return Arrays.asList(ZoneId.of("America/Los_Angeles"), ZoneId.of("Asia/Shanghai"));
+    private static Stream<TestSpec> parameters() {
+        return Stream.of(
+                new TestSpec(ZoneId.of("America/Los_Angeles")),
+                new TestSpec(ZoneId.of("Asia/Shanghai")));
     }
 
-    private SliceAssigner tumbleAssigner;
-    private SliceAssigner hopAssigner;
-    private SliceAssigner cumulateAssigner;
-
-    @Before
-    public void setUp() {
-        this.tumbleAssigner = SliceAssigners.tumbling(-1, shiftTimeZone, Duration.ofHours(4));
-        this.hopAssigner =
-                SliceAssigners.hopping(0, shiftTimeZone, Duration.ofHours(5), Duration.ofHours(1));
-        this.cumulateAssigner =
-                SliceAssigners.cumulative(
-                        0, shiftTimeZone, Duration.ofHours(5), Duration.ofHours(1));
-    }
-
-    @Test
-    public void testSliceAssignment() {
-        SliceAssigner assigner = SliceAssigners.windowed(0, tumbleAssigner);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    void testSliceAssignment(TestSpec testSpec) {
+        SliceAssigner assigner = SliceAssigners.windowed(0, testSpec.tumbleAssigner);
 
         assertThat(assignSliceEnd(assigner, utcMills("1970-01-01T00:00:00")))
                 .isEqualTo(utcMills("1970-01-01T00:00:00"));
@@ -67,9 +49,10 @@ public class WindowedSliceAssignerTest extends SliceAssignerTestBase {
                 .isEqualTo(utcMills("1970-01-01T10:00:00"));
     }
 
-    @Test
-    public void testGetWindowStartForTumble() {
-        SliceAssigner assigner = SliceAssigners.windowed(0, tumbleAssigner);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    void testGetWindowStartForTumble(TestSpec testSpec) {
+        SliceAssigner assigner = SliceAssigners.windowed(0, testSpec.tumbleAssigner);
 
         assertThat(assigner.getWindowStart(utcMills("1970-01-01T00:00:00")))
                 .isEqualTo(utcMills("1969-12-31T20:00:00"));
@@ -79,9 +62,10 @@ public class WindowedSliceAssignerTest extends SliceAssignerTestBase {
                 .isEqualTo(utcMills("1970-01-01T04:00:00"));
     }
 
-    @Test
-    public void testGetWindowStartForHop() {
-        SliceAssigner assigner = SliceAssigners.windowed(0, hopAssigner);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    void testGetWindowStartForHop(TestSpec testSpec) {
+        SliceAssigner assigner = SliceAssigners.windowed(0, testSpec.hopAssigner);
 
         assertThat(assigner.getWindowStart(utcMills("1970-01-01T00:00:00")))
                 .isEqualTo(utcMills("1969-12-31T19:00:00"));
@@ -101,9 +85,10 @@ public class WindowedSliceAssignerTest extends SliceAssignerTestBase {
                 .isEqualTo(utcMills("1970-01-01T05:00:00"));
     }
 
-    @Test
-    public void testGetWindowStartForCumulate() {
-        SliceAssigner assigner = SliceAssigners.windowed(0, cumulateAssigner);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    void testGetWindowStartForCumulate(TestSpec testSpec) {
+        SliceAssigner assigner = SliceAssigners.windowed(0, testSpec.cumulateAssigner);
 
         assertThat(assigner.getWindowStart(utcMills("1970-01-01T00:00:00")))
                 .isEqualTo(utcMills("1969-12-31T19:00:00"));
@@ -123,9 +108,10 @@ public class WindowedSliceAssignerTest extends SliceAssignerTestBase {
                 .isEqualTo(utcMills("1970-01-01T05:00:00"));
     }
 
-    @Test
-    public void testExpiredSlices() {
-        SliceAssigner assigner = SliceAssigners.windowed(0, tumbleAssigner);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    void testExpiredSlices(TestSpec testSpec) {
+        SliceAssigner assigner = SliceAssigners.windowed(0, testSpec.tumbleAssigner);
 
         assertThat(expiredSlices(assigner, utcMills("1970-01-01T00:00:00")))
                 .containsExactly(utcMills("1970-01-01T00:00:00"));
@@ -135,23 +121,44 @@ public class WindowedSliceAssignerTest extends SliceAssignerTestBase {
                 .containsExactly(utcMills("1970-01-01T10:00:00"));
     }
 
-    @Test
-    public void testEventTime() {
-        SliceAssigner assigner = SliceAssigners.windowed(0, tumbleAssigner);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    void testEventTime(TestSpec testSpec) {
+        SliceAssigner assigner = SliceAssigners.windowed(0, testSpec.tumbleAssigner);
         assertThat(assigner.isEventTime()).isTrue();
     }
 
-    @Test
-    public void testInvalidParameters() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("parameters")
+    void testInvalidParameters(TestSpec testSpec) {
         assertErrorMessage(
-                () -> SliceAssigners.windowed(-1, tumbleAssigner),
+                () -> SliceAssigners.windowed(-1, testSpec.tumbleAssigner),
                 "Windowed slice assigner must have a positive window end index.");
 
         // should pass
-        SliceAssigners.windowed(1, tumbleAssigner);
+        SliceAssigners.windowed(1, testSpec.tumbleAssigner);
     }
 
-    private long localMills(String timestampStr) {
-        return localMills(timestampStr, shiftTimeZone);
+    private static class TestSpec {
+        private final ZoneId shiftTimeZone;
+        private final SliceAssigner tumbleAssigner;
+        private final SliceAssigner hopAssigner;
+        private final SliceAssigner cumulateAssigner;
+
+        TestSpec(ZoneId shiftTimeZone) {
+            this.shiftTimeZone = shiftTimeZone;
+            this.tumbleAssigner = SliceAssigners.tumbling(-1, shiftTimeZone, Duration.ofHours(4));
+            this.hopAssigner =
+                    SliceAssigners.hopping(
+                            0, shiftTimeZone, Duration.ofHours(5), Duration.ofHours(1));
+            this.cumulateAssigner =
+                    SliceAssigners.cumulative(
+                            0, shiftTimeZone, Duration.ofHours(5), Duration.ofHours(1));
+        }
+
+        @Override
+        public String toString() {
+            return "timezone = " + shiftTimeZone;
+        }
     }
 }

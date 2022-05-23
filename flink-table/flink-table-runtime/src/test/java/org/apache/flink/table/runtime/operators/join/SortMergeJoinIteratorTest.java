@@ -34,62 +34,56 @@ import org.apache.flink.table.runtime.util.LazyMemorySegmentPool;
 import org.apache.flink.table.runtime.util.ResettableExternalBuffer;
 import org.apache.flink.util.MutableObjectIterator;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static java.util.Collections.emptyList;
 import static org.apache.flink.runtime.memory.MemoryManager.DEFAULT_PAGE_SIZE;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** UT for sort merge join iterators. */
-@RunWith(Parameterized.class)
-public class SortMergeJoinIteratorTest {
+class SortMergeJoinIteratorTest {
 
     private static final int MEMORY_SIZE = 40 * DEFAULT_PAGE_SIZE;
     private static final int BUFFER_MEMORY = 20;
 
-    private final boolean leftIsSmall;
     private MemoryManager memManager;
     private IOManager ioManager;
     private BinaryRowDataSerializer serializer;
 
-    public SortMergeJoinIteratorTest(boolean leftIsSmall) throws Exception {
-        this.leftIsSmall = leftIsSmall;
+    private static Stream<Boolean> parameters() {
+        return Stream.of(true, false);
     }
 
-    @Parameterized.Parameters
-    public static Collection<Boolean> parameters() {
-        return Arrays.asList(true, false);
-    }
-
-    @Before
-    public void before() throws MemoryAllocationException {
+    @BeforeEach
+    void before() throws MemoryAllocationException {
         this.memManager = MemoryManagerBuilder.newBuilder().setMemorySize(MEMORY_SIZE).build();
         this.ioManager = new IOManagerAsync();
         this.serializer = new BinaryRowDataSerializer(1);
     }
 
-    @Test
-    public void testInner() throws Exception {
-        inner(oneEmpty(), emptyList());
-        inner(haveNull(), emptyList());
-        inner(noJoin(), emptyList());
-        inner(oneAndTwo(), newExpect1(2));
-        inner(nmJoin(), newExpect1(6));
-        inner(nmMultiJoin(), newExpect1(6));
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testInner(boolean leftIsSmall) throws Exception {
+        inner(oneEmpty(), emptyList(), leftIsSmall);
+        inner(haveNull(), emptyList(), leftIsSmall);
+        inner(noJoin(), emptyList(), leftIsSmall);
+        inner(oneAndTwo(), newExpect1(2), leftIsSmall);
+        inner(nmJoin(), newExpect1(6), leftIsSmall);
+        inner(nmMultiJoin(), newExpect1(6), leftIsSmall);
     }
 
-    @Test
-    public void testOneSideOuter() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testOneSideOuter(boolean leftIsSmall) throws Exception {
         List<Tuple2<BinaryRowData, BinaryRowData>> compare1;
         List<Tuple2<BinaryRowData, BinaryRowData>> compare2;
         List<Tuple2<BinaryRowData, BinaryRowData>> compare3;
@@ -112,16 +106,17 @@ public class SortMergeJoinIteratorTest {
             compare6 = newExpect1(6);
             compare6.addAll(Arrays.asList(newTuple(null, newRow(2)), newTuple(null, newRow(4))));
         }
-        oneSideOuter(oneEmpty(), compare1);
-        oneSideOuter(haveNull(), compare2);
-        oneSideOuter(noJoin(), compare3);
-        oneSideOuter(oneAndTwo(), compare4);
-        oneSideOuter(nmJoin(), compare5);
-        oneSideOuter(nmMultiJoin(), compare6);
+        oneSideOuter(oneEmpty(), compare1, leftIsSmall);
+        oneSideOuter(haveNull(), compare2, leftIsSmall);
+        oneSideOuter(noJoin(), compare3, leftIsSmall);
+        oneSideOuter(oneAndTwo(), compare4, leftIsSmall);
+        oneSideOuter(nmJoin(), compare5, leftIsSmall);
+        oneSideOuter(nmMultiJoin(), compare6, leftIsSmall);
     }
 
-    @Test
-    public void testFullOuter() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testFullOuter() throws Exception {
         fullOuter(oneEmpty(), Arrays.asList(newTuple(newRow(1), null), newTuple(newRow(2), null)));
         fullOuter(
                 haveNull(),
@@ -154,7 +149,8 @@ public class SortMergeJoinIteratorTest {
 
     public void inner(
             Tuple2<MutableObjectIterator<BinaryRowData>, MutableObjectIterator<BinaryRowData>> data,
-            List<Tuple2<BinaryRowData, BinaryRowData>> compare)
+            List<Tuple2<BinaryRowData, BinaryRowData>> compare,
+            boolean leftIsSmall)
             throws Exception {
         MutableObjectIterator input1 = data.f0;
         MutableObjectIterator input2 = data.f1;
@@ -198,7 +194,8 @@ public class SortMergeJoinIteratorTest {
 
     public void oneSideOuter(
             Tuple2<MutableObjectIterator<BinaryRowData>, MutableObjectIterator<BinaryRowData>> data,
-            List<Tuple2<BinaryRowData, BinaryRowData>> compare)
+            List<Tuple2<BinaryRowData, BinaryRowData>> compare,
+            boolean leftIsSmall)
             throws Exception {
         MutableObjectIterator input1 = data.f0;
         MutableObjectIterator input2 = data.f1;

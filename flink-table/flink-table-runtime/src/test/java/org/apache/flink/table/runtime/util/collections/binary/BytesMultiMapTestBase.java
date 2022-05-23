@@ -37,7 +37,7 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
 import org.apache.flink.table.types.logical.VarCharType;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.util.Iterator;
 import java.util.Random;
@@ -45,7 +45,7 @@ import java.util.Random;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Base test class for {@link BytesMultiMap} and {@link WindowBytesMultiMap}. */
-public abstract class BytesMultiMapTestBase<K> extends BytesMapTestBase {
+abstract class BytesMultiMapTestBase<K> extends BytesMapTestBase {
     protected static final int NUM_VALUE_PER_KEY = 50;
 
     static final LogicalType[] KEY_TYPES =
@@ -92,7 +92,7 @@ public abstract class BytesMultiMapTestBase<K> extends BytesMapTestBase {
     // ------------------------------------------------------------------------------------------
 
     @Test
-    public void testBuildAndRetrieve() throws Exception {
+    void testBuildAndRetrieve() throws Exception {
         final int numMemSegments =
                 needNumMemSegments(
                         NUM_ENTRIES,

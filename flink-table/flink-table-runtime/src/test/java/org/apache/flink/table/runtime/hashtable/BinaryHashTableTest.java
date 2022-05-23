@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.runtime.hashtable;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.core.memory.MemorySegment;
@@ -35,14 +36,15 @@ import org.apache.flink.table.runtime.operators.join.HashJoinType;
 import org.apache.flink.table.runtime.typeutils.BinaryRowDataSerializer;
 import org.apache.flink.table.runtime.util.RowIterator;
 import org.apache.flink.table.runtime.util.UniformBinaryRowGenerator;
+import org.apache.flink.testutils.junit.extensions.parameterized.ParameterizedTestExtension;
+import org.apache.flink.testutils.junit.extensions.parameterized.Parameters;
 import org.apache.flink.types.IntValue;
 import org.apache.flink.util.MutableObjectIterator;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.TestTemplate;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -56,7 +58,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /** Hash table it case for binary row. */
-@RunWith(Parameterized.class)
+@VisibleForTesting
+@ExtendWith(ParameterizedTestExtension.class)
 public class BinaryHashTableTest {
 
     private static final int PAGE_SIZE = 32 * 1024;
@@ -70,12 +73,12 @@ public class BinaryHashTableTest {
         this.useCompress = useCompress;
     }
 
-    @Parameterized.Parameters(name = "useCompress-{0}")
+    @Parameters(name = "useCompress-{0}")
     public static List<Boolean> getVarSeg() {
         return Arrays.asList(true, false);
     }
 
-    @Before
+    @BeforeEach
     public void setup() {
         TypeInformation[] types = new TypeInformation[] {Types.INT, Types.INT};
         this.buildSideSerializer = new BinaryRowDataSerializer(types.length);
@@ -84,19 +87,19 @@ public class BinaryHashTableTest {
         this.ioManager = new IOManagerAsync();
     }
 
-    @After
+    @AfterEach
     public void tearDown() throws Exception {
         // shut down I/O manager and Memory Manager and verify the correct shutdown
         this.ioManager.close();
     }
 
-    @Test
+    @TestTemplate
     public void testIOBufferCountComputation() {
-        assertThat(BinaryHashTable.getNumWriteBehindBuffers(32)).isEqualTo(1);
-        assertThat(BinaryHashTable.getNumWriteBehindBuffers(33)).isEqualTo(1);
-        assertThat(BinaryHashTable.getNumWriteBehindBuffers(40)).isEqualTo(1);
-        assertThat(BinaryHashTable.getNumWriteBehindBuffers(64)).isEqualTo(1);
-        assertThat(BinaryHashTable.getNumWriteBehindBuffers(127)).isEqualTo(1);
+        assertThat(BinaryHashTable.getNumWriteBehindBuffers(32)).isOne();
+        assertThat(BinaryHashTable.getNumWriteBehindBuffers(33)).isOne();
+        assertThat(BinaryHashTable.getNumWriteBehindBuffers(40)).isOne();
+        assertThat(BinaryHashTable.getNumWriteBehindBuffers(64)).isOne();
+        assertThat(BinaryHashTable.getNumWriteBehindBuffers(127)).isOne();
         assertThat(BinaryHashTable.getNumWriteBehindBuffers(128)).isEqualTo(2);
         assertThat(BinaryHashTable.getNumWriteBehindBuffers(129)).isEqualTo(2);
         assertThat(BinaryHashTable.getNumWriteBehindBuffers(511)).isEqualTo(2);
@@ -113,7 +116,7 @@ public class BinaryHashTableTest {
         assertThat(BinaryHashTable.getNumWriteBehindBuffers(Integer.MAX_VALUE)).isEqualTo(6);
     }
 
-    @Test
+    @TestTemplate
     public void testInMemoryMutableHashTable() throws IOException {
         final int numKeys = 100000;
         final int buildValsPerKey = 3;
@@ -209,7 +212,7 @@ public class BinaryHashTableTest {
         return count;
     }
 
-    @Test
+    @TestTemplate
     public void testSpillingHashJoinOneRecursionPerformance() throws IOException {
         final int numKeys = 1000000;
         final int buildValsPerKey = 3;
@@ -254,7 +257,7 @@ public class BinaryHashTableTest {
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testSpillingHashJoinOneRecursionValidity() throws IOException {
         final int numKeys = 1000000;
         final int buildValsPerKey = 3;
@@ -319,7 +322,7 @@ public class BinaryHashTableTest {
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testSpillingHashJoinWithMassiveCollisions() throws IOException {
         // the following two values are known to have a hash-code collision on the initial level.
         // we use them to make sure one partition grows over-proportionally large
@@ -455,7 +458,7 @@ public class BinaryHashTableTest {
      * of repeated values (causing bucket collisions) are large enough to make sure that their target partition no longer
      * fits into memory by itself and needs to be repartitioned in the recursion again.
      */
-    @Test
+    @TestTemplate
     public void testSpillingHashJoinWithTwoRecursions() throws IOException {
         // the following two values are known to have a hash-code collision on the first recursion
         // level.
@@ -556,7 +559,7 @@ public class BinaryHashTableTest {
      * of repeated values (causing bucket collisions) are large enough to make sure that their target partition no longer
      * fits into memory by itself and needs to be repartitioned in the recursion again.
      */
-    @Test
+    @TestTemplate
     public void testSpillingHashJoinWithTooManyRecursions() throws IOException {
         // the following two values are known to have a hash-code collision on the first recursion
         // level.
@@ -632,9 +635,9 @@ public class BinaryHashTableTest {
         assertThat(map.size()).as("Wrong number of records in join result.").isLessThan(numKeys);
 
         // Here exists two partition which spill to disk more than 3
-        assertThat(table.getPartitionsPendingForSMJ().size())
+        assertThat(table.getPartitionsPendingForSMJ())
                 .as("Wrong number of spilled partition.")
-                .isEqualTo(2);
+                .hasSize(2);
 
         Map<Integer, Integer> spilledPartitionBuildSideKeys = new HashMap<>();
         Map<Integer, Integer> spilledPartitionProbeSideKeys = new HashMap<>();
@@ -657,12 +660,14 @@ public class BinaryHashTableTest {
 
         // assert spilled partition contains key repeatedValue1 and repeatedValue2
         Integer buildKeyCnt = repeatedValueCount + buildValsPerKey;
-        assertThat(spilledPartitionBuildSideKeys).containsEntry(repeatedValue1, buildKeyCnt);
-        assertThat(spilledPartitionBuildSideKeys).containsEntry(repeatedValue2, buildKeyCnt);
+        assertThat(spilledPartitionBuildSideKeys)
+                .containsEntry(repeatedValue1, buildKeyCnt)
+                .containsEntry(repeatedValue2, buildKeyCnt);
 
         Integer probeKeyCnt = repeatedValueCount + probeValsPerKey;
-        assertThat(spilledPartitionProbeSideKeys).containsEntry(repeatedValue1, probeKeyCnt);
-        assertThat(spilledPartitionProbeSideKeys).containsEntry(repeatedValue2, probeKeyCnt);
+        assertThat(spilledPartitionProbeSideKeys)
+                .containsEntry(repeatedValue1, probeKeyCnt)
+                .containsEntry(repeatedValue2, probeKeyCnt);
 
         table.close();
 
@@ -675,7 +680,7 @@ public class BinaryHashTableTest {
      * Spills build records, so that probe records are also spilled. But only so
      * few probe records are used that some partitions remain empty.
      */
-    @Test
+    @TestTemplate
     public void testSparseProbeSpilling() throws IOException, MemoryAllocationException {
         final int numBuildKeys = 1000000;
         final int numBuildVals = 1;
@@ -718,7 +723,7 @@ public class BinaryHashTableTest {
      * Same test as {@link #testSparseProbeSpilling} but using a build-side outer join
      * that requires spilled build-side records to be returned and counted.
      */
-    @Test
+    @TestTemplate
     public void testSparseProbeSpillingWithOuterJoin() throws IOException {
         final int numBuildKeys = 1000000;
         final int numBuildVals = 1;
@@ -772,8 +777,8 @@ public class BinaryHashTableTest {
      * This test validates a bug fix against former memory loss in the case where a partition was spilled
      * during an insert into the same.
      */
-    @Test
-    public void validateSpillingDuringInsertion() throws IOException, MemoryAllocationException {
+    @TestTemplate
+    public void validateSpillingDuringInsertion() throws IOException {
         final int numBuildKeys = 500000;
         final int numBuildVals = 1;
         final int numProbeKeys = 10;
@@ -811,7 +816,7 @@ public class BinaryHashTableTest {
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testBucketsNotFulfillSegment() throws Exception {
         final int numKeys = 10000;
         final int buildValsPerKey = 3;
@@ -880,7 +885,7 @@ public class BinaryHashTableTest {
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testHashWithBuildSideOuterJoin1() throws Exception {
         final int numKeys = 20000;
         final int buildValsPerKey = 1;
@@ -927,7 +932,7 @@ public class BinaryHashTableTest {
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testHashWithBuildSideOuterJoin2() throws Exception {
         final int numKeys = 40000;
         final int buildValsPerKey = 2;
@@ -969,7 +974,7 @@ public class BinaryHashTableTest {
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testRepeatBuildJoin() throws Exception {
         final int numKeys = 500;
         final int probeValsPerKey = 1;
@@ -1024,15 +1029,13 @@ public class BinaryHashTableTest {
                         true);
 
         int numRecordsInJoinResult = join(table, buildInput, probeInput, true);
-        assertThat(numRecordsInJoinResult)
-                .as("Wrong number of records in join result.")
-                .isEqualTo(1);
+        assertThat(numRecordsInJoinResult).as("Wrong number of records in join result.").isOne();
 
         table.close();
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testRepeatBuildJoinWithSpill() throws Exception {
         final int numKeys = 30000;
         final int numRows = 300000;
@@ -1098,7 +1101,7 @@ public class BinaryHashTableTest {
         table.free();
     }
 
-    @Test
+    @TestTemplate
     public void testBinaryHashBucketAreaNotEnoughMem() throws IOException {
         MemoryManager memManager =
                 MemoryManagerBuilder.newBuilder().setMemorySize(35 * PAGE_SIZE).build();

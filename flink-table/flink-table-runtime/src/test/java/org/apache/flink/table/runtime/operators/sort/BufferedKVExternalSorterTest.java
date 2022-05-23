@@ -35,23 +35,22 @@ import org.apache.flink.table.runtime.typeutils.BinaryRowDataSerializer;
 import org.apache.flink.util.MutableObjectIterator;
 
 import org.apache.commons.lang3.RandomStringUtils;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** UT for BufferedKVExternalSorter. */
-@RunWith(Parameterized.class)
-public class BufferedKVExternalSorterTest {
+class BufferedKVExternalSorterTest {
     private static final int PAGE_SIZE = MemoryManager.DEFAULT_PAGE_SIZE;
 
     private IOManager ioManager;
@@ -60,37 +59,18 @@ public class BufferedKVExternalSorterTest {
     private NormalizedKeyComputer computer;
     private RecordComparator comparator;
 
-    private int spillNumber;
-    private int recordNumberPerFile;
-
-    private Configuration conf;
-
-    public BufferedKVExternalSorterTest(
-            int spillNumber, int recordNumberPerFile, boolean spillCompress) {
-        ioManager = new IOManagerAsync();
-        conf = new Configuration();
-        conf.setInteger(ExecutionConfigOptions.TABLE_EXEC_SORT_MAX_NUM_FILE_HANDLES, 5);
-        if (!spillCompress) {
-            conf.setBoolean(ExecutionConfigOptions.TABLE_EXEC_SPILL_COMPRESSION_ENABLED, false);
-        }
-        this.spillNumber = spillNumber;
-        this.recordNumberPerFile = recordNumberPerFile;
+    private static Stream<TestSpec> getDataSize() {
+        return Stream.of(
+                new TestSpec(3, 1000, true),
+                new TestSpec(3, 1000, false),
+                new TestSpec(10, 1000, true),
+                new TestSpec(10, 1000, false),
+                new TestSpec(10, 10000, true),
+                new TestSpec(10, 10000, false));
     }
 
-    @Parameterized.Parameters
-    public static List<Object[]> getDataSize() {
-        List<Object[]> paras = new ArrayList<>();
-        paras.add(new Object[] {3, 1000, true});
-        paras.add(new Object[] {3, 1000, false});
-        paras.add(new Object[] {10, 1000, true});
-        paras.add(new Object[] {10, 1000, false});
-        paras.add(new Object[] {10, 10000, true});
-        paras.add(new Object[] {10, 10000, false});
-        return paras;
-    }
-
-    @Before
-    public void beforeTest() throws InstantiationException, IllegalAccessException {
+    @BeforeEach
+    void beforeTest() {
         this.ioManager = new IOManagerAsync();
 
         this.keySerializer = new BinaryRowDataSerializer(2);
@@ -100,13 +80,14 @@ public class BufferedKVExternalSorterTest {
         this.comparator = IntRecordComparator.INSTANCE;
     }
 
-    @After
-    public void afterTest() throws Exception {
+    @AfterEach
+    void afterTest() throws Exception {
         this.ioManager.close();
     }
 
-    @Test
-    public void test() throws Exception {
+    @ParameterizedTest
+    @MethodSource("getDataSize")
+    void test(TestSpec testSpec) throws Exception {
         BufferedKVExternalSorter sorter =
                 new BufferedKVExternalSorter(
                         ioManager,
@@ -115,21 +96,25 @@ public class BufferedKVExternalSorterTest {
                         computer,
                         comparator,
                         PAGE_SIZE,
-                        conf.get(ExecutionConfigOptions.TABLE_EXEC_SORT_MAX_NUM_FILE_HANDLES),
-                        conf.get(ExecutionConfigOptions.TABLE_EXEC_SPILL_COMPRESSION_ENABLED),
+                        testSpec.conf.get(
+                                ExecutionConfigOptions.TABLE_EXEC_SORT_MAX_NUM_FILE_HANDLES),
+                        testSpec.conf.get(
+                                ExecutionConfigOptions.TABLE_EXEC_SPILL_COMPRESSION_ENABLED),
                         (int)
-                                conf.get(
+                                testSpec.conf
+                                        .get(
                                                 ExecutionConfigOptions
                                                         .TABLE_EXEC_SPILL_COMPRESSION_BLOCK_SIZE)
                                         .getBytes());
         TestMemorySegmentPool pool = new TestMemorySegmentPool(PAGE_SIZE);
         List<Integer> expected = new ArrayList<>();
-        for (int i = 0; i < spillNumber; i++) {
+        for (int i = 0; i < testSpec.spillNumber; i++) {
             ArrayList<MemorySegment> segments = new ArrayList<>();
             SimpleCollectingOutputView out =
                     new SimpleCollectingOutputView(segments, pool, PAGE_SIZE);
-            writeKVToBuffer(keySerializer, valueSerializer, out, expected, recordNumberPerFile);
-            sorter.sortAndSpill(segments, recordNumberPerFile, pool);
+            writeKVToBuffer(
+                    keySerializer, valueSerializer, out, expected, testSpec.recordNumberPerFile);
+            sorter.sortAndSpill(segments, testSpec.recordNumberPerFile, pool);
         }
         Collections.sort(expected);
         MutableObjectIterator<Tuple2<BinaryRowData, BinaryRowData>> iterator =
@@ -172,5 +157,33 @@ public class BufferedKVExternalSorterTest {
         writer.writeString(1, StringData.fromString(RandomStringUtils.random(stringLength)));
         writer.complete();
         return row;
+    }
+
+    private static class TestSpec {
+        private Configuration conf;
+        private int spillNumber;
+        private int recordNumberPerFile;
+
+        TestSpec(int spillNumber, int recordNumberPerFile, boolean spillCompress) {
+            this.spillNumber = spillNumber;
+            this.recordNumberPerFile = recordNumberPerFile;
+            conf = new Configuration();
+            conf.setInteger(ExecutionConfigOptions.TABLE_EXEC_SORT_MAX_NUM_FILE_HANDLES, 5);
+            if (!spillCompress) {
+                conf.setBoolean(ExecutionConfigOptions.TABLE_EXEC_SPILL_COMPRESSION_ENABLED, false);
+            }
+        }
+
+        @Override
+        public String toString() {
+            return "TestSpec{"
+                    + "conf="
+                    + conf
+                    + ", spillNumber="
+                    + spillNumber
+                    + ", recordNumberPerFile="
+                    + recordNumberPerFile
+                    + '}';
+        }
     }
 }

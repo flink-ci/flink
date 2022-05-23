@@ -29,7 +29,7 @@ import org.apache.flink.table.types.logical.LogicalType;
 import java.util.Random;
 
 /** Test case for {@link WindowBytesHashMap}. */
-public class WindowBytesHashMapTest extends BytesHashMapTestBase<WindowKey> {
+class WindowBytesHashMapTest extends BytesHashMapTestBase<WindowKey> {
 
     public WindowBytesHashMapTest() {
         super(

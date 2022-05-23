@@ -29,7 +29,7 @@ import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.runtime.generated.GeneratedWatermarkGenerator;
 import org.apache.flink.table.runtime.generated.WatermarkGenerator;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import javax.annotation.Nullable;
 
@@ -41,13 +41,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /** Tests of {@link WatermarkAssignerOperator}. */
-public class WatermarkAssignerOperatorTest extends WatermarkAssignerOperatorTestBase {
+class WatermarkAssignerOperatorTest extends WatermarkAssignerOperatorTestBase {
 
     private static final WatermarkGenerator WATERMARK_GENERATOR =
             new BoundedOutOfOrderWatermarkGenerator(0, 1);
 
     @Test
-    public void testWatermarkAssignerWithIdleSource() throws Exception {
+    void testWatermarkAssignerWithIdleSource() throws Exception {
         // with timeout 1000 ms
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness =
                 createTestHarness(0, WATERMARK_GENERATOR, 1000);
@@ -85,7 +85,7 @@ public class WatermarkAssignerOperatorTest extends WatermarkAssignerOperatorTest
     }
 
     @Test
-    public void testWatermarkAssignerOperator() throws Exception {
+    void testWatermarkAssignerOperator() throws Exception {
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness =
                 createTestHarness(0, WATERMARK_GENERATOR, -1);
 
@@ -167,7 +167,7 @@ public class WatermarkAssignerOperatorTest extends WatermarkAssignerOperatorTest
     }
 
     @Test
-    public void testCustomizedWatermarkGenerator() throws Exception {
+    void testCustomizedWatermarkGenerator() throws Exception {
         MyWatermarkGenerator.openCalled = false;
         MyWatermarkGenerator.closeCalled = false;
         WatermarkGenerator generator = new MyWatermarkGenerator(1);

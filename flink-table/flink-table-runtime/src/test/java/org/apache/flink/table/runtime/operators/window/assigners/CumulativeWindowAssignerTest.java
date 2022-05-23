@@ -24,7 +24,7 @@ import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.runtime.operators.window.TimeWindow;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 
@@ -34,12 +34,12 @@ import static org.assertj.core.api.HamcrestCondition.matching;
 import static org.hamcrest.Matchers.contains;
 
 /** Tests for {@link CumulativeWindowAssigner}. */
-public class CumulativeWindowAssignerTest {
+class CumulativeWindowAssignerTest {
 
     private static final RowData ELEMENT = GenericRowData.of(StringData.fromString("String"));
 
     @Test
-    public void testWindowAssignment() {
+    void testWindowAssignment() {
         CumulativeWindowAssigner assigner =
                 CumulativeWindowAssigner.of(Duration.ofMillis(5000), Duration.ofMillis(1000));
 
@@ -81,15 +81,14 @@ public class CumulativeWindowAssignerTest {
                         new TimeWindow(7000, 8000));
 
         assertThat(new TimeWindow(0, 5000))
-                .isEqualTo(assigner.getLastWindow(new TimeWindow(4000, 5000)));
-        assertThat(new TimeWindow(0, 5000))
+                .isEqualTo(assigner.getLastWindow(new TimeWindow(4000, 5000)))
                 .isEqualTo(assigner.getLastWindow(new TimeWindow(2000, 3000)));
         assertThat(new TimeWindow(5000, 10000))
                 .isEqualTo(assigner.getLastWindow(new TimeWindow(7000, 8000)));
     }
 
     @Test
-    public void testWindowAssignmentWithOffset() {
+    void testWindowAssignmentWithOffset() {
         CumulativeWindowAssigner assigner =
                 CumulativeWindowAssigner.of(Duration.ofMillis(5000), Duration.ofMillis(1000))
                         .withOffset(Duration.ofMillis(100));
@@ -132,15 +131,14 @@ public class CumulativeWindowAssignerTest {
                         new TimeWindow(7100, 8100));
 
         assertThat(new TimeWindow(100, 5100))
-                .isEqualTo(assigner.getLastWindow(new TimeWindow(4100, 5100)));
-        assertThat(new TimeWindow(100, 5100))
+                .isEqualTo(assigner.getLastWindow(new TimeWindow(4100, 5100)))
                 .isEqualTo(assigner.getLastWindow(new TimeWindow(2100, 3100)));
         assertThat(new TimeWindow(5100, 10100))
                 .isEqualTo(assigner.getLastWindow(new TimeWindow(7100, 8100)));
     }
 
     @Test
-    public void testInvalidParameters1() {
+    void testInvalidParameters1() {
         assertThatThrownBy(
                         () ->
                                 CumulativeWindowAssigner.of(
@@ -150,7 +148,7 @@ public class CumulativeWindowAssignerTest {
     }
 
     @Test
-    public void testInvalidParameters2() {
+    void testInvalidParameters2() {
         assertThatThrownBy(
                         () ->
                                 CumulativeWindowAssigner.of(
@@ -160,7 +158,7 @@ public class CumulativeWindowAssignerTest {
     }
 
     @Test
-    public void testInvalidParameters3() {
+    void testInvalidParameters3() {
         assertThatThrownBy(
                         () ->
                                 CumulativeWindowAssigner.of(
@@ -170,7 +168,7 @@ public class CumulativeWindowAssignerTest {
     }
 
     @Test
-    public void testProperties() {
+    void testProperties() {
         CumulativeWindowAssigner assigner =
                 CumulativeWindowAssigner.of(Duration.ofMillis(5000), Duration.ofMillis(1000));
 

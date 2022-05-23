@@ -25,16 +25,16 @@ import org.apache.flink.table.data.writer.BinaryRowWriter;
 import org.apache.flink.table.runtime.operators.sort.SortUtil;
 import org.apache.flink.table.runtime.util.StringUtf8Utils;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.apache.commons.lang3.StringEscapeUtils;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.UnsupportedEncodingException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Random;
+import java.util.stream.Stream;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.flink.table.data.binary.BinaryStringData.blankString;
@@ -60,22 +60,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /**
  * Test of {@link BinaryStringData}.
  *
- * <p>Caution that you must construct a string by {@link #fromString} to cover all the test cases.
+ * <p>Caution that you must construct a string by {@link TestSpec#fromString} to cover all the test
+ * cases.
  */
-@RunWith(Parameterized.class)
-public class BinaryStringDataTest {
+class BinaryStringDataTest {
 
-    private BinaryStringData empty = fromString("");
-
-    private final Mode mode;
-
-    public BinaryStringDataTest(Mode mode) {
-        this.mode = mode;
-    }
-
-    @Parameterized.Parameters(name = "{0}")
-    public static List<Mode> getVarSeg() {
-        return Arrays.asList(Mode.ONE_SEG, Mode.MULTI_SEGS, Mode.STRING, Mode.RANDOM);
+    private static Stream<TestSpec> getVarSeg() {
+        return Stream.of(
+                new TestSpec(Mode.ONE_SEG),
+                new TestSpec(Mode.MULTI_SEGS),
+                new TestSpec(Mode.STRING),
+                new TestSpec(Mode.RANDOM));
     }
 
     private enum Mode {
@@ -85,117 +80,135 @@ public class BinaryStringDataTest {
         RANDOM
     }
 
-    private BinaryStringData fromString(String str) {
-        BinaryStringData string = BinaryStringData.fromString(str);
+    static class TestSpec {
+        final BinaryStringData empty;
+        final Mode mode;
 
-        Mode mode = this.mode;
+        TestSpec(Mode mode) {
+            this.mode = mode;
+            empty = fromString("");
+        }
 
-        if (mode == Mode.RANDOM) {
-            int rnd = new Random().nextInt(3);
-            if (rnd == 0) {
-                mode = Mode.ONE_SEG;
-            } else if (rnd == 1) {
-                mode = Mode.MULTI_SEGS;
-            } else if (rnd == 2) {
-                mode = Mode.STRING;
+        @Override
+        public String toString() {
+            return "{" + "mode=" + mode + '}';
+        }
+
+        BinaryStringData fromString(String str) {
+            BinaryStringData string = BinaryStringData.fromString(str);
+
+            Mode mode = this.mode;
+
+            if (mode == Mode.RANDOM) {
+                int rnd = new Random().nextInt(3);
+                if (rnd == 0) {
+                    mode = Mode.ONE_SEG;
+                } else if (rnd == 1) {
+                    mode = Mode.MULTI_SEGS;
+                } else if (rnd == 2) {
+                    mode = Mode.STRING;
+                }
+            }
+
+            if (mode == Mode.STRING) {
+                return string;
+            }
+            if (mode == Mode.ONE_SEG || string.getSizeInBytes() < 2) {
+                string.ensureMaterialized();
+                return string;
+            } else {
+                int numBytes = string.getSizeInBytes();
+                int pad = new Random().nextInt(5);
+                int numBytesWithPad = numBytes + pad;
+                int segSize = numBytesWithPad / 2 + 1;
+                byte[] bytes1 = new byte[segSize];
+                byte[] bytes2 = new byte[segSize];
+                if (segSize - pad > 0 && numBytes >= segSize - pad) {
+                    string.getSegments()[0].get(0, bytes1, pad, segSize - pad);
+                }
+                string.getSegments()[0].get(segSize - pad, bytes2, 0, numBytes - segSize + pad);
+                return BinaryStringData.fromAddress(
+                        new MemorySegment[] {
+                            MemorySegmentFactory.wrap(bytes1), MemorySegmentFactory.wrap(bytes2)
+                        },
+                        pad,
+                        numBytes);
             }
         }
 
-        if (mode == Mode.STRING) {
-            return string;
-        }
-        if (mode == Mode.ONE_SEG || string.getSizeInBytes() < 2) {
-            string.ensureMaterialized();
-            return string;
-        } else {
-            int numBytes = string.getSizeInBytes();
-            int pad = new Random().nextInt(5);
-            int numBytesWithPad = numBytes + pad;
-            int segSize = numBytesWithPad / 2 + 1;
-            byte[] bytes1 = new byte[segSize];
-            byte[] bytes2 = new byte[segSize];
-            if (segSize - pad > 0 && numBytes >= segSize - pad) {
-                string.getSegments()[0].get(0, bytes1, pad, segSize - pad);
-            }
-            string.getSegments()[0].get(segSize - pad, bytes2, 0, numBytes - segSize + pad);
-            return BinaryStringData.fromAddress(
-                    new MemorySegment[] {
-                        MemorySegmentFactory.wrap(bytes1), MemorySegmentFactory.wrap(bytes2)
-                    },
-                    pad,
-                    numBytes);
+        void checkBasic(String str, int len) {
+            BinaryStringData s1 = fromString(str);
+            BinaryStringData s2 = fromBytes(str.getBytes(UTF_8));
+            assertThat(len).isEqualTo(s1.numChars()).isEqualTo(s2.numChars());
+
+            assertThat(str).isEqualTo(s1.toString()).isEqualTo(s2.toString());
+            assertThat(s2).isEqualTo(s1).hasSameHashCodeAs(s1);
+
+            assertThat(s1.compareTo(s2)).isEqualTo(0);
+
+            assertThat(s1.contains(s2)).isTrue();
+            assertThat(s2.contains(s1)).isTrue();
+            assertThat(s1.startsWith(s1)).isTrue();
+            assertThat(s1.endsWith(s1)).isTrue();
         }
     }
 
-    private void checkBasic(String str, int len) {
-        BinaryStringData s1 = fromString(str);
-        BinaryStringData s2 = fromBytes(str.getBytes(StandardCharsets.UTF_8));
-        assertThat(len).isEqualTo(s1.numChars());
-        assertThat(len).isEqualTo(s2.numChars());
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void basicTest(TestSpec testSpec) {
+        testSpec.checkBasic("", 0);
+        testSpec.checkBasic(",", 1);
+        testSpec.checkBasic("hello", 5);
+        testSpec.checkBasic("hello world", 11);
+        testSpec.checkBasic("Flink中文社区", 9);
+        testSpec.checkBasic("中 文 社 区", 7);
 
-        assertThat(str).isEqualTo(s1.toString());
-        assertThat(str).isEqualTo(s2.toString());
-        assertThat(s2).isEqualTo(s1);
-
-        assertThat(s2.hashCode()).isEqualTo(s1.hashCode());
-
-        assertThat(s1.compareTo(s2)).isEqualTo(0);
-
-        assertThat(s1.contains(s2)).isTrue();
-        assertThat(s2.contains(s1)).isTrue();
-        assertThat(s1.startsWith(s1)).isTrue();
-        assertThat(s1.endsWith(s1)).isTrue();
+        testSpec.checkBasic("¡", 1); // 2 bytes char
+        testSpec.checkBasic("ку", 2); // 2 * 2 bytes chars
+        testSpec.checkBasic("︽﹋％", 3); // 3 * 3 bytes chars
+        testSpec.checkBasic("\uD83E\uDD19", 1); // 4 bytes char
     }
 
-    @Test
-    public void basicTest() {
-        checkBasic("", 0);
-        checkBasic(",", 1);
-        checkBasic("hello", 5);
-        checkBasic("hello world", 11);
-        checkBasic("Flink中文社区", 9);
-        checkBasic("中 文 社 区", 7);
-
-        checkBasic("¡", 1); // 2 bytes char
-        checkBasic("ку", 2); // 2 * 2 bytes chars
-        checkBasic("︽﹋％", 3); // 3 * 3 bytes chars
-        checkBasic("\uD83E\uDD19", 1); // 4 bytes char
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void emptyStringTest(TestSpec testSpec) {
+        assertThat(testSpec.fromString("")).isEqualTo(testSpec.empty);
+        assertThat(fromBytes(new byte[0])).isEqualTo(testSpec.empty);
+        assertThat(testSpec.empty.numChars()).isEqualTo(0);
+        assertThat(testSpec.empty.getSizeInBytes()).isEqualTo(0);
     }
 
-    @Test
-    public void emptyStringTest() {
-        assertThat(fromString("")).isEqualTo(empty);
-        assertThat(fromBytes(new byte[0])).isEqualTo(empty);
-        assertThat(empty.numChars()).isEqualTo(0);
-        assertThat(empty.getSizeInBytes()).isEqualTo(0);
-    }
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void compareTo(TestSpec testSpec) {
+        assertThat(testSpec.fromString("   ")).isEqualByComparingTo(blankString(3));
+        assertThat(testSpec.fromString("")).isLessThan(testSpec.fromString("a"));
+        assertThat(testSpec.fromString("abc")).isGreaterThan(testSpec.fromString("ABC"));
+        assertThat(testSpec.fromString("abc0")).isGreaterThan(testSpec.fromString("abc"));
+        assertThat(testSpec.fromString("abcabcabc"))
+                .isEqualByComparingTo(testSpec.fromString("abcabcabc"));
+        assertThat(testSpec.fromString("aBcabcabc"))
+                .isGreaterThan(testSpec.fromString("Abcabcabc"));
+        assertThat(testSpec.fromString("Abcabcabc")).isLessThan(testSpec.fromString("abcabcabC"));
+        assertThat(testSpec.fromString("abcabcabc"))
+                .isGreaterThan(testSpec.fromString("abcabcabC"));
 
-    @Test
-    public void compareTo() {
-        assertThat(fromString("   ").compareTo(blankString(3))).isEqualTo(0);
-        assertThat(fromString("").compareTo(fromString("a"))).isLessThan(0);
-        assertThat(fromString("abc").compareTo(fromString("ABC"))).isGreaterThan(0);
-        assertThat(fromString("abc0").compareTo(fromString("abc"))).isGreaterThan(0);
-        assertThat(fromString("abcabcabc").compareTo(fromString("abcabcabc"))).isEqualTo(0);
-        assertThat(fromString("aBcabcabc").compareTo(fromString("Abcabcabc"))).isGreaterThan(0);
-        assertThat(fromString("Abcabcabc").compareTo(fromString("abcabcabC"))).isLessThan(0);
-        assertThat(fromString("abcabcabc").compareTo(fromString("abcabcabC"))).isGreaterThan(0);
-
-        assertThat(fromString("abc").compareTo(fromString("世界"))).isLessThan(0);
-        assertThat(fromString("你好").compareTo(fromString("世界"))).isGreaterThan(0);
-        assertThat(fromString("你好123").compareTo(fromString("你好122"))).isGreaterThan(0);
+        assertThat(testSpec.fromString("abc")).isLessThan(testSpec.fromString("世界"));
+        assertThat(testSpec.fromString("你好")).isGreaterThan(testSpec.fromString("世界"));
+        assertThat(testSpec.fromString("你好123")).isGreaterThan(testSpec.fromString("你好122"));
 
         MemorySegment segment1 = MemorySegmentFactory.allocateUnpooledSegment(1024);
         MemorySegment segment2 = MemorySegmentFactory.allocateUnpooledSegment(1024);
-        SortUtil.putStringNormalizedKey(fromString("abcabcabc"), segment1, 0, 9);
-        SortUtil.putStringNormalizedKey(fromString("abcabcabC"), segment2, 0, 9);
+        SortUtil.putStringNormalizedKey(testSpec.fromString("abcabcabc"), segment1, 0, 9);
+        SortUtil.putStringNormalizedKey(testSpec.fromString("abcabcabC"), segment2, 0, 9);
         assertThat(segment1.compare(segment2, 0, 0, 9)).isGreaterThan(0);
-        SortUtil.putStringNormalizedKey(fromString("abcab"), segment1, 0, 9);
+        SortUtil.putStringNormalizedKey(testSpec.fromString("abcab"), segment1, 0, 9);
         assertThat(segment1.compare(segment2, 0, 0, 9)).isLessThan(0);
     }
 
-    @Test
-    public void testMultiSegments() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testMultiSegments(TestSpec testSpec) {
 
         // prepare
         MemorySegment[] segments1 = new MemorySegment[2];
@@ -213,245 +226,287 @@ public class BinaryStringDataTest {
         // test go ahead both
         BinaryStringData binaryString1 = BinaryStringData.fromAddress(segments1, 5, 10);
         BinaryStringData binaryString2 = BinaryStringData.fromAddress(segments2, 0, 6);
-        assertThat(binaryString1.toString()).isEqualTo("abcdeaaaaa");
-        assertThat(binaryString2.toString()).isEqualTo("abcdeb");
-        assertThat(binaryString1.compareTo(binaryString2)).isEqualTo(-1);
+        assertThat(binaryString1).hasToString("abcdeaaaaa");
+        assertThat(binaryString2).hasToString("abcdeb");
+        assertThat(binaryString1).isLessThan(binaryString2);
 
         // test needCompare == len
         binaryString1 = BinaryStringData.fromAddress(segments1, 5, 5);
         binaryString2 = BinaryStringData.fromAddress(segments2, 0, 5);
-        assertThat(binaryString1.toString()).isEqualTo("abcde");
-        assertThat(binaryString2.toString()).isEqualTo("abcde");
-        assertThat(binaryString1.compareTo(binaryString2)).isEqualTo(0);
+        assertThat(binaryString1).hasToString("abcde");
+        assertThat(binaryString2).hasToString("abcde");
+        assertThat(binaryString1).isEqualByComparingTo(binaryString2);
 
         // test find the first segment of this string
         binaryString1 = BinaryStringData.fromAddress(segments1, 10, 5);
         binaryString2 = BinaryStringData.fromAddress(segments2, 0, 5);
-        assertThat(binaryString1.toString()).isEqualTo("aaaaa");
-        assertThat(binaryString2.toString()).isEqualTo("abcde");
-        assertThat(binaryString1.compareTo(binaryString2)).isEqualTo(-1);
-        assertThat(binaryString2.compareTo(binaryString1)).isEqualTo(1);
+        assertThat(binaryString1).hasToString("aaaaa");
+        assertThat(binaryString2).hasToString("abcde");
+        assertThat(binaryString1).isLessThan(binaryString2);
+        assertThat(binaryString2).isGreaterThan(binaryString1);
 
         // test go ahead single
         segments2 = new MemorySegment[] {MemorySegmentFactory.wrap(new byte[10])};
         segments2[0].put(4, "abcdeb".getBytes(UTF_8), 0, 6);
         binaryString1 = BinaryStringData.fromAddress(segments1, 5, 10);
         binaryString2 = BinaryStringData.fromAddress(segments2, 4, 6);
-        assertThat(binaryString1.toString()).isEqualTo("abcdeaaaaa");
-        assertThat(binaryString2.toString()).isEqualTo("abcdeb");
-        assertThat(binaryString1.compareTo(binaryString2)).isEqualTo(-1);
-        assertThat(binaryString2.compareTo(binaryString1)).isEqualTo(1);
+        assertThat(binaryString1).hasToString("abcdeaaaaa");
+        assertThat(binaryString2).hasToString("abcdeb");
+        assertThat(binaryString1).isLessThan(binaryString2);
+        assertThat(binaryString2).isGreaterThan(binaryString1);
     }
 
-    @Test
-    public void concatTest() {
-        assertThat(concat()).isEqualTo(empty);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void concatTest(TestSpec testSpec) {
+        assertThat(concat()).isEqualTo(testSpec.empty);
         assertThat(concat((BinaryStringData) null)).isNull();
-        assertThat(concat(empty)).isEqualTo(empty);
-        assertThat(concat(fromString("ab"))).isEqualTo(fromString("ab"));
-        assertThat(concat(fromString("a"), fromString("b"))).isEqualTo(fromString("ab"));
-        assertThat(concat(fromString("a"), fromString("b"), fromString("c")))
-                .isEqualTo(fromString("abc"));
-        assertThat(concat(fromString("a"), null, fromString("c"))).isNull();
-        assertThat(concat(fromString("a"), null, null)).isNull();
+        assertThat(concat(testSpec.empty)).isEqualTo(testSpec.empty);
+        assertThat(concat(testSpec.fromString("ab"))).isEqualTo(testSpec.fromString("ab"));
+        assertThat(concat(testSpec.fromString("a"), testSpec.fromString("b")))
+                .isEqualTo(testSpec.fromString("ab"));
+        assertThat(
+                        concat(
+                                testSpec.fromString("a"),
+                                testSpec.fromString("b"),
+                                testSpec.fromString("c")))
+                .isEqualTo(testSpec.fromString("abc"));
+        assertThat(concat(testSpec.fromString("a"), null, testSpec.fromString("c"))).isNull();
+        assertThat(concat(testSpec.fromString("a"), null, null)).isNull();
         assertThat(concat(null, null, null)).isNull();
-        assertThat(concat(fromString("数据"), fromString("砖头"))).isEqualTo(fromString("数据砖头"));
+        assertThat(concat(testSpec.fromString("数据"), testSpec.fromString("砖头")))
+                .isEqualTo(testSpec.fromString("数据砖头"));
     }
 
-    @Test
-    public void concatWsTest() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void concatWsTest(TestSpec testSpec) {
         // Returns empty if the separator is null
         assertThat(concatWs(null, (BinaryStringData) null)).isNull();
-        assertThat(concatWs(null, fromString("a"))).isNull();
+        assertThat(concatWs(null, testSpec.fromString("a"))).isNull();
 
         // If separator is null, concatWs should skip all null inputs and never return null.
-        BinaryStringData sep = fromString("哈哈");
-        assertThat(concatWs(sep, empty)).isEqualTo(empty);
-        assertThat(concatWs(sep, fromString("ab"))).isEqualTo(fromString("ab"));
-        assertThat(concatWs(sep, fromString("a"), fromString("b"))).isEqualTo(fromString("a哈哈b"));
-        assertThat(concatWs(sep, fromString("a"), fromString("b"), fromString("c")))
-                .isEqualTo(fromString("a哈哈b哈哈c"));
-        assertThat(concatWs(sep, fromString("a"), null, fromString("c")))
-                .isEqualTo(fromString("a哈哈c"));
-        assertThat(concatWs(sep, fromString("a"), null, null)).isEqualTo(fromString("a"));
-        assertThat(concatWs(sep, null, null, null)).isEqualTo(empty);
-        assertThat(concatWs(sep, fromString("数据"), fromString("砖头")))
-                .isEqualTo(fromString("数据哈哈砖头"));
+        BinaryStringData sep = testSpec.fromString("哈哈");
+        assertThat(concatWs(sep, testSpec.empty)).isEqualTo(testSpec.empty);
+        assertThat(concatWs(sep, testSpec.fromString("ab"))).isEqualTo(testSpec.fromString("ab"));
+        assertThat(concatWs(sep, testSpec.fromString("a"), testSpec.fromString("b")))
+                .isEqualTo(testSpec.fromString("a哈哈b"));
+        assertThat(
+                        concatWs(
+                                sep,
+                                testSpec.fromString("a"),
+                                testSpec.fromString("b"),
+                                testSpec.fromString("c")))
+                .isEqualTo(testSpec.fromString("a哈哈b哈哈c"));
+        assertThat(concatWs(sep, testSpec.fromString("a"), null, testSpec.fromString("c")))
+                .isEqualTo(testSpec.fromString("a哈哈c"));
+        assertThat(concatWs(sep, testSpec.fromString("a"), null, null))
+                .isEqualTo(testSpec.fromString("a"));
+        assertThat(concatWs(sep, null, null, null)).isEqualTo(testSpec.empty);
+        assertThat(concatWs(sep, testSpec.fromString("数据"), testSpec.fromString("砖头")))
+                .isEqualTo(testSpec.fromString("数据哈哈砖头"));
     }
 
-    @Test
-    public void contains() {
-        assertThat(empty.contains(empty)).isTrue();
-        assertThat(fromString("hello").contains(fromString("ello"))).isTrue();
-        assertThat(fromString("hello").contains(fromString("vello"))).isFalse();
-        assertThat(fromString("hello").contains(fromString("hellooo"))).isFalse();
-        assertThat(fromString("大千世界").contains(fromString("千世界"))).isTrue();
-        assertThat(fromString("大千世界").contains(fromString("世千"))).isFalse();
-        assertThat(fromString("大千世界").contains(fromString("大千世界好"))).isFalse();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void contains(TestSpec testSpec) {
+        assertThat(testSpec.empty.contains(testSpec.empty)).isTrue();
+        assertThat(testSpec.fromString("hello").contains(testSpec.fromString("ello"))).isTrue();
+        assertThat(testSpec.fromString("hello").contains(testSpec.fromString("vello"))).isFalse();
+        assertThat(testSpec.fromString("hello").contains(testSpec.fromString("hellooo"))).isFalse();
+        assertThat(testSpec.fromString("大千世界").contains(testSpec.fromString("千世界"))).isTrue();
+        assertThat(testSpec.fromString("大千世界").contains(testSpec.fromString("世千"))).isFalse();
+        assertThat(testSpec.fromString("大千世界").contains(testSpec.fromString("大千世界好"))).isFalse();
     }
 
-    @Test
-    public void startsWith() {
-        assertThat(empty.startsWith(empty)).isTrue();
-        assertThat(fromString("hello").startsWith(fromString("hell"))).isTrue();
-        assertThat(fromString("hello").startsWith(fromString("ell"))).isFalse();
-        assertThat(fromString("hello").startsWith(fromString("hellooo"))).isFalse();
-        assertThat(fromString("数据砖头").startsWith(fromString("数据"))).isTrue();
-        assertThat(fromString("大千世界").startsWith(fromString("千"))).isFalse();
-        assertThat(fromString("大千世界").startsWith(fromString("大千世界好"))).isFalse();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void startsWith(TestSpec testSpec) {
+        assertThat(testSpec.empty.startsWith(testSpec.empty)).isTrue();
+        assertThat(testSpec.fromString("hello").startsWith(testSpec.fromString("hell"))).isTrue();
+        assertThat(testSpec.fromString("hello").startsWith(testSpec.fromString("ell"))).isFalse();
+        assertThat(testSpec.fromString("hello").startsWith(testSpec.fromString("hellooo")))
+                .isFalse();
+        assertThat(testSpec.fromString("数据砖头").startsWith(testSpec.fromString("数据"))).isTrue();
+        assertThat(testSpec.fromString("大千世界").startsWith(testSpec.fromString("千"))).isFalse();
+        assertThat(testSpec.fromString("大千世界").startsWith(testSpec.fromString("大千世界好"))).isFalse();
     }
 
-    @Test
-    public void endsWith() {
-        assertThat(empty.endsWith(empty)).isTrue();
-        assertThat(fromString("hello").endsWith(fromString("ello"))).isTrue();
-        assertThat(fromString("hello").endsWith(fromString("ellov"))).isFalse();
-        assertThat(fromString("hello").endsWith(fromString("hhhello"))).isFalse();
-        assertThat(fromString("大千世界").endsWith(fromString("世界"))).isTrue();
-        assertThat(fromString("大千世界").endsWith(fromString("世"))).isFalse();
-        assertThat(fromString("数据砖头").endsWith(fromString("我的数据砖头"))).isFalse();
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void endsWith(TestSpec testSpec) {
+        assertThat(testSpec.empty.endsWith(testSpec.empty)).isTrue();
+        assertThat(testSpec.fromString("hello").endsWith(testSpec.fromString("ello"))).isTrue();
+        assertThat(testSpec.fromString("hello").endsWith(testSpec.fromString("ellov"))).isFalse();
+        assertThat(testSpec.fromString("hello").endsWith(testSpec.fromString("hhhello"))).isFalse();
+        assertThat(testSpec.fromString("大千世界").endsWith(testSpec.fromString("世界"))).isTrue();
+        assertThat(testSpec.fromString("大千世界").endsWith(testSpec.fromString("世"))).isFalse();
+        assertThat(testSpec.fromString("数据砖头").endsWith(testSpec.fromString("我的数据砖头"))).isFalse();
     }
 
-    @Test
-    public void substring() {
-        assertThat(fromString("hello").substring(0, 0)).isEqualTo(empty);
-        assertThat(fromString("hello").substring(1, 3)).isEqualTo(fromString("el"));
-        assertThat(fromString("数据砖头").substring(0, 1)).isEqualTo(fromString("数"));
-        assertThat(fromString("数据砖头").substring(1, 3)).isEqualTo(fromString("据砖"));
-        assertThat(fromString("数据砖头").substring(3, 5)).isEqualTo(fromString("头"));
-        assertThat(fromString("ߵ梷").substring(0, 2)).isEqualTo(fromString("ߵ梷"));
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void substring(TestSpec testSpec) {
+        assertThat(testSpec.fromString("hello").substring(0, 0)).isEqualTo(testSpec.empty);
+        assertThat(testSpec.fromString("hello").substring(1, 3))
+                .isEqualTo(testSpec.fromString("el"));
+        assertThat(testSpec.fromString("数据砖头").substring(0, 1)).isEqualTo(testSpec.fromString("数"));
+        assertThat(testSpec.fromString("数据砖头").substring(1, 3))
+                .isEqualTo(testSpec.fromString("据砖"));
+        assertThat(testSpec.fromString("数据砖头").substring(3, 5)).isEqualTo(testSpec.fromString("头"));
+        assertThat(testSpec.fromString("ߵ梷").substring(0, 2)).isEqualTo(testSpec.fromString("ߵ梷"));
     }
 
-    @Test
-    public void trims() {
-        assertThat(fromString("1").trim()).isEqualTo(fromString("1"));
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void trims(TestSpec testSpec) {
+        assertThat(testSpec.fromString("1").trim()).isEqualTo(testSpec.fromString("1"));
 
-        assertThat(fromString("  hello ").trim()).isEqualTo(fromString("hello"));
-        assertThat(trimLeft(fromString("  hello "))).isEqualTo(fromString("hello "));
-        assertThat(trimRight(fromString("  hello "))).isEqualTo(fromString("  hello"));
+        assertThat(testSpec.fromString("  hello ").trim()).isEqualTo(testSpec.fromString("hello"));
+        assertThat(trimLeft(testSpec.fromString("  hello ")))
+                .isEqualTo(testSpec.fromString("hello "));
+        assertThat(trimRight(testSpec.fromString("  hello ")))
+                .isEqualTo(testSpec.fromString("  hello"));
 
-        assertThat(trim(fromString("  hello "), false, false, fromString(" ")))
-                .isEqualTo(fromString("  hello "));
-        assertThat(trim(fromString("  hello "), true, true, fromString(" ")))
-                .isEqualTo(fromString("hello"));
-        assertThat(trim(fromString("  hello "), true, false, fromString(" ")))
-                .isEqualTo(fromString("hello "));
-        assertThat(trim(fromString("  hello "), false, true, fromString(" ")))
-                .isEqualTo(fromString("  hello"));
-        assertThat(trim(fromString("xxxhellox"), true, true, fromString("x")))
-                .isEqualTo(fromString("hello"));
+        assertThat(trim(testSpec.fromString("  hello "), false, false, testSpec.fromString(" ")))
+                .isEqualTo(testSpec.fromString("  hello "));
+        assertThat(trim(testSpec.fromString("  hello "), true, true, testSpec.fromString(" ")))
+                .isEqualTo(testSpec.fromString("hello"));
+        assertThat(trim(testSpec.fromString("  hello "), true, false, testSpec.fromString(" ")))
+                .isEqualTo(testSpec.fromString("hello "));
+        assertThat(trim(testSpec.fromString("  hello "), false, true, testSpec.fromString(" ")))
+                .isEqualTo(testSpec.fromString("  hello"));
+        assertThat(trim(testSpec.fromString("xxxhellox"), true, true, testSpec.fromString("x")))
+                .isEqualTo(testSpec.fromString("hello"));
 
-        assertThat(trim(fromString("xxxhellox"), fromString("xoh"))).isEqualTo(fromString("ell"));
+        assertThat(trim(testSpec.fromString("xxxhellox"), testSpec.fromString("xoh")))
+                .isEqualTo(testSpec.fromString("ell"));
 
-        assertThat(trimLeft(fromString("xxxhellox"), fromString("xoh")))
-                .isEqualTo(fromString("ellox"));
+        assertThat(trimLeft(testSpec.fromString("xxxhellox"), testSpec.fromString("xoh")))
+                .isEqualTo(testSpec.fromString("ellox"));
 
-        assertThat(trimRight(fromString("xxxhellox"), fromString("xoh")))
-                .isEqualTo(fromString("xxxhell"));
+        assertThat(trimRight(testSpec.fromString("xxxhellox"), testSpec.fromString("xoh")))
+                .isEqualTo(testSpec.fromString("xxxhell"));
 
-        assertThat(empty.trim()).isEqualTo(empty);
-        assertThat(fromString("  ").trim()).isEqualTo(empty);
-        assertThat(trimLeft(fromString("  "))).isEqualTo(empty);
-        assertThat(trimRight(fromString("  "))).isEqualTo(empty);
+        assertThat(testSpec.empty.trim()).isEqualTo(testSpec.empty);
+        assertThat(testSpec.fromString("  ").trim()).isEqualTo(testSpec.empty);
+        assertThat(trimLeft(testSpec.fromString("  "))).isEqualTo(testSpec.empty);
+        assertThat(trimRight(testSpec.fromString("  "))).isEqualTo(testSpec.empty);
 
-        assertThat(fromString("  数据砖头 ").trim()).isEqualTo(fromString("数据砖头"));
-        assertThat(trimLeft(fromString("  数据砖头 "))).isEqualTo(fromString("数据砖头 "));
-        assertThat(trimRight(fromString("  数据砖头 "))).isEqualTo(fromString("  数据砖头"));
+        assertThat(testSpec.fromString("  数据砖头 ").trim()).isEqualTo(testSpec.fromString("数据砖头"));
+        assertThat(trimLeft(testSpec.fromString("  数据砖头 ")))
+                .isEqualTo(testSpec.fromString("数据砖头 "));
+        assertThat(trimRight(testSpec.fromString("  数据砖头 ")))
+                .isEqualTo(testSpec.fromString("  数据砖头"));
 
-        assertThat(fromString("数据砖头").trim()).isEqualTo(fromString("数据砖头"));
-        assertThat(trimLeft(fromString("数据砖头"))).isEqualTo(fromString("数据砖头"));
-        assertThat(trimRight(fromString("数据砖头"))).isEqualTo(fromString("数据砖头"));
+        assertThat(testSpec.fromString("数据砖头").trim()).isEqualTo(testSpec.fromString("数据砖头"));
+        assertThat(trimLeft(testSpec.fromString("数据砖头"))).isEqualTo(testSpec.fromString("数据砖头"));
+        assertThat(trimRight(testSpec.fromString("数据砖头"))).isEqualTo(testSpec.fromString("数据砖头"));
 
-        assertThat(trim(fromString("年年岁岁, 岁岁年年"), fromString("年岁 "))).isEqualTo(fromString(","));
-        assertThat(trimLeft(fromString("年年岁岁, 岁岁年年"), fromString("年岁 ")))
-                .isEqualTo(fromString(", 岁岁年年"));
-        assertThat(trimRight(fromString("年年岁岁, 岁岁年年"), fromString("年岁 ")))
-                .isEqualTo(fromString("年年岁岁,"));
+        assertThat(trim(testSpec.fromString("年年岁岁, 岁岁年年"), testSpec.fromString("年岁 ")))
+                .isEqualTo(testSpec.fromString(","));
+        assertThat(trimLeft(testSpec.fromString("年年岁岁, 岁岁年年"), testSpec.fromString("年岁 ")))
+                .isEqualTo(testSpec.fromString(", 岁岁年年"));
+        assertThat(trimRight(testSpec.fromString("年年岁岁, 岁岁年年"), testSpec.fromString("年岁 ")))
+                .isEqualTo(testSpec.fromString("年年岁岁,"));
 
         char[] charsLessThan0x20 = new char[10];
         Arrays.fill(charsLessThan0x20, (char) (' ' - 1));
         String stringStartingWithSpace =
                 new String(charsLessThan0x20) + "hello" + new String(charsLessThan0x20);
-        assertThat(fromString(stringStartingWithSpace).trim())
-                .isEqualTo(fromString(stringStartingWithSpace));
-        assertThat(trimLeft(fromString(stringStartingWithSpace)))
-                .isEqualTo(fromString(stringStartingWithSpace));
-        assertThat(trimRight(fromString(stringStartingWithSpace)))
-                .isEqualTo(fromString(stringStartingWithSpace));
+        assertThat(testSpec.fromString(stringStartingWithSpace).trim())
+                .isEqualTo(testSpec.fromString(stringStartingWithSpace));
+        assertThat(trimLeft(testSpec.fromString(stringStartingWithSpace)))
+                .isEqualTo(testSpec.fromString(stringStartingWithSpace));
+        assertThat(trimRight(testSpec.fromString(stringStartingWithSpace)))
+                .isEqualTo(testSpec.fromString(stringStartingWithSpace));
     }
 
-    @Test
-    public void testSqlSubstring() {
-        assertThat(substringSQL(fromString("hello"), 2)).isEqualTo(fromString("ello"));
-        assertThat(substringSQL(fromString("hello"), 2, 3)).isEqualTo(fromString("ell"));
-        assertThat(substringSQL(empty, 2, 3)).isEqualTo(empty);
-        assertThat(substringSQL(fromString("hello"), 0, -1)).isNull();
-        assertThat(substringSQL(fromString("hello"), 10)).isEqualTo(empty);
-        assertThat(substringSQL(fromString("hello"), 0, 3)).isEqualTo(fromString("hel"));
-        assertThat(substringSQL(fromString("hello"), -2, 3)).isEqualTo(fromString("lo"));
-        assertThat(substringSQL(fromString("hello"), -100, 3)).isEqualTo(empty);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testSqlSubstring(TestSpec testSpec) {
+        assertThat(substringSQL(testSpec.fromString("hello"), 2))
+                .isEqualTo(testSpec.fromString("ello"));
+        assertThat(substringSQL(testSpec.fromString("hello"), 2, 3))
+                .isEqualTo(testSpec.fromString("ell"));
+        assertThat(substringSQL(testSpec.empty, 2, 3)).isEqualTo(testSpec.empty);
+        assertThat(substringSQL(testSpec.fromString("hello"), 0, -1)).isNull();
+        assertThat(substringSQL(testSpec.fromString("hello"), 10)).isEqualTo(testSpec.empty);
+        assertThat(substringSQL(testSpec.fromString("hello"), 0, 3))
+                .isEqualTo(testSpec.fromString("hel"));
+        assertThat(substringSQL(testSpec.fromString("hello"), -2, 3))
+                .isEqualTo(testSpec.fromString("lo"));
+        assertThat(substringSQL(testSpec.fromString("hello"), -100, 3)).isEqualTo(testSpec.empty);
     }
 
-    @Test
-    public void reverseTest() {
-        assertThat(reverse(fromString("hello"))).isEqualTo(fromString("olleh"));
-        assertThat(reverse(fromString("中国"))).isEqualTo(fromString("国中"));
-        assertThat(reverse(fromString("hello, 中国"))).isEqualTo(fromString("国中 ,olleh"));
-        assertThat(reverse(empty)).isEqualTo(empty);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void reverseTest(TestSpec testSpec) {
+        assertThat(reverse(testSpec.fromString("hello"))).isEqualTo(testSpec.fromString("olleh"));
+        assertThat(reverse(testSpec.fromString("中国"))).isEqualTo(testSpec.fromString("国中"));
+        assertThat(reverse(testSpec.fromString("hello, 中国")))
+                .isEqualTo(testSpec.fromString("国中 ,olleh"));
+        assertThat(reverse(testSpec.empty)).isEqualTo(testSpec.empty);
     }
 
-    @Test
-    public void indexOf() {
-        assertThat(empty.indexOf(empty, 0)).isEqualTo(0);
-        assertThat(empty.indexOf(fromString("l"), 0)).isEqualTo(-1);
-        assertThat(fromString("hello").indexOf(empty, 0)).isEqualTo(0);
-        assertThat(fromString("hello").indexOf(fromString("l"), 0)).isEqualTo(2);
-        assertThat(fromString("hello").indexOf(fromString("l"), 3)).isEqualTo(3);
-        assertThat(fromString("hello").indexOf(fromString("a"), 0)).isEqualTo(-1);
-        assertThat(fromString("hello").indexOf(fromString("ll"), 0)).isEqualTo(2);
-        assertThat(fromString("hello").indexOf(fromString("ll"), 4)).isEqualTo(-1);
-        assertThat(fromString("数据砖头").indexOf(fromString("据砖"), 0)).isEqualTo(1);
-        assertThat(fromString("数据砖头").indexOf(fromString("数"), 3)).isEqualTo(-1);
-        assertThat(fromString("数据砖头").indexOf(fromString("数"), 0)).isEqualTo(0);
-        assertThat(fromString("数据砖头").indexOf(fromString("头"), 0)).isEqualTo(3);
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void indexOf(TestSpec testSpec) {
+        assertThat(testSpec.empty.indexOf(testSpec.empty, 0)).isEqualTo(0);
+        assertThat(testSpec.empty.indexOf(testSpec.fromString("l"), 0)).isEqualTo(-1);
+        assertThat(testSpec.fromString("hello").indexOf(testSpec.empty, 0)).isEqualTo(0);
+        assertThat(testSpec.fromString("hello").indexOf(testSpec.fromString("l"), 0)).isEqualTo(2);
+        assertThat(testSpec.fromString("hello").indexOf(testSpec.fromString("l"), 3)).isEqualTo(3);
+        assertThat(testSpec.fromString("hello").indexOf(testSpec.fromString("a"), 0)).isEqualTo(-1);
+        assertThat(testSpec.fromString("hello").indexOf(testSpec.fromString("ll"), 0)).isEqualTo(2);
+        assertThat(testSpec.fromString("hello").indexOf(testSpec.fromString("ll"), 4))
+                .isEqualTo(-1);
+        assertThat(testSpec.fromString("数据砖头").indexOf(testSpec.fromString("据砖"), 0)).isEqualTo(1);
+        assertThat(testSpec.fromString("数据砖头").indexOf(testSpec.fromString("数"), 3)).isEqualTo(-1);
+        assertThat(testSpec.fromString("数据砖头").indexOf(testSpec.fromString("数"), 0)).isEqualTo(0);
+        assertThat(testSpec.fromString("数据砖头").indexOf(testSpec.fromString("头"), 0)).isEqualTo(3);
     }
 
-    @Test
-    public void testToNumeric() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testToNumeric(TestSpec testSpec) {
         // Test to integer.
-        assertThat(toByte(fromString("123"))).isEqualTo(Byte.parseByte("123"));
-        assertThat(toByte(fromString("+123"))).isEqualTo(Byte.parseByte("123"));
-        assertThat(toByte(fromString("-123"))).isEqualTo(Byte.parseByte("-123"));
+        assertThat(toByte(testSpec.fromString("123"))).isEqualTo(Byte.parseByte("123"));
+        assertThat(toByte(testSpec.fromString("+123"))).isEqualTo(Byte.parseByte("123"));
+        assertThat(toByte(testSpec.fromString("-123"))).isEqualTo(Byte.parseByte("-123"));
 
-        assertThat(toShort(fromString("123"))).isEqualTo(Short.parseShort("123"));
-        assertThat(toShort(fromString("+123"))).isEqualTo(Short.parseShort("123"));
-        assertThat(toShort(fromString("-123"))).isEqualTo(Short.parseShort("-123"));
+        assertThat(toShort(testSpec.fromString("123"))).isEqualTo(Short.parseShort("123"));
+        assertThat(toShort(testSpec.fromString("+123"))).isEqualTo(Short.parseShort("123"));
+        assertThat(toShort(testSpec.fromString("-123"))).isEqualTo(Short.parseShort("-123"));
 
-        assertThat(toInt(fromString("123"))).isEqualTo(Integer.parseInt("123"));
-        assertThat(toInt(fromString("+123"))).isEqualTo(Integer.parseInt("123"));
-        assertThat(toInt(fromString("-123"))).isEqualTo(Integer.parseInt("-123"));
+        assertThat(toInt(testSpec.fromString("123"))).isEqualTo(Integer.parseInt("123"));
+        assertThat(toInt(testSpec.fromString("+123"))).isEqualTo(Integer.parseInt("123"));
+        assertThat(toInt(testSpec.fromString("-123"))).isEqualTo(Integer.parseInt("-123"));
 
-        assertThat(toLong(fromString("1234567890"))).isEqualTo(Long.parseLong("1234567890"));
-        assertThat(toLong(fromString("+1234567890"))).isEqualTo(Long.parseLong("+1234567890"));
-        assertThat(toLong(fromString("-1234567890"))).isEqualTo(Long.parseLong("-1234567890"));
+        assertThat(toLong(testSpec.fromString("1234567890")))
+                .isEqualTo(Long.parseLong("1234567890"));
+        assertThat(toLong(testSpec.fromString("+1234567890")))
+                .isEqualTo(Long.parseLong("+1234567890"));
+        assertThat(toLong(testSpec.fromString("-1234567890")))
+                .isEqualTo(Long.parseLong("-1234567890"));
 
         // Test decimal string to integer.
-        assertThat(toInt(fromString("123.456789"))).isEqualTo(Integer.parseInt("123"));
-        assertThat(toLong(fromString("123.456789"))).isEqualTo(Long.parseLong("123"));
+        assertThat(toInt(testSpec.fromString("123.456789"))).isEqualTo(Integer.parseInt("123"));
+        assertThat(toLong(testSpec.fromString("123.456789"))).isEqualTo(Long.parseLong("123"));
 
         // Test negative cases.
-        assertThatThrownBy(() -> toInt(fromString("1a3.456789")))
+        assertThatThrownBy(() -> toInt(testSpec.fromString("1a3.456789")))
                 .isInstanceOf(NumberFormatException.class);
-        assertThatThrownBy(() -> toInt(fromString("123.a56789")))
+        assertThatThrownBy(() -> toInt(testSpec.fromString("123.a56789")))
                 .isInstanceOf(NumberFormatException.class);
 
         // Test composite in BinaryRowData.
         BinaryRowData row = new BinaryRowData(20);
         BinaryRowWriter writer = new BinaryRowWriter(row);
-        writer.writeString(0, BinaryStringData.fromString("1"));
-        writer.writeString(1, BinaryStringData.fromString("123"));
-        writer.writeString(2, BinaryStringData.fromString("12345"));
-        writer.writeString(3, BinaryStringData.fromString("123456789"));
+        writer.writeString(0, testSpec.fromString("1"));
+        writer.writeString(1, testSpec.fromString("123"));
+        writer.writeString(2, testSpec.fromString("12345"));
+        writer.writeString(3, testSpec.fromString("123456789"));
         writer.complete();
 
         assertThat(toByte(((BinaryStringData) row.getString(0)))).isEqualTo(Byte.parseByte("1"));
@@ -463,42 +518,50 @@ public class BinaryStringDataTest {
                 .isEqualTo(Long.parseLong("123456789"));
     }
 
-    @Test
-    public void testToUpperLowerCase() {
-        assertThat(fromString("我是中国人").toLowerCase()).isEqualTo(fromString("我是中国人"));
-        assertThat(fromString("我是中国人").toUpperCase()).isEqualTo(fromString("我是中国人"));
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testToUpperLowerCase(TestSpec testSpec) {
+        assertThat(testSpec.fromString("我是中国人").toLowerCase())
+                .isEqualTo(testSpec.fromString("我是中国人"));
+        assertThat(testSpec.fromString("我是中国人").toUpperCase())
+                .isEqualTo(testSpec.fromString("我是中国人"));
 
-        assertThat(fromString("aBcDeFg").toLowerCase()).isEqualTo(fromString("abcdefg"));
-        assertThat(fromString("aBcDeFg").toUpperCase()).isEqualTo(fromString("ABCDEFG"));
+        assertThat(testSpec.fromString("aBcDeFg").toLowerCase())
+                .isEqualTo(testSpec.fromString("abcdefg"));
+        assertThat(testSpec.fromString("aBcDeFg").toUpperCase())
+                .isEqualTo(testSpec.fromString("ABCDEFG"));
 
-        assertThat(fromString("!@#$%^*").toLowerCase()).isEqualTo(fromString("!@#$%^*"));
-        assertThat(fromString("!@#$%^*").toLowerCase()).isEqualTo(fromString("!@#$%^*"));
+        assertThat(testSpec.fromString("!@#$%^*").toLowerCase())
+                .isEqualTo(testSpec.fromString("!@#$%^*"))
+                .isEqualTo(testSpec.fromString("!@#$%^*"));
         // Test composite in BinaryRowData.
         BinaryRowData row = new BinaryRowData(20);
         BinaryRowWriter writer = new BinaryRowWriter(row);
-        writer.writeString(0, BinaryStringData.fromString("a"));
-        writer.writeString(1, BinaryStringData.fromString("我是中国人"));
-        writer.writeString(3, BinaryStringData.fromString("aBcDeFg"));
-        writer.writeString(5, BinaryStringData.fromString("!@#$%^*"));
+        writer.writeString(0, testSpec.fromString("a"));
+        writer.writeString(1, testSpec.fromString("我是中国人"));
+        writer.writeString(3, testSpec.fromString("aBcDeFg"));
+        writer.writeString(5, testSpec.fromString("!@#$%^*"));
         writer.complete();
 
-        assertThat(((BinaryStringData) row.getString(0)).toUpperCase()).isEqualTo(fromString("A"));
+        assertThat(((BinaryStringData) row.getString(0)).toUpperCase())
+                .isEqualTo(testSpec.fromString("A"));
         assertThat(((BinaryStringData) row.getString(1)).toUpperCase())
-                .isEqualTo(fromString("我是中国人"));
+                .isEqualTo(testSpec.fromString("我是中国人"));
         assertThat(((BinaryStringData) row.getString(1)).toLowerCase())
-                .isEqualTo(fromString("我是中国人"));
+                .isEqualTo(testSpec.fromString("我是中国人"));
         assertThat(((BinaryStringData) row.getString(3)).toUpperCase())
-                .isEqualTo(fromString("ABCDEFG"));
+                .isEqualTo(testSpec.fromString("ABCDEFG"));
         assertThat(((BinaryStringData) row.getString(3)).toLowerCase())
-                .isEqualTo(fromString("abcdefg"));
+                .isEqualTo(testSpec.fromString("abcdefg"));
         assertThat(((BinaryStringData) row.getString(5)).toUpperCase())
-                .isEqualTo(fromString("!@#$%^*"));
+                .isEqualTo(testSpec.fromString("!@#$%^*"));
         assertThat(((BinaryStringData) row.getString(5)).toLowerCase())
-                .isEqualTo(fromString("!@#$%^*"));
+                .isEqualTo(testSpec.fromString("!@#$%^*"));
     }
 
-    @Test
-    public void testToDecimal() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testToDecimal(TestSpec testSpec) {
         class DecimalTestData {
             private String str;
             private int precision, scale;
@@ -563,7 +626,7 @@ public class BinaryStringDataTest {
         };
 
         for (DecimalTestData d : data) {
-            assertThat(toDecimal(fromString(d.str), d.precision, d.scale))
+            assertThat(toDecimal(testSpec.fromString(d.str), d.precision, d.scale))
                     .isEqualTo(
                             DecimalData.fromBigDecimal(
                                     new BigDecimal(d.str), d.precision, d.scale));
@@ -572,7 +635,7 @@ public class BinaryStringDataTest {
         BinaryRowData row = new BinaryRowData(data.length);
         BinaryRowWriter writer = new BinaryRowWriter(row);
         for (int i = 0; i < data.length; i++) {
-            writer.writeString(i, BinaryStringData.fromString(data[i].str));
+            writer.writeString(i, testSpec.fromString(data[i].str));
         }
         writer.complete();
         for (int i = 0; i < data.length; i++) {
@@ -584,9 +647,10 @@ public class BinaryStringDataTest {
         }
     }
 
-    @Test
-    public void testEmptyString() {
-        BinaryStringData str2 = fromString("hahahahah");
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testEmptyString(TestSpec testSpec) {
+        BinaryStringData str2 = testSpec.fromString("hahahahah");
         BinaryStringData str3;
         {
             MemorySegment[] segments = new MemorySegment[2];
@@ -595,11 +659,11 @@ public class BinaryStringDataTest {
             str3 = BinaryStringData.fromAddress(segments, 15, 0);
         }
 
-        assertThat(BinaryStringData.EMPTY_UTF8.compareTo(str2)).isLessThan(0);
-        assertThat(str2.compareTo(BinaryStringData.EMPTY_UTF8)).isGreaterThan(0);
+        assertThat(BinaryStringData.EMPTY_UTF8).isLessThan(str2);
+        assertThat(str2).isGreaterThan(BinaryStringData.EMPTY_UTF8);
 
-        assertThat(BinaryStringData.EMPTY_UTF8.compareTo(str3)).isEqualTo(0);
-        assertThat(str3.compareTo(BinaryStringData.EMPTY_UTF8)).isEqualTo(0);
+        assertThat(BinaryStringData.EMPTY_UTF8).isEqualByComparingTo(str3);
+        assertThat(str3).isEqualByComparingTo(BinaryStringData.EMPTY_UTF8);
 
         assertThat(str2).isNotEqualTo(BinaryStringData.EMPTY_UTF8);
         assertThat(BinaryStringData.EMPTY_UTF8).isNotEqualTo(str2);
@@ -608,8 +672,9 @@ public class BinaryStringDataTest {
         assertThat(BinaryStringData.EMPTY_UTF8).isEqualTo(str3);
     }
 
-    @Test
-    public void testEncodeWithIllegalCharacter() throws UnsupportedEncodingException {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testEncodeWithIllegalCharacter(TestSpec mode) throws UnsupportedEncodingException {
 
         // Tis char array has some illegal character, such as 55357
         // the jdk ignores theses character and cast them to '?'
@@ -625,139 +690,134 @@ public class BinaryStringDataTest {
         assertThat(StringUtf8Utils.encodeUTF8(str)).isEqualTo(str.getBytes("UTF-8"));
     }
 
-    @Test
-    public void testKeyValue() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testKeyValue(TestSpec testSpec) {
         assertThat(
                         keyValue(
-                                fromString("k1:v1|k2:v2"),
-                                fromString("|").byteAt(0),
-                                fromString(":").byteAt(0),
-                                fromString("k3")))
+                                testSpec.fromString("k1:v1|k2:v2"),
+                                testSpec.fromString("|").byteAt(0),
+                                testSpec.fromString(":").byteAt(0),
+                                testSpec.fromString("k3")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1:v1|k2:v2|"),
-                                fromString("|").byteAt(0),
-                                fromString(":").byteAt(0),
-                                fromString("k3")))
+                                testSpec.fromString("k1:v1|k2:v2|"),
+                                testSpec.fromString("|").byteAt(0),
+                                testSpec.fromString(":").byteAt(0),
+                                testSpec.fromString("k3")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("|k1:v1|k2:v2|"),
-                                fromString("|").byteAt(0),
-                                fromString(":").byteAt(0),
-                                fromString("k3")))
+                                testSpec.fromString("|k1:v1|k2:v2|"),
+                                testSpec.fromString("|").byteAt(0),
+                                testSpec.fromString(":").byteAt(0),
+                                testSpec.fromString("k3")))
                 .isNull();
-        String tab = org.apache.commons.lang3.StringEscapeUtils.unescapeJava("\t");
+        String tab = StringEscapeUtils.unescapeJava("\t");
         assertThat(
                         keyValue(
-                                fromString("k1:v1" + tab + "k2:v2"),
-                                fromString("\t").byteAt(0),
-                                fromString(":").byteAt(0),
-                                fromString("k2")))
-                .isEqualTo(fromString("v2"));
+                                testSpec.fromString("k1:v1" + tab + "k2:v2"),
+                                testSpec.fromString("\t").byteAt(0),
+                                testSpec.fromString(":").byteAt(0),
+                                testSpec.fromString("k2")))
+                .isEqualTo(testSpec.fromString("v2"));
         assertThat(
                         keyValue(
-                                fromString("k1:v1|k2:v2"),
-                                fromString("|").byteAt(0),
-                                fromString(":").byteAt(0),
+                                testSpec.fromString("k1:v1|k2:v2"),
+                                testSpec.fromString("|").byteAt(0),
+                                testSpec.fromString(":").byteAt(0),
                                 null))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1=v1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k2")))
-                .isEqualTo(fromString("v2"));
+                                testSpec.fromString("k1=v1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k2")))
+                .isEqualTo(testSpec.fromString("v2"));
         assertThat(
                         keyValue(
-                                fromString("|k1=v1|k2=v2|"),
-                                fromString("|").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k2")))
-                .isEqualTo(fromString("v2"));
+                                testSpec.fromString("|k1=v1|k2=v2|"),
+                                testSpec.fromString("|").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k2")))
+                .isEqualTo(testSpec.fromString("v2"));
         assertThat(
                         keyValue(
-                                fromString("k1=v1||k2=v2"),
-                                fromString("|").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k2")))
-                .isEqualTo(fromString("v2"));
+                                testSpec.fromString("k1=v1||k2=v2"),
+                                testSpec.fromString("|").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k2")))
+                .isEqualTo(testSpec.fromString("v2"));
         assertThat(
                         keyValue(
-                                fromString("k1=v1;k2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k2")))
+                                testSpec.fromString("k1=v1;k2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k2")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k1")))
+                                testSpec.fromString("k1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k1")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k=1=v1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k=")))
+                                testSpec.fromString("k=1=v1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k=")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1==v1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k1")))
-                .isEqualTo(fromString("=v1"));
+                                testSpec.fromString("k1==v1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k1")))
+                .isEqualTo(testSpec.fromString("=v1"));
         assertThat(
                         keyValue(
-                                fromString("k1==v1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k1=")))
+                                testSpec.fromString("k1==v1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k1=")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1=v1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k1=")))
+                                testSpec.fromString("k1=v1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k1=")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1k1=v1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k1")))
+                                testSpec.fromString("k1k1=v1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k1")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1=v1;k2=v2"),
-                                fromString(";").byteAt(0),
-                                fromString("=").byteAt(0),
-                                fromString("k1k1k1k1k1k1k1k1k1k1")))
+                                testSpec.fromString("k1=v1;k2=v2"),
+                                testSpec.fromString(";").byteAt(0),
+                                testSpec.fromString("=").byteAt(0),
+                                testSpec.fromString("k1k1k1k1k1k1k1k1k1k1")))
                 .isNull();
         assertThat(
                         keyValue(
-                                fromString("k1:v||k2:v2"),
-                                fromString("|").byteAt(0),
-                                fromString(":").byteAt(0),
-                                fromString("k2")))
-                .isEqualTo(fromString("v2"));
-        assertThat(
-                        keyValue(
-                                fromString("k1:v||k2:v2"),
-                                fromString("|").byteAt(0),
-                                fromString(":").byteAt(0),
-                                fromString("k2")))
-                .isEqualTo(fromString("v2"));
+                                testSpec.fromString("k1:v||k2:v2"),
+                                testSpec.fromString("|").byteAt(0),
+                                testSpec.fromString(":").byteAt(0),
+                                testSpec.fromString("k2")))
+                .isEqualTo(testSpec.fromString("v2"));
     }
 
-    @Test
-    public void testDecodeWithIllegalUtf8Bytes() throws UnsupportedEncodingException {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testDecodeWithIllegalUtf8Bytes(TestSpec mode) throws UnsupportedEncodingException {
 
         // illegal utf-8 bytes
         byte[] bytes =
@@ -788,8 +848,9 @@ public class BinaryStringDataTest {
                 .isEqualTo(str);
     }
 
-    @Test
-    public void skipWrongFirstByte() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void skipWrongFirstByte(TestSpec mode) {
         int[] wrongFirstBytes = {
             0x80,
             0x9F,
@@ -813,44 +874,48 @@ public class BinaryStringDataTest {
 
         for (int wrongFirstByte : wrongFirstBytes) {
             c[0] = (byte) wrongFirstByte;
-            assertThat(1).isEqualTo(fromBytes(c).numChars());
+            assertThat(fromBytes(c).numChars()).isEqualTo(1);
         }
     }
 
-    @Test
-    public void testSplit() {
-        assertThat(splitByWholeSeparatorPreserveAllTokens(fromString(""), fromString("")))
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testSplit(TestSpec mode) {
+        assertThat(splitByWholeSeparatorPreserveAllTokens(mode.fromString(""), mode.fromString("")))
                 .isEqualTo(EMPTY_STRING_ARRAY);
-        assertThat(splitByWholeSeparatorPreserveAllTokens(fromString("ab de fg"), null))
+        assertThat(splitByWholeSeparatorPreserveAllTokens(mode.fromString("ab de fg"), null))
                 .isEqualTo(
                         new BinaryStringData[] {
-                            fromString("ab"), fromString("de"), fromString("fg")
+                            mode.fromString("ab"), mode.fromString("de"), mode.fromString("fg")
                         });
-        assertThat(splitByWholeSeparatorPreserveAllTokens(fromString("ab   de fg"), null))
+        assertThat(splitByWholeSeparatorPreserveAllTokens(mode.fromString("ab   de fg"), null))
                 .isEqualTo(
                         new BinaryStringData[] {
-                            fromString("ab"),
-                            fromString(""),
-                            fromString(""),
-                            fromString("de"),
-                            fromString("fg")
-                        });
-        assertThat(splitByWholeSeparatorPreserveAllTokens(fromString("ab:cd:ef"), fromString(":")))
-                .isEqualTo(
-                        new BinaryStringData[] {
-                            fromString("ab"), fromString("cd"), fromString("ef")
+                            mode.fromString("ab"),
+                            mode.fromString(""),
+                            mode.fromString(""),
+                            mode.fromString("de"),
+                            mode.fromString("fg")
                         });
         assertThat(
                         splitByWholeSeparatorPreserveAllTokens(
-                                fromString("ab-!-cd-!-ef"), fromString("-!-")))
+                                mode.fromString("ab:cd:ef"), mode.fromString(":")))
                 .isEqualTo(
                         new BinaryStringData[] {
-                            fromString("ab"), fromString("cd"), fromString("ef")
+                            mode.fromString("ab"), mode.fromString("cd"), mode.fromString("ef")
+                        });
+        assertThat(
+                        splitByWholeSeparatorPreserveAllTokens(
+                                mode.fromString("ab-!-cd-!-ef"), mode.fromString("-!-")))
+                .isEqualTo(
+                        new BinaryStringData[] {
+                            mode.fromString("ab"), mode.fromString("cd"), mode.fromString("ef")
                         });
     }
 
-    @Test
-    public void testLazy() {
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("getVarSeg")
+    void testLazy(TestSpec mode) {
         String javaStr = "haha";
         BinaryStringData str = BinaryStringData.fromString(javaStr);
         str.ensureMaterialized();

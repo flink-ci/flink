@@ -29,7 +29,7 @@ import org.apache.flink.table.types.logical.LogicalType;
 import java.util.Random;
 
 /** Verify the correctness of {@link WindowBytesMultiMap}. */
-public class WindowBytesMultiMapTest extends BytesMultiMapTestBase<WindowKey> {
+class WindowBytesMultiMapTest extends BytesMultiMapTestBase<WindowKey> {
 
     public WindowBytesMultiMapTest() {
         super(

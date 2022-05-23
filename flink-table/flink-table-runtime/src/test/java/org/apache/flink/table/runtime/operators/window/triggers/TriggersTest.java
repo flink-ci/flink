@@ -18,17 +18,17 @@
 
 package org.apache.flink.table.runtime.operators.window.triggers;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for triggers. */
-public class TriggersTest {
+class TriggersTest {
 
     @Test
-    public void testEventTime() {
+    void testEventTime() {
         Trigger<?> trigger;
         String expected;
 
@@ -40,72 +40,81 @@ public class TriggersTest {
                 "EventTime.afterEndOfWindow()"
                         + ".withEarlyFirings(Element.every())"
                         + ".withLateFirings(ProcessingTime.every(1000))";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        assertThat(trigger).isInstanceOf(EventTimeTriggers.AfterEndOfWindowEarlyAndLate.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                .isInstanceOf(EventTimeTriggers.AfterEndOfWindowEarlyAndLate.class);
 
         trigger =
                 EventTimeTriggers.afterEndOfWindow()
                         .withEarlyFirings(ProcessingTimeTriggers.every(Duration.ofSeconds(1)))
                         .withLateFirings(ElementTriggers.every());
         expected = "EventTime.afterEndOfWindow().withEarlyFirings(ProcessingTime.every(1000))";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        assertThat(trigger).isInstanceOf(EventTimeTriggers.AfterEndOfWindowNoLate.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                .isInstanceOf(EventTimeTriggers.AfterEndOfWindowNoLate.class);
 
         // only periodic early trigger
         trigger =
                 EventTimeTriggers.afterEndOfWindow()
                         .withEarlyFirings(ProcessingTimeTriggers.every(Duration.ofSeconds(1)));
         expected = "EventTime.afterEndOfWindow().withEarlyFirings(ProcessingTime.every(1000))";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        //noinspection ConstantConditions
-        assertThat(trigger).isInstanceOf(EventTimeTriggers.AfterEndOfWindowNoLate.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                //noinspection ConstantConditions
+                .isInstanceOf(EventTimeTriggers.AfterEndOfWindowNoLate.class);
 
         // only Element.every() early trigger
         trigger = EventTimeTriggers.afterEndOfWindow().withEarlyFirings(ElementTriggers.every());
         expected = "EventTime.afterEndOfWindow().withEarlyFirings(Element.every())";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        //noinspection ConstantConditions
-        assertThat(trigger).isInstanceOf(EventTimeTriggers.AfterEndOfWindowNoLate.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                //noinspection ConstantConditions
+                .isInstanceOf(EventTimeTriggers.AfterEndOfWindowNoLate.class);
 
         // only periodic late trigger
         trigger =
                 EventTimeTriggers.afterEndOfWindow()
                         .withLateFirings(ProcessingTimeTriggers.every(Duration.ofMillis(1)));
         expected = "EventTime.afterEndOfWindow().withLateFirings(ProcessingTime.every(1))";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        assertThat(trigger).isInstanceOf(EventTimeTriggers.AfterEndOfWindowEarlyAndLate.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                .isInstanceOf(EventTimeTriggers.AfterEndOfWindowEarlyAndLate.class);
 
         // only Element.every() late trigger
         trigger = EventTimeTriggers.afterEndOfWindow().withLateFirings(ElementTriggers.every());
         expected = "EventTime.afterEndOfWindow()";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        assertThat(trigger).isInstanceOf(EventTimeTriggers.AfterEndOfWindow.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                .isInstanceOf(EventTimeTriggers.AfterEndOfWindow.class);
     }
 
     @Test
-    public void testProcessingTime() {
+    void testProcessingTime() {
         Trigger<?> trigger;
         String expected;
 
         trigger = ProcessingTimeTriggers.afterEndOfWindow();
         expected = "ProcessingTime.afterEndOfWindow()";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        //noinspection ConstantConditions
-        assertThat(trigger).isInstanceOf(ProcessingTimeTriggers.AfterEndOfWindow.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                //noinspection ConstantConditions
+                .isInstanceOf(ProcessingTimeTriggers.AfterEndOfWindow.class);
 
         trigger =
                 ProcessingTimeTriggers.afterEndOfWindow().withEarlyFirings(ElementTriggers.every());
         expected = "ProcessingTime.afterEndOfWindow().withEarlyFirings(Element.every())";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        //noinspection ConstantConditions
-        assertThat(trigger).isInstanceOf(ProcessingTimeTriggers.AfterEndOfWindowNoLate.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                //noinspection ConstantConditions
+                .isInstanceOf(ProcessingTimeTriggers.AfterEndOfWindowNoLate.class);
 
         trigger =
                 ProcessingTimeTriggers.afterEndOfWindow()
                         .withEarlyFirings(ProcessingTimeTriggers.every(Duration.ofSeconds(1)));
         expected = "ProcessingTime.afterEndOfWindow().withEarlyFirings(ProcessingTime.every(1000))";
-        assertThat(trigger.toString()).isEqualTo(expected);
-        //noinspection ConstantConditions
-        assertThat(trigger).isInstanceOf(ProcessingTimeTriggers.AfterEndOfWindowNoLate.class);
+        assertThat(trigger)
+                .hasToString(expected)
+                //noinspection ConstantConditions
+                .isInstanceOf(ProcessingTimeTriggers.AfterEndOfWindowNoLate.class);
     }
 }

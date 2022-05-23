@@ -31,23 +31,20 @@ import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.insertRecord;
 import static org.apache.flink.table.runtime.util.TimeWindowUtil.toUtcTimestampMills;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for window join operators created by {@link WindowJoinOperatorBuilder}. */
-@RunWith(Parameterized.class)
-public class WindowJoinOperatorTest {
+class WindowJoinOperatorTest {
 
     private static final InternalTypeInfo<RowData> INPUT_ROW_TYPE =
             InternalTypeInfo.ofFields(new BigIntType(), VarCharType.STRING_TYPE);
@@ -69,21 +66,15 @@ public class WindowJoinOperatorTest {
 
     private static final ZoneId SHANGHAI_ZONE_ID = ZoneId.of("Asia/Shanghai");
 
-    private final ZoneId shiftTimeZone;
-
-    public WindowJoinOperatorTest(ZoneId shiftTimeZone) {
-        this.shiftTimeZone = shiftTimeZone;
+    private static Stream<ZoneId> runMode() {
+        return Stream.of(UTC_ZONE_ID, SHANGHAI_ZONE_ID);
     }
 
-    @Parameterized.Parameters(name = "TimeZone = {0}")
-    public static Collection<Object[]> runMode() {
-        return Arrays.asList(new Object[] {UTC_ZONE_ID}, new Object[] {SHANGHAI_ZONE_ID});
-    }
-
-    @Test
-    public void testSemiJoin() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testSemiJoin(ZoneId shiftTimeZone) throws Exception {
         KeyedTwoInputStreamOperatorTestHarness<RowData, RowData, RowData, RowData> testHarness =
-                createTestHarness(FlinkJoinType.SEMI);
+                createTestHarness(FlinkJoinType.SEMI, shiftTimeZone);
 
         testHarness.open();
         testHarness.processWatermark1(new Watermark(1));
@@ -135,10 +126,11 @@ public class WindowJoinOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testAntiJoin() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testAntiJoin(ZoneId shiftTimeZone) throws Exception {
         KeyedTwoInputStreamOperatorTestHarness<RowData, RowData, RowData, RowData> testHarness =
-                createTestHarness(FlinkJoinType.ANTI);
+                createTestHarness(FlinkJoinType.ANTI, shiftTimeZone);
         testHarness.open();
         testHarness.processWatermark1(new Watermark(1));
         testHarness.processWatermark2(new Watermark(1));
@@ -188,10 +180,11 @@ public class WindowJoinOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testInnerJoin() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testInnerJoin(ZoneId shiftTimeZone) throws Exception {
         KeyedTwoInputStreamOperatorTestHarness<RowData, RowData, RowData, RowData> testHarness =
-                createTestHarness(FlinkJoinType.INNER);
+                createTestHarness(FlinkJoinType.INNER, shiftTimeZone);
 
         testHarness.open();
         testHarness.processWatermark1(new Watermark(1));
@@ -263,10 +256,11 @@ public class WindowJoinOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testLeftOuterJoin() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testLeftOuterJoin(ZoneId shiftTimeZone) throws Exception {
         KeyedTwoInputStreamOperatorTestHarness<RowData, RowData, RowData, RowData> testHarness =
-                createTestHarness(FlinkJoinType.LEFT);
+                createTestHarness(FlinkJoinType.LEFT, shiftTimeZone);
 
         testHarness.open();
         testHarness.processWatermark1(new Watermark(1));
@@ -340,10 +334,11 @@ public class WindowJoinOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testRightOuterJoin() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testRightOuterJoin(ZoneId shiftTimeZone) throws Exception {
         KeyedTwoInputStreamOperatorTestHarness<RowData, RowData, RowData, RowData> testHarness =
-                createTestHarness(FlinkJoinType.RIGHT);
+                createTestHarness(FlinkJoinType.RIGHT, shiftTimeZone);
 
         testHarness.open();
         testHarness.processWatermark1(new Watermark(1));
@@ -416,10 +411,11 @@ public class WindowJoinOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testOuterJoin() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testOuterJoin(ZoneId shiftTimeZone) throws Exception {
         KeyedTwoInputStreamOperatorTestHarness<RowData, RowData, RowData, RowData> testHarness =
-                createTestHarness(FlinkJoinType.FULL);
+                createTestHarness(FlinkJoinType.FULL, shiftTimeZone);
 
         testHarness.open();
         testHarness.processWatermark1(new Watermark(1));
@@ -495,7 +491,7 @@ public class WindowJoinOperatorTest {
     }
 
     private KeyedTwoInputStreamOperatorTestHarness<RowData, RowData, RowData, RowData>
-            createTestHarness(FlinkJoinType joinType) throws Exception {
+            createTestHarness(FlinkJoinType joinType, ZoneId shiftTimeZone) throws Exception {
         String funcCode =
                 "public class TestWindowJoinCondition extends org.apache.flink.api.common.functions.AbstractRichFunction "
                         + "implements org.apache.flink.table.runtime.generated.JoinCondition {\n"

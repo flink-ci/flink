@@ -38,7 +38,7 @@ import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 
@@ -63,12 +63,12 @@ import static org.mockito.Mockito.when;
  *
  * <p>These tests document the implicit contract that exists between the windowing components.
  */
-public class WindowOperatorContractTest {
+class WindowOperatorContractTest {
 
     private static final ZoneId UTC_ZONE_ID = ZoneId.of("UTC");
 
     @Test
-    public void testAssignerIsInvokedOncePerElement() throws Exception {
+    void testAssignerIsInvokedOncePerElement() throws Exception {
         WindowAssigner<TimeWindow> mockAssigner = mockTimeWindowAssigner();
         Trigger<TimeWindow> mockTrigger = mockTrigger();
         NamespaceAggsHandleFunction<TimeWindow> mockAggregate = mockAggsHandleFunction();
@@ -91,7 +91,7 @@ public class WindowOperatorContractTest {
     }
 
     @Test
-    public void testAssignerWithMultipleWindowsForAggregate() throws Exception {
+    void testAssignerWithMultipleWindowsForAggregate() throws Exception {
         WindowAssigner<TimeWindow> mockAssigner = mockTimeWindowAssigner();
         Trigger<TimeWindow> mockTrigger = mockTrigger();
         NamespaceAggsHandleFunction<TimeWindow> mockAggregate = mockAggsHandleFunction();
@@ -114,7 +114,7 @@ public class WindowOperatorContractTest {
     }
 
     @Test
-    public void testAssignerWithMultipleWindowsForTableAggregate() throws Exception {
+    void testAssignerWithMultipleWindowsForTableAggregate() throws Exception {
         WindowAssigner<TimeWindow> mockAssigner = mockTimeWindowAssigner();
         Trigger<TimeWindow> mockTrigger = mockTrigger();
         NamespaceTableAggsHandleFunction<TimeWindow> mockAggregate = mockTableAggsHandleFunction();
@@ -137,7 +137,7 @@ public class WindowOperatorContractTest {
     }
 
     @Test
-    public void testOnElementCalledPerWindow() throws Exception {
+    void testOnElementCalledPerWindow() throws Exception {
 
         WindowAssigner<TimeWindow> mockAssigner = mockTimeWindowAssigner();
         Trigger<TimeWindow> mockTrigger = mockTrigger();
@@ -159,7 +159,7 @@ public class WindowOperatorContractTest {
     }
 
     @Test
-    public void testMergeWindowsIsCalled() throws Exception {
+    void testMergeWindowsIsCalled() throws Exception {
         MergingWindowAssigner<TimeWindow> mockAssigner = mockMergingAssigner();
         Trigger<TimeWindow> mockTrigger = mockTrigger();
         NamespaceAggsHandleFunction<TimeWindow> mockAggregate = mockAggsHandleFunction();

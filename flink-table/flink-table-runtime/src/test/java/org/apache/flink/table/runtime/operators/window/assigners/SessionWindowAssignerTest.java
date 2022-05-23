@@ -23,7 +23,7 @@ import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.runtime.operators.window.TimeWindow;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Matchers;
 
@@ -44,12 +44,12 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /** Tests for {@link SessionWindowAssigner}. */
-public class SessionWindowAssignerTest {
+class SessionWindowAssignerTest {
 
     private static final RowData ELEMENT = GenericRowData.of("String");
 
     @Test
-    public void testWindowAssignment() {
+    void testWindowAssignment() {
         final int sessionGap = 5000;
 
         SessionWindowAssigner assigner =
@@ -64,7 +64,7 @@ public class SessionWindowAssignerTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testMergeEmptyWindow() {
+    void testMergeEmptyWindow() {
         MergingWindowAssigner.MergeCallback callback =
                 mock(MergingWindowAssigner.MergeCallback.class);
         SessionWindowAssigner assigner = SessionWindowAssigner.withGap(Duration.ofMillis(5000));
@@ -76,7 +76,7 @@ public class SessionWindowAssignerTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testMergeSingleWindow() {
+    void testMergeSingleWindow() {
         MergingWindowAssigner.MergeCallback callback =
                 mock(MergingWindowAssigner.MergeCallback.class);
         SessionWindowAssigner assigner = SessionWindowAssigner.withGap(Duration.ofMillis(5000));
@@ -90,7 +90,7 @@ public class SessionWindowAssignerTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testMergeConsecutiveWindows() {
+    void testMergeConsecutiveWindows() {
         MergingWindowAssigner.MergeCallback callback =
                 mock(MergingWindowAssigner.MergeCallback.class);
         SessionWindowAssigner assigner = SessionWindowAssigner.withGap(Duration.ofMillis(5000));
@@ -119,7 +119,7 @@ public class SessionWindowAssignerTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    public void testMergeCoveringWindow() {
+    void testMergeCoveringWindow() {
         MergingWindowAssigner.MergeCallback callback =
                 mock(MergingWindowAssigner.MergeCallback.class);
         SessionWindowAssigner assigner = SessionWindowAssigner.withGap(Duration.ofMillis(5000));
@@ -143,7 +143,7 @@ public class SessionWindowAssignerTest {
     }
 
     @Test
-    public void testProperties() {
+    void testProperties() {
         SessionWindowAssigner assigner = SessionWindowAssigner.withGap(Duration.ofMillis(5000));
 
         assertThat(assigner.isEventTime()).isTrue();

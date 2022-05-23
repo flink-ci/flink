@@ -32,7 +32,7 @@ import java.util.List;
 
 import static org.apache.flink.core.testutils.FlinkMatchers.containsMessage;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.fail;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.HamcrestCondition.matching;
 
 /** Utilities for testing {@link SliceAssigner}s. */
@@ -43,12 +43,10 @@ public abstract class SliceAssignerTestBase {
     private static final ZoneId UTC_ZONE_ID = ZoneId.of("UTC");
 
     protected static void assertErrorMessage(Runnable runnable, String errorMessage) {
-        try {
-            runnable.run();
-            fail("should fail.");
-        } catch (Exception e) {
-            assertThat(e).satisfies(matching(containsMessage(errorMessage)));
-        }
+        assertThatThrownBy(runnable::run)
+                .withFailMessage("should fail.")
+                .isInstanceOf(Exception.class)
+                .satisfies(matching(containsMessage(errorMessage)));
     }
 
     protected static long assignSliceEnd(SliceAssigner assigner, long timestamp) {

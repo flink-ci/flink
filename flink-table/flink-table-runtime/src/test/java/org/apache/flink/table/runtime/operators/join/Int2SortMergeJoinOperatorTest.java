@@ -39,44 +39,35 @@ import org.apache.flink.table.runtime.operators.sort.IntRecordComparator;
 import org.apache.flink.table.runtime.util.UniformBinaryRowGenerator;
 import org.apache.flink.util.MutableObjectIterator;
 
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.Arrays;
-import java.util.Collection;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.runtime.operators.join.Int2HashJoinOperatorTest.joinAndAssert;
 import static org.assertj.core.api.Assertions.fail;
 
 /** Random test for {@link SortMergeJoinOperator}. */
-@RunWith(Parameterized.class)
-public class Int2SortMergeJoinOperatorTest {
-
-    private boolean leftIsSmaller;
+class Int2SortMergeJoinOperatorTest {
 
     private MemoryManager memManager;
     private IOManager ioManager;
 
-    public Int2SortMergeJoinOperatorTest(boolean leftIsSmaller) {
-        this.leftIsSmaller = leftIsSmaller;
+    private static Stream<Boolean> parameters() {
+        return Stream.of(true, false);
     }
 
-    @Parameterized.Parameters
-    public static Collection<Boolean> parameters() {
-        return Arrays.asList(true, false);
-    }
-
-    @Before
-    public void setup() {
+    @BeforeEach
+    void setup() {
         this.memManager = MemoryManagerBuilder.newBuilder().setMemorySize(36 * 1024 * 1024).build();
         this.ioManager = new IOManagerAsync();
     }
 
-    @After
-    public void tearDown() throws Exception {
+    @AfterEach
+    void tearDown() throws Exception {
         // shut down I/O manager and Memory Manager and verify the correct shutdown
         this.ioManager.close();
         if (!this.memManager.verifyEmpty()) {
@@ -84,8 +75,9 @@ public class Int2SortMergeJoinOperatorTest {
         }
     }
 
-    @Test
-    public void testInnerJoin() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testInnerJoin(boolean leftIsSmall) throws Exception {
         int numKeys = 100;
         int buildValsPerKey = 3;
         int probeValsPerKey = 10;
@@ -101,11 +93,13 @@ public class Int2SortMergeJoinOperatorTest {
                 FlinkJoinType.INNER,
                 numKeys * buildValsPerKey * probeValsPerKey,
                 numKeys,
-                165);
+                165,
+                leftIsSmall);
     }
 
-    @Test
-    public void testLeftOutJoin() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testLeftOutJoin(boolean leftIsSmall) throws Exception {
 
         int numKeys1 = 9;
         int numKeys2 = 10;
@@ -123,11 +117,13 @@ public class Int2SortMergeJoinOperatorTest {
                 FlinkJoinType.LEFT,
                 numKeys1 * buildValsPerKey * probeValsPerKey,
                 numKeys1,
-                165);
+                165,
+                leftIsSmall);
     }
 
-    @Test
-    public void testRightOutJoin() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testRightOutJoin(boolean leftIsSmall) throws Exception {
         int numKeys1 = 9;
         int numKeys2 = 10;
         int buildValsPerKey = 3;
@@ -138,11 +134,12 @@ public class Int2SortMergeJoinOperatorTest {
         MutableObjectIterator<BinaryRowData> probeInput =
                 new UniformBinaryRowGenerator(numKeys2, probeValsPerKey, true);
 
-        buildJoin(buildInput, probeInput, FlinkJoinType.RIGHT, 280, numKeys2, -1);
+        buildJoin(buildInput, probeInput, FlinkJoinType.RIGHT, 280, numKeys2, -1, leftIsSmall);
     }
 
-    @Test
-    public void testFullOutJoin() throws Exception {
+    @ParameterizedTest
+    @MethodSource("parameters")
+    void testFullOutJoin(boolean leftIsSmall) throws Exception {
         int numKeys1 = 9;
         int numKeys2 = 10;
         int buildValsPerKey = 3;
@@ -153,11 +150,11 @@ public class Int2SortMergeJoinOperatorTest {
         MutableObjectIterator<BinaryRowData> probeInput =
                 new UniformBinaryRowGenerator(numKeys2, probeValsPerKey, true);
 
-        buildJoin(buildInput, probeInput, FlinkJoinType.FULL, 280, numKeys2, -1);
+        buildJoin(buildInput, probeInput, FlinkJoinType.FULL, 280, numKeys2, -1, leftIsSmall);
     }
 
     @Test
-    public void testSemiJoin() throws Exception {
+    void testSemiJoin() throws Exception {
 
         int numKeys1 = 10;
         int numKeys2 = 9;
@@ -173,7 +170,7 @@ public class Int2SortMergeJoinOperatorTest {
     }
 
     @Test
-    public void testAntiJoin() throws Exception {
+    void testAntiJoin() throws Exception {
 
         int numKeys1 = 10;
         int numKeys2 = 9;
@@ -194,11 +191,12 @@ public class Int2SortMergeJoinOperatorTest {
             FlinkJoinType type,
             int expertOutSize,
             int expertOutKeySize,
-            int expertOutVal)
+            int expertOutVal,
+            boolean leftIsSmall)
             throws Exception {
 
         joinAndAssert(
-                getOperator(type),
+                getOperator(type, leftIsSmall),
                 input1,
                 input2,
                 expertOutSize,
@@ -207,7 +205,7 @@ public class Int2SortMergeJoinOperatorTest {
                 false);
     }
 
-    private StreamOperator getOperator(FlinkJoinType type) {
+    private StreamOperator getOperator(FlinkJoinType type, boolean leftIsSmaller) {
         return newOperator(type, leftIsSmaller);
     }
 

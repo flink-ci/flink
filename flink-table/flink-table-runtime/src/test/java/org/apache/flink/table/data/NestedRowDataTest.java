@@ -33,24 +33,24 @@ import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.runtime.typeutils.StringDataSerializer;
 import org.apache.flink.table.types.logical.LogicalType;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import static org.apache.flink.table.data.util.DataFormatTestUtil.MyObj;
 import static org.apache.flink.table.data.util.DataFormatTestUtil.splitBytes;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link NestedRowData}s. */
-public class NestedRowDataTest {
+class NestedRowDataTest {
 
     @Test
-    public void testNestedRowDataWithOneSegment() {
+    void testNestedRowDataWithOneSegment() {
         BinaryRowData row = getBinaryRowData();
         GenericTypeInfo<MyObj> info = new GenericTypeInfo<>(MyObj.class);
         TypeSerializer<MyObj> genericSerializer = info.createSerializer(new ExecutionConfig());
 
         RowData nestedRow = row.getRow(0, 5);
-        assertThat(1).isEqualTo(nestedRow.getInt(0));
-        assertThat(5L).isEqualTo(nestedRow.getLong(1));
+        assertThat(nestedRow.getInt(0)).isEqualTo(1);
+        assertThat(nestedRow.getLong(1)).isEqualTo(5L);
         assertThat(StringData.fromString("12345678")).isEqualTo(nestedRow.getString(2));
         assertThat(nestedRow.isNullAt(3)).isTrue();
         assertThat(nestedRow.<MyObj>getRawValue(4).toObject(genericSerializer))
@@ -58,7 +58,7 @@ public class NestedRowDataTest {
     }
 
     @Test
-    public void testNestedRowDataWithMultipleSegments() {
+    void testNestedRowDataWithMultipleSegments() {
         BinaryRowData row = getBinaryRowData();
         GenericTypeInfo<MyObj> info = new GenericTypeInfo<>(MyObj.class);
         TypeSerializer<MyObj> genericSerializer = info.createSerializer(new ExecutionConfig());
@@ -67,8 +67,8 @@ public class NestedRowDataTest {
         row.pointTo(segments, 3, row.getSizeInBytes());
         {
             RowData nestedRow = row.getRow(0, 5);
-            assertThat(1).isEqualTo(nestedRow.getInt(0));
-            assertThat(5L).isEqualTo(nestedRow.getLong(1));
+            assertThat(nestedRow.getInt(0)).isEqualTo(1);
+            assertThat(nestedRow.getLong(1)).isEqualTo(5L);
             assertThat(StringData.fromString("12345678")).isEqualTo(nestedRow.getString(2));
             assertThat(nestedRow.isNullAt(3)).isTrue();
             assertThat(nestedRow.<MyObj>getRawValue(4).toObject(genericSerializer))
@@ -77,7 +77,7 @@ public class NestedRowDataTest {
     }
 
     @Test
-    public void testNestInNestedRowData() {
+    void testNestInNestedRowData() {
         // layer1
         GenericRowData gRow = new GenericRowData(4);
         gRow.setField(0, 1);
@@ -123,8 +123,8 @@ public class NestedRowDataTest {
 
         assertThat(StringData.fromString("hahahahafff")).isEqualTo(row2.getRow(0, 2).getString(0));
         RowData nestedRow = row2.getRow(0, 2).getRow(1, 4);
-        assertThat(1).isEqualTo(nestedRow.getInt(0));
-        assertThat(5L).isEqualTo(nestedRow.getLong(1));
+        assertThat(nestedRow.getInt(0)).isEqualTo(1);
+        assertThat(nestedRow.getLong(1)).isEqualTo(5L);
         assertThat(StringData.fromString("12345678")).isEqualTo(nestedRow.getString(2));
         assertThat(nestedRow.isNullAt(3)).isTrue();
     }

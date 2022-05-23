@@ -36,14 +36,13 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.time.ZoneId;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.insertRecord;
 import static org.apache.flink.table.runtime.util.TimeWindowUtil.toUtcTimestampMills;
@@ -53,8 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests for window deduplicate operators created by {@link
  * RowTimeWindowDeduplicateOperatorBuilder}.
  */
-@RunWith(Parameterized.class)
-public class RowTimeWindowDeduplicateOperatorTest {
+class RowTimeWindowDeduplicateOperatorTest {
 
     private static final RowType INPUT_ROW_TYPE =
             new RowType(
@@ -88,15 +86,9 @@ public class RowTimeWindowDeduplicateOperatorTest {
 
     private static final ZoneId UTC_ZONE_ID = ZoneId.of("UTC");
     private static final ZoneId SHANGHAI_ZONE_ID = ZoneId.of("Asia/Shanghai");
-    private final ZoneId shiftTimeZone;
 
-    public RowTimeWindowDeduplicateOperatorTest(ZoneId shiftTimeZone) {
-        this.shiftTimeZone = shiftTimeZone;
-    }
-
-    @Parameterized.Parameters(name = "TimeZone = {0}")
-    public static Collection<Object[]> runMode() {
-        return Arrays.asList(new Object[] {UTC_ZONE_ID}, new Object[] {SHANGHAI_ZONE_ID});
+    public static Stream<ZoneId> runMode() {
+        return Stream.of(UTC_ZONE_ID, SHANGHAI_ZONE_ID);
     }
 
     private static OneInputStreamOperatorTestHarness<RowData, RowData> createTestHarness(
@@ -105,8 +97,9 @@ public class RowTimeWindowDeduplicateOperatorTest {
                 operator, KEY_SELECTOR, KEY_SELECTOR.getProducedType());
     }
 
-    @Test
-    public void testRowTimeWindowDeduplicateKeepFirstRow() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testRowTimeWindowDeduplicateKeepFirstRow(ZoneId shiftTimeZone) throws Exception {
         SlicingWindowOperator<RowData, ?> operator =
                 RowTimeWindowDeduplicateOperatorBuilder.builder()
                         .inputSerializer(INPUT_ROW_SER)
@@ -204,8 +197,9 @@ public class RowTimeWindowDeduplicateOperatorTest {
         testHarness.close();
     }
 
-    @Test
-    public void testRowTimeWindowDeduplicateKeepLastRow() throws Exception {
+    @ParameterizedTest(name = "TimeZone = {0}")
+    @MethodSource("runMode")
+    void testRowTimeWindowDeduplicateKeepLastRow(ZoneId shiftTimeZone) throws Exception {
         SlicingWindowOperator<RowData, ?> operator =
                 RowTimeWindowDeduplicateOperatorBuilder.builder()
                         .inputSerializer(INPUT_ROW_SER)

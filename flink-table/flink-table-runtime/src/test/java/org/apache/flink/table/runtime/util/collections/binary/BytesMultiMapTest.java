@@ -24,7 +24,7 @@ import org.apache.flink.table.runtime.typeutils.BinaryRowDataSerializer;
 import org.apache.flink.table.types.logical.LogicalType;
 
 /** Verify the correctness of {@link BytesMultiMap}. */
-public class BytesMultiMapTest extends BytesMultiMapTestBase<BinaryRowData> {
+class BytesMultiMapTest extends BytesMultiMapTestBase<BinaryRowData> {
 
     public BytesMultiMapTest() {
         super(new BinaryRowDataSerializer(KEY_TYPES.length));

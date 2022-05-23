@@ -51,8 +51,7 @@ import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.util.Collector;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.Test;
 import org.junit.runners.Parameterized;
 
 import java.util.ArrayList;
@@ -75,8 +74,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
 /** Harness tests for {@link LookupJoinRunner} and {@link LookupJoinWithCalcRunner}. */
-@RunWith(Parameterized.class)
-public class AsyncLookupJoinHarnessTest {
+class AsyncLookupJoinHarnessTest {
 
     private static final int ASYNC_BUFFER_CAPACITY = 100;
     private static final int ASYNC_TIMEOUT_MS = 3000;
@@ -116,7 +114,7 @@ public class AsyncLookupJoinHarnessTest {
                     InternalSerializers.<RowData>create(rightRowDataType.getLogicalType());
 
     @Test
-    public void testTemporalInnerAsyncJoin() throws Exception {
+    void testTemporalInnerAsyncJoin() throws Exception {
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness =
                 createHarness(JoinType.INNER_JOIN, FilterOnTable.WITHOUT_FILTER);
 
@@ -146,7 +144,7 @@ public class AsyncLookupJoinHarnessTest {
     }
 
     @Test
-    public void testTemporalInnerAsyncJoinWithFilter() throws Exception {
+    void testTemporalInnerAsyncJoinWithFilter() throws Exception {
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness =
                 createHarness(JoinType.INNER_JOIN, FilterOnTable.WITH_FILTER);
 
@@ -175,7 +173,7 @@ public class AsyncLookupJoinHarnessTest {
     }
 
     @Test
-    public void testTemporalLeftAsyncJoin() throws Exception {
+    void testTemporalLeftAsyncJoin() throws Exception {
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness =
                 createHarness(JoinType.LEFT_JOIN, FilterOnTable.WITHOUT_FILTER);
 
@@ -209,7 +207,7 @@ public class AsyncLookupJoinHarnessTest {
     }
 
     @Test
-    public void testTemporalLeftAsyncJoinWithFilter() throws Exception {
+    void testTemporalLeftAsyncJoinWithFilter() throws Exception {
         OneInputStreamOperatorTestHarness<RowData, RowData> testHarness =
                 createHarness(JoinType.LEFT_JOIN, FilterOnTable.WITH_FILTER);
 
@@ -293,7 +291,7 @@ public class AsyncLookupJoinHarnessTest {
     }
 
     @Test
-    public void testCloseAsyncLookupJoinRunner() throws Exception {
+    void testCloseAsyncLookupJoinRunner() throws Exception {
         final AsyncLookupJoinRunner joinRunner =
                 new AsyncLookupJoinRunner(
                         new GeneratedFunctionWrapper(new TestingFetcherFunction()),

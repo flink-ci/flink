@@ -49,78 +49,65 @@ import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.types.logical.YearMonthIntervalType;
 import org.apache.flink.table.types.logical.ZonedTimestampType;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
-import org.junit.runners.Parameterized.Parameter;
-import org.junit.runners.Parameterized.Parameters;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.params.provider.Arguments.of;
 
 /** Tests for {@link PlannerTypeUtils#isAssignable(LogicalType, LogicalType)}. */
-@RunWith(Parameterized.class)
-public class LogicalTypeAssignableTest {
+class LogicalTypeAssignableTest {
 
-    @Parameters(name = "{index}: [{0} COMPATIBLE {1} => {2}")
-    public static List<Object[]> testData() {
-        return Arrays.asList(
-                new Object[][] {
-                    {new CharType(), new CharType(5), true},
-                    {new CharType(), new VarCharType(5), true},
-                    {new VarCharType(), new VarCharType(33), true},
-                    {new BooleanType(), new BooleanType(false), true},
-                    {new BinaryType(), new BinaryType(22), true},
-                    {new VarBinaryType(), new VarBinaryType(44), true},
-                    {new DecimalType(), new DecimalType(10, 2), true},
-                    {new TinyIntType(), new TinyIntType(false), true},
-                    {new SmallIntType(), new SmallIntType(false), true},
-                    {new IntType(), new IntType(false), true},
-                    {new BigIntType(), new BigIntType(false), true},
-                    {new FloatType(), new FloatType(false), true},
-                    {new DoubleType(), new DoubleType(false), true},
-                    {new DateType(), new DateType(false), true},
-                    {new TimeType(), new TimeType(9), false},
-                    {new TimestampType(9), new TimestampType(3), true},
-                    {new ZonedTimestampType(9), new ZonedTimestampType(3), false},
-                    {
+    private static Stream<Arguments> testData() {
+        return Stream.of(
+                of(new CharType(), new CharType(5), true),
+                of(new CharType(), new VarCharType(5), true),
+                of(new VarCharType(), new VarCharType(33), true),
+                of(new BooleanType(), new BooleanType(false), true),
+                of(new BinaryType(), new BinaryType(22), true),
+                of(new VarBinaryType(), new VarBinaryType(44), true),
+                of(new DecimalType(), new DecimalType(10, 2), true),
+                of(new TinyIntType(), new TinyIntType(false), true),
+                of(new SmallIntType(), new SmallIntType(false), true),
+                of(new IntType(), new IntType(false), true),
+                of(new BigIntType(), new BigIntType(false), true),
+                of(new FloatType(), new FloatType(false), true),
+                of(new DoubleType(), new DoubleType(false), true),
+                of(new DateType(), new DateType(false), true),
+                of(new TimeType(), new TimeType(9), false),
+                of(new TimestampType(9), new TimestampType(3), true),
+                of(new ZonedTimestampType(9), new ZonedTimestampType(3), false),
+                of(
                         new ZonedTimestampType(false, TimestampKind.ROWTIME, 9),
                         new ZonedTimestampType(3),
-                        false
-                    },
-                    {
+                        false),
+                of(
                         new YearMonthIntervalType(
                                 YearMonthIntervalType.YearMonthResolution.YEAR_TO_MONTH, 2),
                         new YearMonthIntervalType(YearMonthIntervalType.YearMonthResolution.MONTH),
-                        false
-                    },
-                    {
+                        false),
+                of(
                         new DayTimeIntervalType(
                                 DayTimeIntervalType.DayTimeResolution.DAY_TO_SECOND, 2, 6),
                         new DayTimeIntervalType(
                                 DayTimeIntervalType.DayTimeResolution.DAY_TO_SECOND, 2, 7),
-                        false
-                    },
-                    {
-                        new ArrayType(new TimestampType()),
-                        new ArrayType(new SmallIntType()),
-                        false,
-                    },
-                    {
+                        false),
+                of(new ArrayType(new TimestampType()), new ArrayType(new SmallIntType()), false),
+                of(
                         new MultisetType(new TimestampType()),
                         new MultisetType(new SmallIntType()),
-                        false
-                    },
-                    {
+                        false),
+                of(
                         new MapType(new VarCharType(20), new TimestampType()),
                         new MapType(new VarCharType(99), new TimestampType()),
-                        true
-                    },
-                    {
+                        true),
+                of(
                         new RowType(
                                 Arrays.asList(
                                         new RowType.RowField("a", new VarCharType()),
@@ -134,9 +121,8 @@ public class LogicalTypeAssignableTest {
                                         new RowType.RowField("_c", new VarCharType()),
                                         new RowType.RowField("_d", new TimestampType()))),
                         // field name doesn't matter
-                        true
-                    },
-                    {
+                        true),
+                of(
                         new RowType(
                                 Arrays.asList(
                                         new RowField("f1", new IntType()),
@@ -145,9 +131,8 @@ public class LogicalTypeAssignableTest {
                                 Arrays.asList(
                                         new RowField("f1", new IntType()),
                                         new RowField("f2", new BooleanType()))),
-                        false
-                    },
-                    {
+                        false),
+                of(
                         new ArrayType(
                                 new RowType(
                                         Arrays.asList(
@@ -158,9 +143,8 @@ public class LogicalTypeAssignableTest {
                                         Arrays.asList(
                                                 new RowField("f3", new IntType()),
                                                 new RowField("f4", new IntType())))),
-                        true
-                    },
-                    {
+                        true),
+                of(
                         new MapType(
                                 new IntType(),
                                 new RowType(
@@ -173,9 +157,8 @@ public class LogicalTypeAssignableTest {
                                         Arrays.asList(
                                                 new RowField("f3", new IntType()),
                                                 new RowField("f4", new IntType())))),
-                        true
-                    },
-                    {
+                        true),
+                of(
                         new MultisetType(
                                 new RowType(
                                         Arrays.asList(
@@ -186,36 +169,24 @@ public class LogicalTypeAssignableTest {
                                         Arrays.asList(
                                                 new RowField("f1", new IntType()),
                                                 new RowField("f2", new IntType())))),
-                        true
-                    },
-                    {
+                        true),
+                of(
                         new TypeInformationRawType<>(Types.GENERIC(PlannerTypeUtils.class)),
                         new TypeInformationRawType<>(Types.GENERIC(Object.class)),
-                        false
-                    },
-                    {
+                        false),
+                of(
                         createUserType(new IntType(), new VarCharType()),
                         createUserType(new IntType(), new VarCharType()),
-                        true
-                    },
-                    {
+                        true),
+                of(
                         createDistinctType(new DecimalType(10, 2)),
                         createDistinctType(new DecimalType(10, 2)),
-                        true
-                    }
-                });
+                        true));
     }
 
-    @Parameter public LogicalType sourceType;
-
-    @Parameter(1)
-    public LogicalType targetType;
-
-    @Parameter(2)
-    public boolean equals;
-
-    @Test
-    public void testAreTypesCompatible() {
+    @ParameterizedTest(name = "{index}: [{0} COMPATIBLE {1} => {2}")
+    @MethodSource("testData")
+    void testAreTypesCompatible(LogicalType sourceType, LogicalType targetType, boolean equals) {
         assertThat(PlannerTypeUtils.isAssignable(sourceType, targetType)).isEqualTo(equals);
         assertThat(PlannerTypeUtils.isAssignable(sourceType, sourceType.copy())).isTrue();
         assertThat(PlannerTypeUtils.isAssignable(targetType, targetType.copy())).isTrue();
