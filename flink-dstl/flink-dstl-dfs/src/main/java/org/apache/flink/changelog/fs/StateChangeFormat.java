@@ -18,6 +18,7 @@
 package org.apache.flink.changelog.fs;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
@@ -52,17 +53,18 @@ public class StateChangeFormat
         implements StateChangelogHandleStreamHandleReader.StateChangeIterator {
     private static final Logger LOG = LoggerFactory.getLogger(StateChangeFormat.class);
 
-    Map<StateChangeSet, Long> write(OutputStreamWithPos os, Collection<StateChangeSet> changeSets)
-            throws IOException {
+    Map<StateChangeSet, Tuple2<Long, Long>> write(
+            OutputStreamWithPos os, Collection<StateChangeSet> changeSets) throws IOException {
         List<StateChangeSet> sorted = new ArrayList<>(changeSets);
         // using sorting instead of bucketing for simplicity
         sorted.sort(
                 comparing(StateChangeSet::getLogId)
                         .thenComparing(StateChangeSet::getSequenceNumber));
         DataOutputViewStreamWrapper dataOutput = new DataOutputViewStreamWrapper(os);
-        Map<StateChangeSet, Long> pendingResults = new HashMap<>();
+        Map<StateChangeSet, Tuple2<Long, Long>> pendingResults = new HashMap<>();
         for (StateChangeSet changeSet : sorted) {
-            pendingResults.put(changeSet, os.getPos());
+            long pos = os.getPos();
+            pendingResults.put(changeSet, Tuple2.of(pos, pos));
             writeChangeSet(dataOutput, changeSet.getChanges());
         }
         return pendingResults;
