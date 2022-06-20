@@ -68,7 +68,7 @@ Flink 的数据类型类似于 SQL 标准中的术语*数据类型*，但包含�
 `数据类型` 实例有如下职责：
 - **作为逻辑类型的表现形式**，定义 JVM 类语言或 Python 语言与 Table 生态系统的边界，而不是以具体的物理表现形式存在于数据的传输过程或存储中。
 
-对于 Python 语言，这些数据类型可以在 `pyflink.table.types.DataTypes` 下找到。
+对于 Python 语言，这些类型可以在 `pyflink.table.types.DataTypes` 下找到。
 {{< /tab >}}
 {{< /tabs >}}
 
