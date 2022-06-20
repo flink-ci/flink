@@ -108,7 +108,7 @@ t = DataTypes.INTERVAL(DataTypes.DAY(), DataTypes.SECOND(3))
 
 比如，在 source 端产生数据时，可以规定：`TIMESTAMP` 的逻辑类型，在底层要使用 `java.sql.Timestamp` 这个类表示，而不是使用默认的 `java.time.LocalDateTime` 类。有了物理提示，可以帮助 Flink 运行时根据提供的类将数据转换为其内部数据格式。同样在 sink 端，定义好数据格式，以便能从 Flink 运行时获取、转换数据。
 
-下面的例子展示了如何使用 Bridging 的方式指定要转换的类：
+下面的例子展示了如何声明一个桥接转换类：
 
 {{< tabs "hints" >}}
 {{< tab "Java" >}}
