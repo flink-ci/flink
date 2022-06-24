@@ -29,7 +29,7 @@ under the License.
 	</parent>
 
 	<artifactId>flink-sql-csv</artifactId>
-	<name>Flink : Formats : SQL Avro</name>
+	<name>Flink : Formats : SQL Csv</name>
 
 	<packaging>jar</packaging>
 
