@@ -29,15 +29,24 @@ import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.TestLogger;
 
-import org.joda.time.DateTime;
 import org.junit.Test;
 
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Test that ensures watermarks are correctly propagating with finished sources. */
+/**
+ * Test that ensures watermarks are correctly propagating with finished sources. This test has one
+ * short living source that finishes immediately. Then after 5th checkpoint job fails over, and then
+ * it makes sure that the watermark emitted from the other still working source around checkpoint
+ * 10, is reaching the sink. Only once this happens, the long living source is allowed to exit. If
+ * the watermark is not propagated/silently swallowed (as for example in FLINK-28357), the test is
+ * expected to livelock.
+ */
 public class FinishedSourcesWatermarkITCase extends TestLogger {
 
-    private static final AtomicLong ACTUAL_DOWNSTREAM_WATERMARK = new AtomicLong(0);
+    private static final AtomicLong CHECKPOINT_10_WATERMARK =
+            new AtomicLong(Watermark.MAX_WATERMARK.getTimestamp());
+    private static final AtomicBoolean DOWNSTREAM_CHECKPOINT_10_WATERMARK_ACK = new AtomicBoolean();
 
     @Test
     public void testTwoConsecutiveFinishedTasksShouldPropagateMaxWatermark() throws Exception {
@@ -47,7 +56,9 @@ public class FinishedSourcesWatermarkITCase extends TestLogger {
         // disable chaining to make sure we will have two consecutive checkpoints with Task ==
         // FINISHED
         env.disableOperatorChaining();
-        env.enableCheckpointing(100);
+        // Make sure that the short living source has plenty of time to finish before the 5th
+        // checkpoint
+        env.enableCheckpointing(200);
 
         // create our sources - one that will want to run forever, and another that finishes
         // immediately
@@ -63,43 +74,36 @@ public class FinishedSourcesWatermarkITCase extends TestLogger {
         // recovery
         runningStreamIn
                 .connect(mappedEmptyStream)
-                .process(new MyCoProcessFunction())
+                .process(new NoopCoProcessFunction())
                 .name("Join")
-                .addSink(
-                        new SinkFunction<String>() {
-                            @Override
-                            public void writeWatermark(
-                                    org.apache.flink.api.common.eventtime.Watermark watermark) {
-                                ACTUAL_DOWNSTREAM_WATERMARK.set(watermark.getTimestamp());
-                            }
-                        });
+                .addSink(new SinkWaitingForWatermark());
 
         env.execute();
+    }
+
+    private static class SinkWaitingForWatermark implements SinkFunction<String> {
+        @Override
+        public void writeWatermark(org.apache.flink.api.common.eventtime.Watermark watermark) {
+            if (watermark.getTimestamp() > CHECKPOINT_10_WATERMARK.get()) {
+                DOWNSTREAM_CHECKPOINT_10_WATERMARK_ACK.set(true);
+            }
+        }
     }
 
     private static class LongRunningSource extends RichSourceFunction<String>
             implements CheckpointListener {
         private volatile boolean isRunning = true;
-        private transient long lastSuccessfulCheckpointId;
+        private long lastEmittedWatermark;
 
         @Override
         public void run(SourceContext<String> sourceContext) throws Exception {
-            long expectedWatermark = Watermark.MAX_WATERMARK.getTimestamp();
-            long watermark = DateTime.now().getMillis();
-            sourceContext.emitWatermark(new Watermark(watermark));
-
-            while (isRunning && expectedWatermark > ACTUAL_DOWNSTREAM_WATERMARK.get()) {
+            while (isRunning && !DOWNSTREAM_CHECKPOINT_10_WATERMARK_ACK.get()) {
                 synchronized (sourceContext.getCheckpointLock()) {
-                    watermark = DateTime.now().getMillis();
-                    sourceContext.emitWatermark(new Watermark(watermark));
-                    if (lastSuccessfulCheckpointId == 5) {
-                        throw new RuntimeException("Force recovery");
-                    }
-                    if (lastSuccessfulCheckpointId > 10 && expectedWatermark > watermark) {
-                        expectedWatermark = watermark;
-                    }
-                    Thread.sleep(1);
+                    lastEmittedWatermark =
+                            Math.max(System.currentTimeMillis(), lastEmittedWatermark);
+                    sourceContext.emitWatermark(new Watermark(lastEmittedWatermark));
                 }
+                Thread.sleep(1);
             }
         }
 
@@ -110,7 +114,13 @@ public class FinishedSourcesWatermarkITCase extends TestLogger {
 
         @Override
         public void notifyCheckpointComplete(long checkpointId) throws Exception {
-            lastSuccessfulCheckpointId = checkpointId;
+            if (checkpointId == 5) {
+                throw new RuntimeException("Force recovery");
+            }
+            if (checkpointId > 10) {
+                CHECKPOINT_10_WATERMARK.set(
+                        Math.min(lastEmittedWatermark, CHECKPOINT_10_WATERMARK.get()));
+            }
         }
     }
 
@@ -121,7 +131,7 @@ public class FinishedSourcesWatermarkITCase extends TestLogger {
         public void cancel() {}
     }
 
-    private static class MyCoProcessFunction extends CoProcessFunction<String, String, String> {
+    private static class NoopCoProcessFunction extends CoProcessFunction<String, String, String> {
         @Override
         public void processElement1(String val, Context context, Collector<String> collector) {}
 
