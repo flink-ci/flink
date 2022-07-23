@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.operators.coordination;
 
 import org.apache.flink.runtime.jobgraph.OperatorID;
-import org.apache.flink.runtime.util.SerializableFunction;
+import org.apache.flink.util.function.SerializableFunction;
 
 import javax.annotation.Nullable;
 
@@ -33,7 +33,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 
 /** A simple testing implementation of the {@link OperatorCoordinator}. */
-class TestingOperatorCoordinator implements OperatorCoordinator {
+public class TestingOperatorCoordinator implements OperatorCoordinator {
 
     public static final byte[] NULL_RESTORE_VALUE = new byte[0];
 
@@ -88,12 +88,12 @@ class TestingOperatorCoordinator implements OperatorCoordinator {
     }
 
     @Override
-    public void handleEventFromOperator(int subtask, OperatorEvent event) {
+    public void handleEventFromOperator(int subtask, int attemptNumber, OperatorEvent event) {
         receivedOperatorEvents.add(event);
     }
 
     @Override
-    public void subtaskFailed(int subtask, @Nullable Throwable reason) {
+    public void executionAttemptFailed(int subtask, int attemptNumber, @Nullable Throwable reason) {
         failedTasks.add(subtask);
         subtaskGateways.remove(subtask);
     }
@@ -104,7 +104,7 @@ class TestingOperatorCoordinator implements OperatorCoordinator {
     }
 
     @Override
-    public void subtaskReady(int subtask, SubtaskGateway gateway) {
+    public void executionAttemptReady(int subtask, int attemptNumber, SubtaskGateway gateway) {
         subtaskGateways.put(subtask, gateway);
     }
 

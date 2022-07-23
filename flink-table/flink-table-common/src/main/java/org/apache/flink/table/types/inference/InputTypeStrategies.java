@@ -19,6 +19,7 @@
 package org.apache.flink.table.types.inference;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.table.expressions.TableSymbol;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.inference.strategies.AndArgumentTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.AnyArgumentTypeStrategy;
@@ -33,9 +34,12 @@ import org.apache.flink.table.types.inference.strategies.LiteralArgumentTypeStra
 import org.apache.flink.table.types.inference.strategies.OrArgumentTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.OrInputTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.OutputArgumentTypeStrategy;
+import org.apache.flink.table.types.inference.strategies.RepeatingSequenceInputTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.RootArgumentTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.SequenceInputTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.SubsequenceInputTypeStrategy.SubsequenceStrategyBuilder;
+import org.apache.flink.table.types.inference.strategies.SymbolArgumentTypeStrategy;
+import org.apache.flink.table.types.inference.strategies.TypeLiteralArgumentTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.VaryingSequenceInputTypeStrategy;
 import org.apache.flink.table.types.inference.strategies.WildcardInputTypeStrategy;
 import org.apache.flink.table.types.logical.LogicalTypeFamily;
@@ -44,8 +48,9 @@ import org.apache.flink.table.types.logical.StructuredType.StructuredComparison;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Strategies for inferring and validating input arguments in a function call.
@@ -85,6 +90,15 @@ public final class InputTypeStrategies {
     }
 
     /**
+     * Strategy for a named function signature like {@code f(s STRING, n NUMERIC)} using a sequence
+     * of {@link ArgumentTypeStrategy}s.
+     */
+    public static InputTypeStrategy sequence(
+            List<String> argumentNames, List<ArgumentTypeStrategy> strategies) {
+        return new SequenceInputTypeStrategy(strategies, argumentNames);
+    }
+
+    /**
      * Strategy for a varying function signature like {@code f(INT, STRING, NUMERIC...)} using a
      * sequence of {@link ArgumentTypeStrategy}s. The first n - 1 arguments must be constant. The
      * n-th argument can occur 0, 1, or more times.
@@ -102,6 +116,11 @@ public final class InputTypeStrategies {
             String[] argumentNames, ArgumentTypeStrategy[] strategies) {
         return new VaryingSequenceInputTypeStrategy(
                 Arrays.asList(strategies), Arrays.asList(argumentNames));
+    }
+
+    /** Arbitrarily often repeating sequence of argument type strategies. */
+    public static InputTypeStrategy repeatingSequence(ArgumentTypeStrategy... strategies) {
+        return new RepeatingSequenceInputTypeStrategy(Arrays.asList(strategies));
     }
 
     /**
@@ -195,6 +214,10 @@ public final class InputTypeStrategies {
     public static final LiteralArgumentTypeStrategy LITERAL_OR_NULL =
             new LiteralArgumentTypeStrategy(true);
 
+    /** Strategy that checks if an argument is a type literal. */
+    public static final TypeLiteralArgumentTypeStrategy TYPE_LITERAL =
+            new TypeLiteralArgumentTypeStrategy();
+
     /** Strategy that checks that the argument has a composite type. */
     public static final ArgumentTypeStrategy COMPOSITE = new CompositeArgumentTypeStrategy();
 
@@ -255,7 +278,7 @@ public final class InputTypeStrategies {
 
     /** Strategy for an argument that must fulfill a given constraint. */
     public static ConstraintArgumentTypeStrategy constraint(
-            String constraintMessage, Function<List<DataType>, Boolean> evaluator) {
+            String constraintMessage, Predicate<List<DataType>> evaluator) {
         return new ConstraintArgumentTypeStrategy(constraintMessage, evaluator);
     }
 
@@ -289,6 +312,32 @@ public final class InputTypeStrategies {
      */
     public static OrArgumentTypeStrategy or(ArgumentTypeStrategy... strategies) {
         return new OrArgumentTypeStrategy(Arrays.asList(strategies));
+    }
+
+    /**
+     * Strategy for a symbol argument of a specific {@link TableSymbol} enum.
+     *
+     * <p>A symbol is implied to be a literal argument.
+     */
+    public static SymbolArgumentTypeStrategy<?> symbol(
+            Class<? extends Enum<? extends TableSymbol>> clazz) {
+        return new SymbolArgumentTypeStrategy<>(clazz);
+    }
+
+    /**
+     * Strategy for a symbol argument of a specific {@link TableSymbol} enum, with value being one
+     * of the provided variants.
+     *
+     * <p>A symbol is implied to be a literal argument.
+     */
+    @SafeVarargs
+    @SuppressWarnings("unchecked")
+    public static <T extends Enum<? extends TableSymbol>> SymbolArgumentTypeStrategy<T> symbol(
+            T firstAllowedVariant, T... otherAllowedVariants) {
+        return new SymbolArgumentTypeStrategy<T>(
+                (Class<T>) firstAllowedVariant.getClass(),
+                Stream.concat(Stream.of(firstAllowedVariant), Arrays.stream(otherAllowedVariants))
+                        .collect(Collectors.toSet()));
     }
 
     /**

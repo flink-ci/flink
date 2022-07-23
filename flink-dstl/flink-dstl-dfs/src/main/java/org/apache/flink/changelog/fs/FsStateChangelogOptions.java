@@ -45,7 +45,7 @@ public class FsStateChangelogOptions {
     public static final ConfigOption<MemorySize> PREEMPTIVE_PERSIST_THRESHOLD =
             ConfigOptions.key("dstl.dfs.preemptive-persist-threshold")
                     .memoryType()
-                    .defaultValue(MemorySize.parse("5Mb"))
+                    .defaultValue(MemorySize.parse("5MB"))
                     .withDescription(
                             "Size threshold for state changes of a single operator "
                                     + "beyond which they are persisted pre-emptively without waiting for a checkpoint. "
@@ -65,7 +65,7 @@ public class FsStateChangelogOptions {
     public static final ConfigOption<MemorySize> PERSIST_SIZE_THRESHOLD =
             ConfigOptions.key("dstl.dfs.batch.persist-size-threshold")
                     .memoryType()
-                    .defaultValue(MemorySize.parse("10Mb"))
+                    .defaultValue(MemorySize.parse("10MB"))
                     .withDescription(
                             "Size threshold for state changes that were requested to be persisted but are waiting for "
                                     + PERSIST_DELAY.key()
@@ -73,12 +73,13 @@ public class FsStateChangelogOptions {
                                     + ". Once reached, accumulated changes are persisted immediately. "
                                     + "This is different from "
                                     + PREEMPTIVE_PERSIST_THRESHOLD.key()
-                                    + " as it happens AFTER the checkpoint and potentially for state changes of multiple operators.");
+                                    + " as it happens AFTER the checkpoint and potentially for state changes of multiple operators. "
+                                    + "Must not exceed in-flight data limit (see below)");
 
     public static final ConfigOption<MemorySize> UPLOAD_BUFFER_SIZE =
             ConfigOptions.key("dstl.dfs.upload.buffer-size")
                     .memoryType()
-                    .defaultValue(MemorySize.parse("1Mb"))
+                    .defaultValue(MemorySize.parse("1MB"))
                     .withDescription("Buffer size used when uploading change sets");
 
     public static final ConfigOption<Integer> NUM_UPLOAD_THREADS =
@@ -87,13 +88,27 @@ public class FsStateChangelogOptions {
                     .defaultValue(5)
                     .withDescription("Number of threads to use for upload.");
 
+    public static final ConfigOption<Integer> NUM_DISCARD_THREADS =
+            ConfigOptions.key("dstl.dfs.discard.num-threads")
+                    .intType()
+                    .defaultValue(1)
+                    .withDescription(
+                            "Number of threads to use to discard changelog (e.g. pre-emptively uploaded unused state).");
+
     public static final ConfigOption<MemorySize> IN_FLIGHT_DATA_LIMIT =
             ConfigOptions.key("dstl.dfs.upload.max-in-flight")
                     .memoryType()
-                    .defaultValue(MemorySize.parse("100Mb"))
+                    .defaultValue(MemorySize.parse("100MB"))
                     .withDescription(
                             "Max amount of data allowed to be in-flight. "
-                                    + "Upon reaching this limit the task will fail");
+                                    + "Upon reaching this limit the task will be back-pressured. "
+                                    + " I.e., snapshotting will block; normal processing will block if "
+                                    + PREEMPTIVE_PERSIST_THRESHOLD.key()
+                                    + " is set and reached. "
+                                    + "The limit is applied to the total size of in-flight changes if multiple "
+                                    + "operators/backends are using the same changelog storage. "
+                                    + "Must be greater than or equal to "
+                                    + PERSIST_SIZE_THRESHOLD.key());
 
     public static final ConfigOption<String> RETRY_POLICY =
             ConfigOptions.key("dstl.dfs.upload.retry-policy")
@@ -119,7 +134,7 @@ public class FsStateChangelogOptions {
                     .intType()
                     .defaultValue(3)
                     .withDescription(
-                            "Maximum number of attempts (including the initial one) to peform a particular upload. "
+                            "Maximum number of attempts (including the initial one) to perform a particular upload. "
                                     + "Only takes effect if "
                                     + RETRY_POLICY.key()
                                     + " is fixed.");

@@ -23,45 +23,45 @@ import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.types.RowKind;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.apache.flink.table.test.TableAssertions.assertThat;
 
 /** Tests for {@link JoinedRowData}. */
-public class JoinedRowDataTest {
+class JoinedRowDataTest {
 
     @Test
-    public void testJoinedRows() {
+    void testJoinedRows() {
         final RowData row1 = GenericRowData.of(1L, 2L);
         final RowData row2 = GenericRowData.of(3L, StringData.fromString("4"));
         final RowData joinedRow = new JoinedRowData(row1, row2);
 
-        assertEquals(RowKind.INSERT, joinedRow.getRowKind());
-        assertEquals(4, joinedRow.getArity());
-        assertEquals(1L, joinedRow.getLong(0));
-        assertEquals(2L, joinedRow.getLong(1));
-        assertEquals(3L, joinedRow.getLong(2));
-        assertEquals("4", joinedRow.getString(3).toString());
+        assertThat(joinedRow).hasKind(RowKind.INSERT).hasArity(4);
+        assertThat(joinedRow).getLong(0).isEqualTo(1);
+        assertThat(joinedRow).getLong(1).isEqualTo(2);
+        assertThat(joinedRow).getLong(2).isEqualTo(3);
+        assertThat(joinedRow).getString(3).isEqualTo("4");
     }
 
     @Test
-    public void testJoinedRowKind() {
+    void testJoinedRowKind() {
         final RowData joinedRow =
                 new JoinedRowData(RowKind.DELETE, GenericRowData.of(), GenericRowData.of());
-        assertEquals(RowKind.DELETE, joinedRow.getRowKind());
+        assertThat(joinedRow).hasKind(RowKind.DELETE);
     }
 
     @Test
-    public void testReplace() {
+    void testReplace() {
         final RowData row1 = GenericRowData.of(1L);
         final RowData row2 = GenericRowData.of(2L);
         final JoinedRowData joinedRow = new JoinedRowData(row1, row2);
-        assertEquals(2, joinedRow.getArity());
+
+        assertThat(joinedRow).hasArity(2);
 
         joinedRow.replace(GenericRowData.of(3L), GenericRowData.of(4L, 5L));
-        assertEquals(3, joinedRow.getArity());
-        assertEquals(3L, joinedRow.getLong(0));
-        assertEquals(4L, joinedRow.getLong(1));
-        assertEquals(5L, joinedRow.getLong(2));
+        assertThat(joinedRow).hasArity(3);
+        assertThat(joinedRow).getLong(0).isEqualTo(3);
+        assertThat(joinedRow).getLong(1).isEqualTo(4);
+        assertThat(joinedRow).getLong(2).isEqualTo(5);
     }
 }

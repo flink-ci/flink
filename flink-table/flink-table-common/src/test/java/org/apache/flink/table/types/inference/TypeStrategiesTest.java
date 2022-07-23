@@ -22,24 +22,22 @@ import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.types.logical.LogicalTypeFamily;
 import org.apache.flink.table.types.logical.utils.LogicalTypeMerging;
 
-import org.junit.runners.Parameterized;
-
-import java.util.Arrays;
-import java.util.List;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.types.inference.TypeStrategies.MISSING;
 import static org.apache.flink.table.types.inference.TypeStrategies.argument;
 import static org.apache.flink.table.types.inference.TypeStrategies.explicit;
-import static org.apache.flink.table.types.inference.TypeStrategies.nullable;
+import static org.apache.flink.table.types.inference.TypeStrategies.nullableIfAllArgs;
+import static org.apache.flink.table.types.inference.TypeStrategies.nullableIfArgs;
 import static org.apache.flink.table.types.inference.TypeStrategies.varyingString;
 
 /** Tests for built-in {@link TypeStrategies}. */
-public class TypeStrategiesTest extends TypeStrategiesTestBase {
+class TypeStrategiesTest extends TypeStrategiesTestBase {
 
-    @Parameterized.Parameters(name = "{index}: {0}")
-    public static List<TypeStrategiesTestBase.TestSpec> testData() {
-        return Arrays.asList(
+    @Override
+    protected Stream<TestSpec> testData() {
+        return Stream.of(
                 // missing strategy with arbitrary argument
                 TypeStrategiesTestBase.TestSpec.forStrategy(MISSING)
                         .inputTypes(DataTypes.INT())
@@ -87,31 +85,31 @@ public class TypeStrategiesTest extends TypeStrategiesTestBase {
                                 "Could not infer an output type for the given arguments."),
                 TypeStrategiesTestBase.TestSpec.forStrategy(
                                 "Cascading to nullable type",
-                                nullable(explicit(DataTypes.BOOLEAN().notNull())))
+                                nullableIfArgs(explicit(DataTypes.BOOLEAN().notNull())))
                         .inputTypes(DataTypes.BIGINT().notNull(), DataTypes.VARCHAR(2).nullable())
                         .expectDataType(DataTypes.BOOLEAN().nullable()),
                 TypeStrategiesTestBase.TestSpec.forStrategy(
                                 "Cascading to not null type",
-                                nullable(explicit(DataTypes.BOOLEAN().nullable())))
+                                nullableIfArgs(explicit(DataTypes.BOOLEAN().nullable())))
                         .inputTypes(DataTypes.BIGINT().notNull(), DataTypes.VARCHAR(2).notNull())
                         .expectDataType(DataTypes.BOOLEAN().notNull()),
                 TypeStrategiesTestBase.TestSpec.forStrategy(
                                 "Cascading to not null type but only consider first argument",
-                                nullable(
+                                nullableIfArgs(
                                         ConstantArgumentCount.to(0),
                                         explicit(DataTypes.BOOLEAN().nullable())))
                         .inputTypes(DataTypes.BIGINT().notNull(), DataTypes.VARCHAR(2).nullable())
                         .expectDataType(DataTypes.BOOLEAN().notNull()),
                 TypeStrategiesTestBase.TestSpec.forStrategy(
                                 "Cascading to null type but only consider first two argument",
-                                nullable(
+                                nullableIfArgs(
                                         ConstantArgumentCount.to(1),
                                         explicit(DataTypes.BOOLEAN().nullable())))
                         .inputTypes(DataTypes.BIGINT().notNull(), DataTypes.VARCHAR(2).nullable())
                         .expectDataType(DataTypes.BOOLEAN().nullable()),
                 TypeStrategiesTestBase.TestSpec.forStrategy(
                                 "Cascading to not null type but only consider the second and third argument",
-                                nullable(
+                                nullableIfArgs(
                                         ConstantArgumentCount.between(1, 2),
                                         explicit(DataTypes.BOOLEAN().nullable())))
                         .inputTypes(
@@ -119,6 +117,17 @@ public class TypeStrategiesTest extends TypeStrategiesTestBase {
                                 DataTypes.BIGINT().notNull(),
                                 DataTypes.VARCHAR(2).notNull())
                         .expectDataType(DataTypes.BOOLEAN().notNull()),
+                TypeStrategiesTestBase.TestSpec.forStrategy(
+                                "Cascading to not null because one argument is not null",
+                                nullableIfAllArgs(TypeStrategies.COMMON))
+                        .inputTypes(DataTypes.VARCHAR(2).notNull(), DataTypes.VARCHAR(2).nullable())
+                        .expectDataType(DataTypes.VARCHAR(2).notNull()),
+                TypeStrategiesTestBase.TestSpec.forStrategy(
+                                "Cascading to nullable because all args are nullable",
+                                nullableIfAllArgs(TypeStrategies.COMMON))
+                        .inputTypes(
+                                DataTypes.VARCHAR(2).nullable(), DataTypes.VARCHAR(2).nullable())
+                        .expectDataType(DataTypes.VARCHAR(2).nullable()),
                 TypeStrategiesTestBase.TestSpec.forStrategy(
                                 "Find a common type", TypeStrategies.COMMON)
                         .inputTypes(

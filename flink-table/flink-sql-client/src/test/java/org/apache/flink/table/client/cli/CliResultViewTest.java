@@ -21,8 +21,7 @@ import org.apache.flink.api.common.RuntimeExecutionMode;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.DataTypes;
-import org.apache.flink.table.api.TableConfig;
-import org.apache.flink.table.api.TableResult;
+import org.apache.flink.table.api.internal.TableResultInternal;
 import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.client.config.ResultMode;
@@ -30,10 +29,13 @@ import org.apache.flink.table.client.gateway.Executor;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.client.gateway.TypedResult;
+import org.apache.flink.table.data.GenericRowData;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.operations.ModifyOperation;
 import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.QueryOperation;
-import org.apache.flink.types.Row;
+import org.apache.flink.table.planner.functions.casting.RowDataToStringConverterImpl;
+import org.apache.flink.table.utils.DateTimeUtils;
 
 import org.jline.reader.MaskingCallback;
 import org.jline.terminal.Terminal;
@@ -52,7 +54,7 @@ import java.util.concurrent.TimeUnit;
 
 import static org.apache.flink.configuration.ExecutionOptions.RUNTIME_MODE;
 import static org.apache.flink.table.client.config.SqlClientOptions.EXECUTION_RESULT_MODE;
-import static org.junit.Assert.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Contains basic tests for the {@link CliResultView}. */
 public class CliResultViewTest {
@@ -98,12 +100,19 @@ public class CliResultViewTest {
         testConfig.set(EXECUTION_RESULT_MODE, ResultMode.TABLE);
         testConfig.set(RUNTIME_MODE, RuntimeExecutionMode.STREAMING);
         String sessionId = executor.openSession("test-session");
+        ResolvedSchema schema =
+                ResolvedSchema.of(Column.physical("Null Field", DataTypes.STRING()));
         final ResultDescriptor descriptor =
                 new ResultDescriptor(
                         "result-id",
-                        ResolvedSchema.of(Column.physical("Null Field", DataTypes.STRING())),
+                        schema,
                         false,
-                        testConfig);
+                        testConfig,
+                        new RowDataToStringConverterImpl(
+                                schema.toPhysicalRowDataType(),
+                                DateTimeUtils.UTC_ZONE.toZoneId(),
+                                Thread.currentThread().getContextClassLoader(),
+                                false));
 
         try (CliClient cli =
                 new TestingCliClient(
@@ -125,17 +134,16 @@ public class CliResultViewTest {
             }
         }
 
-        assertTrue(
-                "Invalid number of cancellations.",
-                cancellationCounterLatch.await(10, TimeUnit.SECONDS));
+        assertThat(cancellationCounterLatch.await(10, TimeUnit.SECONDS))
+                .as("Invalid number of cancellations.")
+                .isTrue();
     }
 
     private static final class MockExecutor implements Executor {
 
         private final TypedResult<?> typedResult;
         private final CountDownLatch cancellationCounter;
-        private static final Configuration defaultConfig =
-                TableConfig.getDefault().getConfiguration();
+        private static final Configuration defaultConfig = new Configuration();
 
         public MockExecutor(TypedResult<?> typedResult, CountDownLatch cancellationCounter) {
             this.typedResult = typedResult;
@@ -191,13 +199,13 @@ public class CliResultViewTest {
         }
 
         @Override
-        public TableResult executeOperation(String sessionId, Operation operation)
+        public TableResultInternal executeOperation(String sessionId, Operation operation)
                 throws SqlExecutionException {
             return null;
         }
 
         @Override
-        public TableResult executeModifyOperations(
+        public TableResultInternal executeModifyOperations(
                 String sessionId, List<ModifyOperation> operations) throws SqlExecutionException {
             return null;
         }
@@ -210,9 +218,9 @@ public class CliResultViewTest {
 
         @Override
         @SuppressWarnings("unchecked")
-        public TypedResult<List<Row>> retrieveResultChanges(String sessionId, String resultId)
+        public TypedResult<List<RowData>> retrieveResultChanges(String sessionId, String resultId)
                 throws SqlExecutionException {
-            return (TypedResult<List<Row>>) typedResult;
+            return (TypedResult<List<RowData>>) typedResult;
         }
 
         @Override
@@ -223,9 +231,9 @@ public class CliResultViewTest {
         }
 
         @Override
-        public List<Row> retrieveResultPage(String resultId, int page)
+        public List<RowData> retrieveResultPage(String resultId, int page)
                 throws SqlExecutionException {
-            return Collections.singletonList(new Row(1));
+            return Collections.singletonList(new GenericRowData(1));
         }
 
         @Override

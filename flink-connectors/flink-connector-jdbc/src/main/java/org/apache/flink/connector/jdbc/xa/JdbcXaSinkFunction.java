@@ -124,10 +124,6 @@ import static org.apache.flink.connector.jdbc.xa.JdbcXaSinkFunctionState.of;
  * </tbody>
  * </table>
  *
- * <p>Attention: JdbcXaSinkFunction does not support exactly-once mode with MySQL or other databases
- * that do not support multiple XA transaction per connection. We will improve the support in
- * FLINK-22239.
- *
  * @since 1.13
  */
 @Internal
@@ -160,6 +156,9 @@ public class JdbcXaSinkFunction<T> extends AbstractRichFunction
      * Creates a {@link JdbcXaSinkFunction}.
      *
      * <p>All parameters must be {@link java.io.Serializable serializable}.
+     *
+     * <p>Note: {@link JdbcExecutionOptions} maxRetries setting must be strictly set to 0 for this
+     * sink to work properly and not to produce duplicates. See issue FLINK-22311 for details.
      *
      * @param xaFacade {@link XaFacade} to manage XA transactions
      */
@@ -200,6 +199,12 @@ public class JdbcXaSinkFunction<T> extends AbstractRichFunction
             XaSinkStateHandler stateHandler,
             JdbcExactlyOnceOptions options,
             XaGroupOps xaGroupOps) {
+
+        Preconditions.checkArgument(
+                outputFormat.getExecutionOptions().getMaxRetries() == 0,
+                "JDBC XA sink requires maxRetries equal to 0, otherwise it could "
+                        + "cause duplicates. See issue FLINK-22311 for details.");
+
         this.xaFacade = Preconditions.checkNotNull(xaFacade);
         this.xidGenerator = Preconditions.checkNotNull(xidGenerator);
         this.outputFormat = Preconditions.checkNotNull(outputFormat);

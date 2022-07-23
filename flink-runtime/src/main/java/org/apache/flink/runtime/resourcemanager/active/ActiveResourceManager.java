@@ -22,6 +22,7 @@ import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.AkkaOptions;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.blocklist.BlocklistHandler;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessSpec;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessUtils;
@@ -40,7 +41,9 @@ import org.apache.flink.runtime.resourcemanager.exceptions.ResourceManagerExcept
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.RpcService;
+import org.apache.flink.runtime.security.token.DelegationTokenManager;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.TimeUtils;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
@@ -73,7 +76,7 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
 
     protected final Configuration flinkConfig;
 
-    private final Time startWorkerRetryInterval;
+    private final Duration startWorkerRetryInterval;
 
     private final ResourceManagerDriver<WorkerType> resourceManagerDriver;
 
@@ -91,7 +94,7 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
 
     private final ThresholdMeter startWorkerFailureRater;
 
-    private final Time workerRegistrationTimeout;
+    private final Duration workerRegistrationTimeout;
 
     /**
      * Incompletion of this future indicates that the max failure rate of start worker is reached
@@ -107,8 +110,10 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
             UUID leaderSessionId,
             ResourceID resourceId,
             HeartbeatServices heartbeatServices,
+            DelegationTokenManager delegationTokenManager,
             SlotManager slotManager,
             ResourceManagerPartitionTrackerFactory clusterPartitionTrackerFactory,
+            BlocklistHandler.Factory blocklistHandlerFactory,
             JobLeaderIdService jobLeaderIdService,
             ClusterInformation clusterInformation,
             FatalErrorHandler fatalErrorHandler,
@@ -122,8 +127,10 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
                 leaderSessionId,
                 resourceId,
                 heartbeatServices,
+                delegationTokenManager,
                 slotManager,
                 clusterPartitionTrackerFactory,
+                blocklistHandlerFactory,
                 jobLeaderIdService,
                 clusterInformation,
                 fatalErrorHandler,
@@ -140,9 +147,8 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
         this.currentAttemptUnregisteredWorkers = new HashMap<>();
         this.previousAttemptUnregisteredWorkers = new HashSet<>();
         this.startWorkerFailureRater = checkNotNull(startWorkerFailureRater);
-        this.startWorkerRetryInterval = Time.of(retryInterval.toMillis(), TimeUnit.MILLISECONDS);
-        this.workerRegistrationTimeout =
-                Time.of(workerRegistrationTimeout.toMillis(), TimeUnit.MILLISECONDS);
+        this.startWorkerRetryInterval = retryInterval;
+        this.workerRegistrationTimeout = workerRegistrationTimeout;
         this.startWorkerCoolDown = FutureUtils.completedVoidFuture();
     }
 
@@ -153,7 +159,11 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
     @Override
     protected void initialize() throws ResourceManagerException {
         try {
-            resourceManagerDriver.initialize(this, new GatewayMainThreadExecutor(), ioExecutor);
+            resourceManagerDriver.initialize(
+                    this,
+                    new GatewayMainThreadExecutor(),
+                    ioExecutor,
+                    blocklistHandler::getAllBlockedNodeIds);
         } catch (Exception e) {
             throw new ResourceManagerException("Cannot initialize resource provider.", e);
         }
@@ -220,6 +230,8 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
         super.registerMetrics();
         resourceManagerMetricGroup.meter(
                 MetricNames.START_WORKER_FAILURE_RATE, startWorkerFailureRater);
+        resourceManagerMetricGroup.gauge(
+                MetricNames.NUM_PENDING_TASK_MANAGERS, pendingWorkerCounter::getTotalNum);
     }
 
     // ------------------------------------------------------------------------
@@ -451,6 +463,6 @@ public class ActiveResourceManager<WorkerType extends ResourceIDRetrievable>
 
     @VisibleForTesting
     <T> CompletableFuture<T> runInMainThread(Callable<T> callable, Time timeout) {
-        return callAsync(callable, timeout);
+        return callAsync(callable, TimeUtils.toDuration(timeout));
     }
 }

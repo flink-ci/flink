@@ -24,8 +24,8 @@ import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.LatencyMarker;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
-import org.apache.flink.streaming.runtime.streamstatus.StreamStatus;
 import org.apache.flink.streaming.runtime.tasks.TestProcessingTimeService;
+import org.apache.flink.streaming.runtime.watermarkstatus.WatermarkStatus;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.runtime.generated.AggsHandleFunction;
@@ -39,7 +39,6 @@ import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.OutputTag;
 
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -47,6 +46,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -163,7 +163,7 @@ public class NonBufferOverWindowOperatorTest {
         addRow(2, 5L, 4L);
         addRow(2, 6L, 2L);
         GenericRowData[] outputs = this.collect.toArray(new GenericRowData[0]);
-        Assert.assertArrayEquals(expect, outputs);
+        assertThat(outputs).isEqualTo(expect);
     }
 
     private void addRow(Object... fields) throws Exception {
@@ -185,7 +185,7 @@ public class NonBufferOverWindowOperatorTest {
         }
 
         @Override
-        public void emitStreamStatus(StreamStatus streamStatus) {
+        public void emitWatermarkStatus(WatermarkStatus watermarkStatus) {
             throw new RuntimeException();
         }
 

@@ -18,16 +18,20 @@
 
 package org.apache.flink.connector.kafka.source.metrics;
 
+import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.testutils.MetricListener;
+import org.apache.flink.runtime.metrics.groups.InternalSourceReaderMetricGroup;
 
 import org.apache.kafka.common.TopicPartition;
 import org.junit.Test;
 
+import java.util.Optional;
+
 import static org.apache.flink.connector.kafka.source.metrics.KafkaSourceReaderMetrics.PARTITION_GROUP;
 import static org.apache.flink.connector.kafka.source.metrics.KafkaSourceReaderMetrics.TOPIC_GROUP;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertThrows;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Unit test for {@link KafkaSourceReaderMetrics}. */
 public class KafkaSourceReaderMetricsTest {
@@ -42,7 +46,8 @@ public class KafkaSourceReaderMetricsTest {
         MetricListener metricListener = new MetricListener();
 
         final KafkaSourceReaderMetrics kafkaSourceReaderMetrics =
-                new KafkaSourceReaderMetrics(metricListener.getMetricGroup());
+                new KafkaSourceReaderMetrics(
+                        InternalSourceReaderMetricGroup.mock(metricListener.getMetricGroup()));
 
         kafkaSourceReaderMetrics.registerTopicPartition(FOO_0);
         kafkaSourceReaderMetrics.registerTopicPartition(FOO_1);
@@ -65,7 +70,8 @@ public class KafkaSourceReaderMetricsTest {
         MetricListener metricListener = new MetricListener();
 
         final KafkaSourceReaderMetrics kafkaSourceReaderMetrics =
-                new KafkaSourceReaderMetrics(metricListener.getMetricGroup());
+                new KafkaSourceReaderMetrics(
+                        InternalSourceReaderMetricGroup.mock(metricListener.getMetricGroup()));
 
         kafkaSourceReaderMetrics.registerTopicPartition(FOO_0);
         kafkaSourceReaderMetrics.registerTopicPartition(FOO_1);
@@ -82,75 +88,72 @@ public class KafkaSourceReaderMetricsTest {
         assertCommittedOffset(BAR_0, 18613L, metricListener);
         assertCommittedOffset(BAR_1, 15513L, metricListener);
 
-        assertEquals(
-                4L,
-                metricListener
-                        .getCounter(
-                                KafkaSourceReaderMetrics.KAFKA_SOURCE_READER_METRIC_GROUP,
-                                KafkaSourceReaderMetrics.COMMITS_SUCCEEDED_METRIC_COUNTER)
-                        .getCount());
+        final Optional<Counter> commitsSucceededCounter =
+                metricListener.getCounter(
+                        KafkaSourceReaderMetrics.KAFKA_SOURCE_READER_METRIC_GROUP,
+                        KafkaSourceReaderMetrics.COMMITS_SUCCEEDED_METRIC_COUNTER);
+        assertThat(commitsSucceededCounter).isPresent();
+        assertThat(commitsSucceededCounter.get().getCount()).isEqualTo(0L);
+
+        kafkaSourceReaderMetrics.recordSucceededCommit();
+
+        assertThat(commitsSucceededCounter.get().getCount()).isEqualTo(1L);
     }
 
     @Test
     public void testNonTrackingTopicPartition() {
         MetricListener metricListener = new MetricListener();
         final KafkaSourceReaderMetrics kafkaSourceReaderMetrics =
-                new KafkaSourceReaderMetrics(metricListener.getMetricGroup());
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> kafkaSourceReaderMetrics.recordCurrentOffset(FOO_0, 15213L));
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> kafkaSourceReaderMetrics.recordCommittedOffset(FOO_0, 15213L));
+                new KafkaSourceReaderMetrics(
+                        InternalSourceReaderMetricGroup.mock(metricListener.getMetricGroup()));
+        assertThatThrownBy(() -> kafkaSourceReaderMetrics.recordCurrentOffset(FOO_0, 15213L))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> kafkaSourceReaderMetrics.recordCommittedOffset(FOO_0, 15213L))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     public void testFailedCommit() {
         MetricListener metricListener = new MetricListener();
         final KafkaSourceReaderMetrics kafkaSourceReaderMetrics =
-                new KafkaSourceReaderMetrics(metricListener.getMetricGroup());
+                new KafkaSourceReaderMetrics(
+                        InternalSourceReaderMetricGroup.mock(metricListener.getMetricGroup()));
         kafkaSourceReaderMetrics.recordFailedCommit();
-        assertEquals(
-                1L,
-                metricListener
-                        .getCounter(
-                                KafkaSourceReaderMetrics.KAFKA_SOURCE_READER_METRIC_GROUP,
-                                KafkaSourceReaderMetrics.COMMITS_FAILED_METRIC_COUNTER)
-                        .getCount());
+        final Optional<Counter> commitsFailedCounter =
+                metricListener.getCounter(
+                        KafkaSourceReaderMetrics.KAFKA_SOURCE_READER_METRIC_GROUP,
+                        KafkaSourceReaderMetrics.COMMITS_FAILED_METRIC_COUNTER);
+        assertThat(commitsFailedCounter).isPresent();
+        assertThat(commitsFailedCounter.get().getCount()).isEqualTo(1L);
     }
 
     // ----------- Assertions --------------
 
     private void assertCurrentOffset(
             TopicPartition tp, long expectedOffset, MetricListener metricListener) {
-        assertGaugeValueEquals(
-                expectedOffset,
+        final Optional<Gauge<Long>> currentOffsetGauge =
                 metricListener.getGauge(
                         KafkaSourceReaderMetrics.KAFKA_SOURCE_READER_METRIC_GROUP,
                         TOPIC_GROUP,
                         tp.topic(),
                         PARTITION_GROUP,
                         String.valueOf(tp.partition()),
-                        KafkaSourceReaderMetrics.CURRENT_OFFSET_METRIC_GAUGE),
-                Long.class);
+                        KafkaSourceReaderMetrics.CURRENT_OFFSET_METRIC_GAUGE);
+        assertThat(currentOffsetGauge).isPresent();
+        assertThat((long) currentOffsetGauge.get().getValue()).isEqualTo(expectedOffset);
     }
 
     private void assertCommittedOffset(
             TopicPartition tp, long expectedOffset, MetricListener metricListener) {
-        assertGaugeValueEquals(
-                expectedOffset,
+        final Optional<Gauge<Long>> committedOffsetGauge =
                 metricListener.getGauge(
                         KafkaSourceReaderMetrics.KAFKA_SOURCE_READER_METRIC_GROUP,
                         TOPIC_GROUP,
                         tp.topic(),
                         PARTITION_GROUP,
                         String.valueOf(tp.partition()),
-                        KafkaSourceReaderMetrics.COMMITTED_OFFSET_METRIC_GAUGE),
-                Long.class);
-    }
-
-    private <T> void assertGaugeValueEquals(T expected, Gauge<?> gauge, Class<T> type) {
-        final T actual = type.cast(gauge.getValue());
-        assertEquals(expected, actual);
+                        KafkaSourceReaderMetrics.COMMITTED_OFFSET_METRIC_GAUGE);
+        assertThat(committedOffsetGauge).isPresent();
+        assertThat((long) committedOffsetGauge.get().getValue()).isEqualTo(expectedOffset);
     }
 }

@@ -23,7 +23,8 @@ import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.DecimalDataUtils;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.functions.AggregateFunction;
-import org.apache.flink.table.planner.functions.aggfunctions.FirstValueWithRetractAggFunction.FirstValueWithRetractAccumulator;
+import org.apache.flink.table.runtime.functions.aggregate.FirstValueWithRetractAggFunction;
+import org.apache.flink.table.runtime.functions.aggregate.FirstValueWithRetractAggFunction.FirstValueWithRetractAccumulator;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BooleanType;
 import org.apache.flink.table.types.logical.DecimalType;
@@ -261,7 +262,7 @@ public final class FirstValueWithRetractAggFunctionWithoutOrderTest {
 
     /** Test base for {@link FirstValueWithRetractAggFunction} without order. */
     public abstract static class FirstValueWithRetractAggFunctionWithoutOrderTestBase<T>
-            extends AggFunctionTestBase<T, FirstValueWithRetractAccumulator<T>> {
+            extends AggFunctionTestBase<T, T, FirstValueWithRetractAccumulator<T>> {
 
         @Override
         protected Class<?> getAccClass() {

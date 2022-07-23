@@ -40,12 +40,13 @@ import org.apache.flink.runtime.messages.TaskThreadInfoResponse;
 import org.apache.flink.runtime.operators.coordination.OperatorEvent;
 import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
 import org.apache.flink.runtime.rest.messages.LogInfo;
-import org.apache.flink.runtime.rest.messages.taskmanager.ThreadDumpInfo;
+import org.apache.flink.runtime.rest.messages.ThreadDumpInfo;
 import org.apache.flink.runtime.webmonitor.threadinfo.ThreadInfoSamplesRequest;
 import org.apache.flink.types.SerializableOptional;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.SerializedValue;
 import org.apache.flink.util.concurrent.FutureUtils;
+import org.apache.flink.util.function.QuadFunction;
 import org.apache.flink.util.function.TriConsumer;
 import org.apache.flink.util.function.TriFunction;
 
@@ -108,6 +109,17 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
     private final Supplier<CompletableFuture<TaskThreadInfoResponse>>
             requestThreadInfoSamplesSupplier;
 
+    private final QuadFunction<
+                    ExecutionAttemptID,
+                    Long,
+                    Long,
+                    CheckpointOptions,
+                    CompletableFuture<Acknowledge>>
+            triggerCheckpointFunction;
+
+    private final TriFunction<ExecutionAttemptID, Long, Long, CompletableFuture<Acknowledge>>
+            confirmCheckpointFunction;
+
     TestingTaskExecutorGateway(
             String address,
             String hostname,
@@ -142,7 +154,16 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
                             CompletableFuture<Acknowledge>>
                     operatorEventHandler,
             Supplier<CompletableFuture<ThreadDumpInfo>> requestThreadDumpSupplier,
-            Supplier<CompletableFuture<TaskThreadInfoResponse>> requestThreadInfoSamplesSupplier) {
+            Supplier<CompletableFuture<TaskThreadInfoResponse>> requestThreadInfoSamplesSupplier,
+            QuadFunction<
+                            ExecutionAttemptID,
+                            Long,
+                            Long,
+                            CheckpointOptions,
+                            CompletableFuture<Acknowledge>>
+                    triggerCheckpointFunction,
+            TriFunction<ExecutionAttemptID, Long, Long, CompletableFuture<Acknowledge>>
+                    confirmCheckpointFunction) {
 
         this.address = Preconditions.checkNotNull(address);
         this.hostname = Preconditions.checkNotNull(hostname);
@@ -162,6 +183,8 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
         this.operatorEventHandler = operatorEventHandler;
         this.requestThreadDumpSupplier = requestThreadDumpSupplier;
         this.requestThreadInfoSamplesSupplier = requestThreadInfoSamplesSupplier;
+        this.triggerCheckpointFunction = triggerCheckpointFunction;
+        this.confirmCheckpointFunction = confirmCheckpointFunction;
     }
 
     @Override
@@ -218,18 +241,26 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
             long checkpointID,
             long checkpointTimestamp,
             CheckpointOptions checkpointOptions) {
-        return CompletableFuture.completedFuture(Acknowledge.get());
+        return triggerCheckpointFunction.apply(
+                executionAttemptID, checkpointID, checkpointTimestamp, checkpointOptions);
     }
 
     @Override
     public CompletableFuture<Acknowledge> confirmCheckpoint(
-            ExecutionAttemptID executionAttemptID, long checkpointId, long checkpointTimestamp) {
-        return CompletableFuture.completedFuture(Acknowledge.get());
+            ExecutionAttemptID executionAttemptID,
+            long checkpointId,
+            long checkpointTimestamp,
+            long lastSubsumedCheckpointId) {
+        return confirmCheckpointFunction.apply(
+                executionAttemptID, checkpointId, checkpointTimestamp);
     }
 
     @Override
     public CompletableFuture<Acknowledge> abortCheckpoint(
-            ExecutionAttemptID executionAttemptID, long checkpointId, long checkpointTimestamp) {
+            ExecutionAttemptID executionAttemptID,
+            long checkpointId,
+            long latestCompletedCheckpointId,
+            long checkpointTimestamp) {
         return CompletableFuture.completedFuture(Acknowledge.get());
     }
 
@@ -312,8 +343,8 @@ public class TestingTaskExecutorGateway implements TaskExecutorGateway {
 
     @Override
     public CompletableFuture<TaskThreadInfoResponse> requestThreadInfoSamples(
-            ExecutionAttemptID taskExecutionAttemptId,
-            ThreadInfoSamplesRequest threadInfoSamplesRequest,
+            Collection<ExecutionAttemptID> taskExecutionAttemptIds,
+            ThreadInfoSamplesRequest requestParams,
             Time timeout) {
         return requestThreadInfoSamplesSupplier.get();
     }

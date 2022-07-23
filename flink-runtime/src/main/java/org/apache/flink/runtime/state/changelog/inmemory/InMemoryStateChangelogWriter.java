@@ -60,8 +60,8 @@ class InMemoryStateChangelogWriter implements StateChangelogWriter<InMemoryChang
     public void append(int keyGroup, byte[] value) {
         Preconditions.checkState(!closed, "LogWriter is closed");
         LOG.trace("append, keyGroup={}, {} bytes", keyGroup, value.length);
-        sqn = sqn.next();
         changesByKeyGroup.computeIfAbsent(keyGroup, unused -> new TreeMap<>()).put(sqn, value);
+        sqn = sqn.next();
     }
 
     @Override
@@ -70,7 +70,7 @@ class InMemoryStateChangelogWriter implements StateChangelogWriter<InMemoryChang
     }
 
     @Override
-    public SequenceNumber lastAppendedSequenceNumber() {
+    public SequenceNumber nextSequenceNumber() {
         return sqn;
     }
 
@@ -103,9 +103,13 @@ class InMemoryStateChangelogWriter implements StateChangelogWriter<InMemoryChang
     }
 
     @Override
-    public void truncate(SequenceNumber before) {
-        changesByKeyGroup.forEach(
-                (kg, changesBySqn) -> changesBySqn.headMap(before, false).clear());
+    public void truncate(SequenceNumber to) {
+        changesByKeyGroup.forEach((kg, changesBySqn) -> changesBySqn.headMap(to, false).clear());
+    }
+
+    @Override
+    public void truncateAndClose(SequenceNumber from) {
+        close();
     }
 
     @Override

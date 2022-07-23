@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.rules.physical.stream
 
 import org.apache.flink.table.planner.plan.`trait`.FlinkRelDistribution
@@ -24,15 +23,13 @@ import org.apache.flink.table.planner.plan.metadata.FlinkRelMetadataQuery
 import org.apache.flink.table.planner.plan.nodes.FlinkConventions
 import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalRank
 import org.apache.flink.table.planner.plan.nodes.physical.stream.StreamPhysicalWindowRank
-import org.apache.flink.table.planner.plan.utils.WindowUtil
+import org.apache.flink.table.planner.plan.utils.{RankUtil, WindowUtil}
 
 import org.apache.calcite.plan.{RelOptRule, RelOptRuleCall}
 import org.apache.calcite.rel.RelNode
 import org.apache.calcite.rel.convert.ConverterRule
 
-/**
- * Rule to convert a [[FlinkLogicalRank]] into a [[StreamPhysicalWindowRank]].
- */
+/** Rule to convert a [[FlinkLogicalRank]] into a [[StreamPhysicalWindowRank]]. */
 class StreamPhysicalWindowRankRule
   extends ConverterRule(
     classOf[FlinkLogicalRank],
@@ -46,7 +43,8 @@ class StreamPhysicalWindowRankRule
     val fmq = FlinkRelMetadataQuery.reuseOrCreate(call.getMetadataQuery)
     val windowProperties = fmq.getRelWindowProperties(rank.getInput)
     val partitionKey = rank.partitionKey
-    WindowUtil.groupingContainsWindowStartEnd(partitionKey, windowProperties)
+    WindowUtil.groupingContainsWindowStartEnd(partitionKey, windowProperties) &&
+    !RankUtil.canConvertToDeduplicate(rank)
   }
 
   override def convert(rel: RelNode): RelNode = {
@@ -54,17 +52,16 @@ class StreamPhysicalWindowRankRule
     val fmq = FlinkRelMetadataQuery.reuseOrCreate(rel.getCluster.getMetadataQuery)
     val relWindowProperties = fmq.getRelWindowProperties(rank.getInput)
     val partitionKey = rank.partitionKey
-    val startColumns = relWindowProperties.getWindowStartColumns.intersect(partitionKey)
-    val endColumns = relWindowProperties.getWindowEndColumns.intersect(partitionKey)
-    val timeColumns = relWindowProperties.getWindowTimeColumns.intersect(partitionKey)
-    val newPartitionKey = partitionKey.except(startColumns).except(endColumns).except(timeColumns)
+    val (startColumns, endColumns, _, newPartitionKey) =
+      WindowUtil.groupingExcludeWindowStartEndTimeColumns(partitionKey, relWindowProperties)
     val requiredDistribution = if (!newPartitionKey.isEmpty) {
       FlinkRelDistribution.hash(newPartitionKey.toArray, requireStrict = true)
     } else {
       FlinkRelDistribution.SINGLETON
     }
 
-    val requiredTraitSet = rank.getCluster.getPlanner.emptyTraitSet()
+    val requiredTraitSet = rank.getCluster.getPlanner
+      .emptyTraitSet()
       .replace(requiredDistribution)
       .replace(FlinkConventions.STREAM_PHYSICAL)
     val providedTraitSet = rank.getTraitSet.replace(FlinkConventions.STREAM_PHYSICAL)

@@ -29,7 +29,6 @@ import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.Metric;
 import org.apache.flink.metrics.MetricConfig;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.metrics.reporter.InstantiateViaFactory;
 import org.apache.flink.metrics.reporter.MetricReporter;
 
 import org.slf4j.Logger;
@@ -55,20 +54,13 @@ import java.util.Optional;
  * <p>Largely based on the JmxReporter class of the dropwizard metrics library
  * https://github.com/dropwizard/metrics/blob/master/metrics-core/src/main/java/io/dropwizard/metrics/JmxReporter.java
  */
-@InstantiateViaFactory(factoryClassName = "org.apache.flink.metrics.jmx.JMXReporterFactory")
 public class JMXReporter implements MetricReporter {
 
     static final String JMX_DOMAIN_PREFIX = "org.apache.flink.";
 
     private static final Logger LOG = LoggerFactory.getLogger(JMXReporter.class);
 
-    private static final CharacterFilter CHARACTER_FILTER =
-            new CharacterFilter() {
-                @Override
-                public String filterCharacters(String input) {
-                    return replaceInvalidChars(input);
-                }
-            };
+    private static final CharacterFilter CHARACTER_FILTER = JMXReporter::replaceInvalidChars;
 
     // ------------------------------------------------------------------------
 
@@ -120,7 +112,7 @@ public class JMXReporter implements MetricReporter {
         try {
             jmxName = new ObjectName(domain, table);
         } catch (MalformedObjectNameException e) {
-            /**
+            /*
              * There is an implementation error on our side if this occurs. Either the domain was
              * modified and no longer conforms to the JMX domain rules or the table wasn't properly
              * generated.
@@ -130,20 +122,25 @@ public class JMXReporter implements MetricReporter {
             return;
         }
 
-        if (metric instanceof Gauge) {
-            jmxMetric = new JmxGauge((Gauge<?>) metric);
-        } else if (metric instanceof Counter) {
-            jmxMetric = new JmxCounter((Counter) metric);
-        } else if (metric instanceof Histogram) {
-            jmxMetric = new JmxHistogram((Histogram) metric);
-        } else if (metric instanceof Meter) {
-            jmxMetric = new JmxMeter((Meter) metric);
-        } else {
-            LOG.error(
-                    "Cannot add unknown metric type: {}. This indicates that the metric type "
-                            + "is not supported by this reporter.",
-                    metric.getClass().getName());
-            return;
+        switch (metric.getMetricType()) {
+            case GAUGE:
+                jmxMetric = new JmxGauge((Gauge<?>) metric);
+                break;
+            case COUNTER:
+                jmxMetric = new JmxCounter((Counter) metric);
+                break;
+            case HISTOGRAM:
+                jmxMetric = new JmxHistogram((Histogram) metric);
+                break;
+            case METER:
+                jmxMetric = new JmxMeter((Meter) metric);
+                break;
+            default:
+                LOG.error(
+                        "Cannot add unknown metric type: {}. This indicates that the metric type "
+                                + "is not supported by this reporter.",
+                        metric.getClass().getName());
+                return;
         }
 
         try {
@@ -278,7 +275,7 @@ public class JMXReporter implements MetricReporter {
     }
 
     private static class JmxCounter extends AbstractBean implements JmxCounterMBean {
-        private Counter counter;
+        private final Counter counter;
 
         JmxCounter(Counter counter) {
             this.counter = counter;
@@ -310,6 +307,7 @@ public class JMXReporter implements MetricReporter {
     }
 
     /** The MBean interface for an exposed histogram. */
+    @SuppressWarnings("unused")
     public interface JmxHistogramMBean extends MetricMBean {
         long getCount();
 

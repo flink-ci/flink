@@ -15,13 +15,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.nodes.logical
 
-import org.apache.flink.table.planner.expressions.PlannerNamedWindowProperty
 import org.apache.flink.table.planner.plan.logical.LogicalWindow
 import org.apache.flink.table.planner.plan.nodes.FlinkConventions
 import org.apache.flink.table.planner.plan.nodes.calcite.{LogicalWindowTableAggregate, WindowTableAggregate}
+import org.apache.flink.table.runtime.groupwindow.NamedWindowProperty
 
 import org.apache.calcite.plan._
 import org.apache.calcite.rel.RelNode
@@ -33,9 +32,9 @@ import org.apache.calcite.util.ImmutableBitSet
 import java.util
 
 /**
-  * Sub-class of [[WindowTableAggregate]] that is a relational expression which performs window
-  * aggregations but outputs 0 or more records for a group.
-  */
+ * Sub-class of [[WindowTableAggregate]] that is a relational expression which performs window
+ * aggregations but outputs 0 or more records for a group.
+ */
 class FlinkLogicalWindowTableAggregate(
     cluster: RelOptCluster,
     traitSet: RelTraitSet,
@@ -44,7 +43,7 @@ class FlinkLogicalWindowTableAggregate(
     groupSets: util.List[ImmutableBitSet],
     aggCalls: util.List[AggregateCall],
     window: LogicalWindow,
-    namedProperties: Seq[PlannerNamedWindowProperty])
+    namedProperties: util.List[NamedWindowProperty])
   extends WindowTableAggregate(
     cluster,
     traitSet,

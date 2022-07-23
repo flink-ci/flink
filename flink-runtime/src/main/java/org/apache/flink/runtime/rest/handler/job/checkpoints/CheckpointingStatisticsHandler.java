@@ -78,8 +78,7 @@ public class CheckpointingStatisticsHandler
 
     @Override
     protected CheckpointingStatistics handleRequest(
-            HandlerRequest<EmptyRequestBody, JobMessageParameters> request,
-            AccessExecutionGraph executionGraph)
+            HandlerRequest<EmptyRequestBody> request, AccessExecutionGraph executionGraph)
             throws RestHandlerException {
         return createCheckpointingStatistics(executionGraph);
     }
@@ -126,6 +125,7 @@ public class CheckpointingStatisticsHandler
 
             final CheckpointingStatistics.Summary summary =
                     new CheckpointingStatistics.Summary(
+                            StatsSummaryDto.valueOf(checkpointStatsSummary.getCheckpointedSize()),
                             StatsSummaryDto.valueOf(checkpointStatsSummary.getStateSizeStats()),
                             StatsSummaryDto.valueOf(
                                     checkpointStatsSummary.getEndToEndDurationStats()),

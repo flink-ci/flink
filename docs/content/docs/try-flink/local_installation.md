@@ -40,13 +40,13 @@ __Note:__ Flink is also available as a [Docker image](https://hub.docker.com/_/f
 {{< /hint >}}
 
 Flink runs on all UNIX-like environments, i.e. Linux, Mac OS X, and Cygwin (for Windows). You need 
-to have __Java 8 or 11__ installed. To check the Java version installed, type in your terminal: 
+to have __Java 11__ installed. To check the Java version installed, type in your terminal: 
 
 ```bash
 $ java -version
 ```
 
-Next, [download the latest binary release](https://flink.apache.org/downloads.html) of Flink, 
+Next, [download the latest binary release]({{< downloads >}}) of Flink, 
 then extract the archive: 
 
 ```bash

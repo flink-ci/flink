@@ -21,7 +21,7 @@ package org.apache.flink.table.runtime.runners.python.beam;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
-import org.apache.flink.python.env.PythonEnvironmentManager;
+import org.apache.flink.python.env.process.ProcessPythonEnvironmentManager;
 import org.apache.flink.python.metric.FlinkMetricContainer;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.state.KeyedStateBackend;
@@ -34,7 +34,6 @@ import org.apache.beam.runners.core.construction.graph.TimerReference;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import static org.apache.flink.python.Constants.INPUT_COLLECTION_ID;
@@ -54,14 +53,13 @@ public class BeamTablePythonFunctionRunner extends BeamPythonFunctionRunner {
 
     public BeamTablePythonFunctionRunner(
             String taskName,
-            PythonEnvironmentManager environmentManager,
+            ProcessPythonEnvironmentManager environmentManager,
             String functionUrn,
             GeneratedMessageV3 userDefinedFunctionProto,
-            Map<String, String> jobOptions,
             FlinkMetricContainer flinkMetricContainer,
-            KeyedStateBackend keyedStateBackend,
-            TypeSerializer keySerializer,
-            TypeSerializer namespaceSerializer,
+            KeyedStateBackend<?> keyedStateBackend,
+            TypeSerializer<?> keySerializer,
+            TypeSerializer<?> namespaceSerializer,
             MemoryManager memoryManager,
             double managedMemoryFraction,
             FlinkFnApi.CoderInfoDescriptor inputCoderDescriptor,
@@ -69,23 +67,24 @@ public class BeamTablePythonFunctionRunner extends BeamPythonFunctionRunner {
         super(
                 taskName,
                 environmentManager,
-                jobOptions,
                 flinkMetricContainer,
                 keyedStateBackend,
+                null,
                 keySerializer,
                 namespaceSerializer,
                 null,
                 memoryManager,
                 managedMemoryFraction,
                 inputCoderDescriptor,
-                outputCoderDescriptor);
+                outputCoderDescriptor,
+                Collections.emptyMap());
         this.functionUrn = Preconditions.checkNotNull(functionUrn);
         this.userDefinedFunctionProto = Preconditions.checkNotNull(userDefinedFunctionProto);
     }
 
     @Override
-    protected Map<String, RunnerApi.PTransform> getTransforms() {
-        return Collections.singletonMap(
+    protected void buildTransforms(RunnerApi.Components.Builder componentsBuilder) {
+        componentsBuilder.putTransforms(
                 TRANSFORM_ID,
                 RunnerApi.PTransform.newBuilder()
                         .setUniqueName(TRANSFORM_ID)
@@ -93,7 +92,7 @@ public class BeamTablePythonFunctionRunner extends BeamPythonFunctionRunner {
                                 RunnerApi.FunctionSpec.newBuilder()
                                         .setUrn(functionUrn)
                                         .setPayload(
-                                                org.apache.beam.vendor.grpc.v1p26p0.com.google
+                                                org.apache.beam.vendor.grpc.v1p43p2.com.google
                                                         .protobuf.ByteString.copyFrom(
                                                         userDefinedFunctionProto.toByteArray()))
                                         .build())
@@ -115,5 +114,58 @@ public class BeamTablePythonFunctionRunner extends BeamPythonFunctionRunner {
     @Override
     public void processTimer(byte[] timerData) throws Exception {
         throw new UnsupportedOperationException();
+    }
+
+    public static BeamTablePythonFunctionRunner stateless(
+            String taskName,
+            ProcessPythonEnvironmentManager environmentManager,
+            String functionUrn,
+            GeneratedMessageV3 userDefinedFunctionProto,
+            FlinkMetricContainer flinkMetricContainer,
+            MemoryManager memoryManager,
+            double managedMemoryFraction,
+            FlinkFnApi.CoderInfoDescriptor inputCoderDescriptor,
+            FlinkFnApi.CoderInfoDescriptor outputCoderDescriptor) {
+        return new BeamTablePythonFunctionRunner(
+                taskName,
+                environmentManager,
+                functionUrn,
+                userDefinedFunctionProto,
+                flinkMetricContainer,
+                null,
+                null,
+                null,
+                memoryManager,
+                managedMemoryFraction,
+                inputCoderDescriptor,
+                outputCoderDescriptor);
+    }
+
+    public static BeamTablePythonFunctionRunner stateful(
+            String taskName,
+            ProcessPythonEnvironmentManager environmentManager,
+            String functionUrn,
+            GeneratedMessageV3 userDefinedFunctionProto,
+            FlinkMetricContainer flinkMetricContainer,
+            KeyedStateBackend<?> keyedStateBackend,
+            TypeSerializer<?> keySerializer,
+            TypeSerializer<?> namespaceSerializer,
+            MemoryManager memoryManager,
+            double managedMemoryFraction,
+            FlinkFnApi.CoderInfoDescriptor inputCoderDescriptor,
+            FlinkFnApi.CoderInfoDescriptor outputCoderDescriptor) {
+        return new BeamTablePythonFunctionRunner(
+                taskName,
+                environmentManager,
+                functionUrn,
+                userDefinedFunctionProto,
+                flinkMetricContainer,
+                keyedStateBackend,
+                keySerializer,
+                namespaceSerializer,
+                memoryManager,
+                managedMemoryFraction,
+                inputCoderDescriptor,
+                outputCoderDescriptor);
     }
 }

@@ -18,6 +18,7 @@
 
 package org.apache.flink.connector.kafka.source;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 
@@ -25,6 +26,7 @@ import java.util.Properties;
 import java.util.function.Function;
 
 /** Configurations for KafkaSource. */
+@Internal
 public class KafkaSourceOptions {
 
     public static final ConfigOption<String> CLIENT_ID_PREFIX =
@@ -47,6 +49,12 @@ public class KafkaSourceOptions {
                     .defaultValue(true)
                     .withDescription(
                             "Whether to register metrics of KafkaConsumer into Flink metric group");
+
+    public static final ConfigOption<Boolean> COMMIT_OFFSETS_ON_CHECKPOINT =
+            ConfigOptions.key("commit.offsets.on.checkpoint")
+                    .booleanType()
+                    .defaultValue(true)
+                    .withDescription("Whether to commit consuming offset on checkpoint.");
 
     @SuppressWarnings("unchecked")
     public static <T> T getOption(

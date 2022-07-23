@@ -20,31 +20,35 @@ package org.apache.flink.runtime.throughput;
 
 import org.apache.flink.util.clock.Clock;
 
+import static org.apache.flink.util.Preconditions.checkArgument;
+
 /** Class for measuring the throughput based on incoming data size and measurement period. */
 public class ThroughputCalculator {
     private static final long NOT_TRACKED = -1;
     private final Clock clock;
-    private final ThroughputEMA throughputEMA;
+    private static final long MILLIS_IN_SECOND = 1000;
+    private long currentThroughput;
 
     private long currentAccumulatedDataSize;
     private long currentMeasurementTime;
     private long measurementStartTime = NOT_TRACKED;
-    private long lastThroughput;
 
-    public ThroughputCalculator(Clock clock, int numberOfSamples) {
+    public ThroughputCalculator(Clock clock) {
         this.clock = clock;
-        this.throughputEMA = new ThroughputEMA(numberOfSamples);
     }
 
     public void incomingDataSize(long receivedDataSize) {
-        resumeMeasurement();
+        // Force resuming measurement.
+        if (measurementStartTime == NOT_TRACKED) {
+            measurementStartTime = clock.absoluteTimeMillis();
+        }
         currentAccumulatedDataSize += receivedDataSize;
     }
 
     /** Mark when the time should not be taken into account. */
     public void pauseMeasurement() {
         if (measurementStartTime != NOT_TRACKED) {
-            currentMeasurementTime += clock.relativeTimeMillis() - measurementStartTime;
+            currentMeasurementTime += clock.absoluteTimeMillis() - measurementStartTime;
         }
         measurementStartTime = NOT_TRACKED;
     }
@@ -52,23 +56,37 @@ public class ThroughputCalculator {
     /** Mark when the time should be included to the throughput calculation. */
     public void resumeMeasurement() {
         if (measurementStartTime == NOT_TRACKED) {
-            measurementStartTime = clock.relativeTimeMillis();
+            measurementStartTime = clock.absoluteTimeMillis();
         }
     }
 
     /** @return Calculated throughput based on the collected data for the last period. */
     public long calculateThroughput() {
         if (measurementStartTime != NOT_TRACKED) {
-            currentMeasurementTime += clock.relativeTimeMillis() - measurementStartTime;
+            long absoluteTimeMillis = clock.absoluteTimeMillis();
+            currentMeasurementTime += absoluteTimeMillis - measurementStartTime;
+            measurementStartTime = absoluteTimeMillis;
         }
 
-        lastThroughput =
-                throughputEMA.calculateThroughput(
-                        currentAccumulatedDataSize, currentMeasurementTime);
+        long throughput = calculateThroughput(currentAccumulatedDataSize, currentMeasurementTime);
 
-        measurementStartTime = clock.relativeTimeMillis();
         currentAccumulatedDataSize = currentMeasurementTime = 0;
 
-        return lastThroughput;
+        return throughput;
+    }
+
+    public long calculateThroughput(long dataSize, long time) {
+        checkArgument(dataSize >= 0, "Size of data should be non negative");
+        checkArgument(time >= 0, "Time should be non negative");
+
+        if (time == 0) {
+            return currentThroughput;
+        }
+
+        return currentThroughput = instantThroughput(dataSize, time);
+    }
+
+    static long instantThroughput(long dataSize, long time) {
+        return (long) ((double) dataSize / time * MILLIS_IN_SECOND);
     }
 }

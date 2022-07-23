@@ -19,6 +19,7 @@
 package org.apache.flink.table.planner.expressions;
 
 import org.apache.flink.table.api.TableException;
+import org.apache.flink.table.catalog.ContextResolvedFunction;
 import org.apache.flink.table.catalog.DataTypeFactory;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.expressions.Expression;
@@ -49,6 +50,7 @@ import java.util.Map;
 import static org.apache.flink.table.expressions.ApiExpressionUtils.isFunctionOfKind;
 import static org.apache.flink.table.functions.FunctionKind.AGGREGATE;
 import static org.apache.flink.table.functions.FunctionKind.TABLE_AGGREGATE;
+import static org.apache.flink.table.functions.UserDefinedFunctionHelper.generateInlineFunctionName;
 import static org.apache.flink.table.types.utils.TypeConversions.fromLegacyInfoToDataType;
 
 /** The class to get {@link SqlAggFunctionVisitor} of CallExpression. */
@@ -65,6 +67,10 @@ public class SqlAggFunctionVisitor extends ExpressionDefaultVisitor<SqlAggFuncti
         AGG_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.MIN, FlinkSqlOperatorTable.MIN);
         AGG_DEF_SQL_OPERATOR_MAPPING.put(BuiltInFunctionDefinitions.SUM, FlinkSqlOperatorTable.SUM);
         AGG_DEF_SQL_OPERATOR_MAPPING.put(
+                BuiltInFunctionDefinitions.FIRST_VALUE, FlinkSqlOperatorTable.FIRST_VALUE);
+        AGG_DEF_SQL_OPERATOR_MAPPING.put(
+                BuiltInFunctionDefinitions.LAST_VALUE, FlinkSqlOperatorTable.LAST_VALUE);
+        AGG_DEF_SQL_OPERATOR_MAPPING.put(
                 BuiltInFunctionDefinitions.SUM0, FlinkSqlOperatorTable.SUM0);
         AGG_DEF_SQL_OPERATOR_MAPPING.put(
                 BuiltInFunctionDefinitions.STDDEV_POP, FlinkSqlOperatorTable.STDDEV_POP);
@@ -76,6 +82,18 @@ public class SqlAggFunctionVisitor extends ExpressionDefaultVisitor<SqlAggFuncti
                 BuiltInFunctionDefinitions.VAR_SAMP, FlinkSqlOperatorTable.VAR_SAMP);
         AGG_DEF_SQL_OPERATOR_MAPPING.put(
                 BuiltInFunctionDefinitions.COLLECT, FlinkSqlOperatorTable.COLLECT);
+        AGG_DEF_SQL_OPERATOR_MAPPING.put(
+                BuiltInFunctionDefinitions.JSON_OBJECTAGG_NULL_ON_NULL,
+                FlinkSqlOperatorTable.JSON_OBJECTAGG_NULL_ON_NULL);
+        AGG_DEF_SQL_OPERATOR_MAPPING.put(
+                BuiltInFunctionDefinitions.JSON_OBJECTAGG_ABSENT_ON_NULL,
+                FlinkSqlOperatorTable.JSON_OBJECTAGG_ABSENT_ON_NULL);
+        AGG_DEF_SQL_OPERATOR_MAPPING.put(
+                BuiltInFunctionDefinitions.JSON_ARRAYAGG_NULL_ON_NULL,
+                FlinkSqlOperatorTable.JSON_ARRAYAGG_NULL_ON_NULL);
+        AGG_DEF_SQL_OPERATOR_MAPPING.put(
+                BuiltInFunctionDefinitions.JSON_ARRAYAGG_ABSENT_ON_NULL,
+                FlinkSqlOperatorTable.JSON_ARRAYAGG_ABSENT_ON_NULL);
     }
 
     private final RelBuilder relBuilder;
@@ -99,19 +117,20 @@ public class SqlAggFunctionVisitor extends ExpressionDefaultVisitor<SqlAggFuncti
             return innerAgg.accept(this);
         }
 
-        return createSqlAggFunction(
-                call.getFunctionIdentifier().orElse(null), call.getFunctionDefinition());
+        return createSqlAggFunction(call);
     }
 
-    private SqlAggFunction createSqlAggFunction(
-            @Nullable FunctionIdentifier identifier, FunctionDefinition definition) {
+    private SqlAggFunction createSqlAggFunction(CallExpression call) {
+        final FunctionDefinition definition = call.getFunctionDefinition();
         // legacy
         if (definition instanceof AggregateFunctionDefinition) {
             return createLegacySqlAggregateFunction(
-                    identifier, (AggregateFunctionDefinition) definition);
+                    call.getFunctionIdentifier().orElse(null),
+                    (AggregateFunctionDefinition) definition);
         } else if (definition instanceof TableAggregateFunctionDefinition) {
             return createLegacySqlTableAggregateFunction(
-                    identifier, (TableAggregateFunctionDefinition) definition);
+                    call.getFunctionIdentifier().orElse(null),
+                    (TableAggregateFunctionDefinition) definition);
         }
 
         // new stack
@@ -122,8 +141,7 @@ public class SqlAggFunctionVisitor extends ExpressionDefaultVisitor<SqlAggFuncti
                 dataTypeFactory,
                 ShortcutUtils.unwrapTypeFactory(relBuilder),
                 SqlKind.OTHER_FUNCTION,
-                identifier,
-                definition,
+                ContextResolvedFunction.fromCallExpression(call),
                 typeInference);
     }
 
@@ -134,7 +152,7 @@ public class SqlAggFunctionVisitor extends ExpressionDefaultVisitor<SqlAggFuncti
         if (identifier != null) {
             adjustedIdentifier = identifier;
         } else {
-            adjustedIdentifier = FunctionIdentifier.of(aggFunc.functionIdentifier());
+            adjustedIdentifier = FunctionIdentifier.of(generateInlineFunctionName(aggFunc));
         }
         return new AggSqlFunction(
                 adjustedIdentifier,
@@ -154,7 +172,7 @@ public class SqlAggFunctionVisitor extends ExpressionDefaultVisitor<SqlAggFuncti
         if (identifier != null) {
             adjustedIdentifier = identifier;
         } else {
-            adjustedIdentifier = FunctionIdentifier.of(aggFunc.functionIdentifier());
+            adjustedIdentifier = FunctionIdentifier.of(generateInlineFunctionName(aggFunc));
         }
         return new AggSqlFunction(
                 adjustedIdentifier,

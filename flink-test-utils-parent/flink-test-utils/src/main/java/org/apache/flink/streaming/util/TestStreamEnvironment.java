@@ -18,7 +18,9 @@
 
 package org.apache.flink.streaming.util;
 
-import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.configuration.StateChangelogOptions;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.minicluster.MiniCluster;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
@@ -31,6 +33,7 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.Collections;
 
+import static org.apache.flink.configuration.CheckpointingOptions.LOCAL_RECOVERY;
 import static org.apache.flink.runtime.testutils.PseudoRandomValueSelector.randomize;
 
 /** A {@link StreamExecutionEnvironment} that executes its jobs on {@link MiniCluster}. */
@@ -45,19 +48,26 @@ public class TestStreamEnvironment extends StreamExecutionEnvironment {
 
     public TestStreamEnvironment(
             MiniCluster miniCluster,
+            Configuration config,
             int parallelism,
             Collection<Path> jarFiles,
             Collection<URL> classPaths) {
         super(
                 new MiniClusterPipelineExecutorServiceLoader(miniCluster),
-                MiniClusterPipelineExecutorServiceLoader.createConfiguration(jarFiles, classPaths),
+                MiniClusterPipelineExecutorServiceLoader.updateConfigurationForMiniCluster(
+                        config, jarFiles, classPaths),
                 null);
 
         setParallelism(parallelism);
     }
 
     public TestStreamEnvironment(MiniCluster miniCluster, int parallelism) {
-        this(miniCluster, parallelism, Collections.emptyList(), Collections.emptyList());
+        this(
+                miniCluster,
+                new Configuration(),
+                parallelism,
+                Collections.emptyList(),
+                Collections.emptyList());
     }
 
     /**
@@ -80,28 +90,64 @@ public class TestStreamEnvironment extends StreamExecutionEnvironment {
                 conf -> {
                     TestStreamEnvironment env =
                             new TestStreamEnvironment(
-                                    miniCluster, parallelism, jarFiles, classpaths);
-                    if (RANDOMIZE_CHECKPOINTING_CONFIG) {
-                        randomize(
-                                conf, ExecutionCheckpointingOptions.ENABLE_UNALIGNED, true, false);
-                        randomize(
-                                conf,
-                                ExecutionCheckpointingOptions.ALIGNMENT_TIMEOUT,
-                                Duration.ofSeconds(0),
-                                Duration.ofMillis(100),
-                                Duration.ofSeconds(2));
-                    }
-                    if (STATE_CHANGE_LOG_CONFIG.equalsIgnoreCase(STATE_CHANGE_LOG_CONFIG_ON)) {
-                        conf.set(CheckpointingOptions.ENABLE_STATE_CHANGE_LOG, true);
-                    } else if (STATE_CHANGE_LOG_CONFIG.equalsIgnoreCase(
-                            STATE_CHANGE_LOG_CONFIG_RAND)) {
-                        randomize(conf, CheckpointingOptions.ENABLE_STATE_CHANGE_LOG, true, false);
-                    }
+                                    miniCluster, conf, parallelism, jarFiles, classpaths);
+
+                    randomizeConfiguration(miniCluster, conf);
+
                     env.configure(conf, env.getUserClassloader());
                     return env;
                 };
 
         initializeContextEnvironment(factory);
+    }
+
+    /**
+     * This is the place for randomization the configuration that relates to DataStream API such as
+     * ExecutionConf, CheckpointConf, StreamExecutionEnvironment. List of the configurations can be
+     * found here {@link StreamExecutionEnvironment#configure(ReadableConfig, ClassLoader)}. All
+     * other configuration should be randomized here {@link
+     * org.apache.flink.runtime.testutils.MiniClusterResource#randomizeConfiguration(Configuration)}.
+     */
+    private static void randomizeConfiguration(MiniCluster miniCluster, Configuration conf) {
+        // randomize ITTests for enabling unaligned checkpoint
+        if (RANDOMIZE_CHECKPOINTING_CONFIG) {
+            randomize(conf, ExecutionCheckpointingOptions.ENABLE_UNALIGNED, true, false);
+            randomize(
+                    conf,
+                    ExecutionCheckpointingOptions.ALIGNMENT_TIMEOUT,
+                    Duration.ofSeconds(0),
+                    Duration.ofMillis(100),
+                    Duration.ofSeconds(2));
+        }
+
+        // randomize ITTests for enabling state change log
+        if (isConfigurationSupportedByChangelog(miniCluster.getConfiguration())) {
+            if (STATE_CHANGE_LOG_CONFIG.equalsIgnoreCase(STATE_CHANGE_LOG_CONFIG_ON)) {
+                if (!conf.contains(StateChangelogOptions.ENABLE_STATE_CHANGE_LOG)) {
+                    conf.set(StateChangelogOptions.ENABLE_STATE_CHANGE_LOG, true);
+                    miniCluster.overrideRestoreModeForChangelogStateBackend();
+                }
+            } else if (STATE_CHANGE_LOG_CONFIG.equalsIgnoreCase(STATE_CHANGE_LOG_CONFIG_RAND)) {
+                boolean enabled =
+                        randomize(conf, StateChangelogOptions.ENABLE_STATE_CHANGE_LOG, true, false);
+                if (enabled) {
+                    randomize(
+                            conf,
+                            StateChangelogOptions.PERIODIC_MATERIALIZATION_INTERVAL,
+                            Duration.ofMillis(100),
+                            Duration.ofMillis(500),
+                            Duration.ofSeconds(1),
+                            Duration.ofSeconds(5),
+                            Duration.ofSeconds(
+                                    Long.MAX_VALUE / 1000 /* max allowed by Duration.toMillis */));
+                    miniCluster.overrideRestoreModeForChangelogStateBackend();
+                }
+            }
+        }
+    }
+
+    private static boolean isConfigurationSupportedByChangelog(Configuration configuration) {
+        return !configuration.get(LOCAL_RECOVERY);
     }
 
     /**

@@ -114,6 +114,11 @@ public class MockInputGate extends IndexedInputGate {
     }
 
     @Override
+    public EndOfDataStatus hasReceivedEndOfData() {
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    @Override
     public Optional<BufferOrEvent> getNext() {
         BufferOrEvent next = bufferOrEvents.poll();
         if (!finishAfterLastBuffer && bufferOrEvents.isEmpty()) {
@@ -157,6 +162,9 @@ public class MockInputGate extends IndexedInputGate {
             throw new IllegalArgumentException("Blocking the same channel multiple times");
         }
     }
+
+    @Override
+    public void triggerDebloating() {}
 
     public Set<Integer> getBlockedChannels() {
         return blockedChannels;

@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.planner.expressions.converter;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.expressions.CallExpression;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.FunctionDefinition;
@@ -36,6 +37,7 @@ import static org.apache.flink.table.planner.expressions.converter.ExpressionCon
  * A {@link CallExpressionConvertRule} that performs a simple one-to-one mapping between {@link
  * FunctionDefinition} and a corresponding {@link SqlOperator}.
  */
+@Internal
 public class DirectConvertRule implements CallExpressionConvertRule {
 
     private static final Map<FunctionDefinition, SqlOperator> DEFINITION_OPERATOR_MAP =
@@ -89,6 +91,8 @@ public class DirectConvertRule implements CallExpressionConvertRule {
                 BuiltInFunctionDefinitions.SIMILAR, FlinkSqlOperatorTable.SIMILAR_TO);
         DEFINITION_OPERATOR_MAP.put(
                 BuiltInFunctionDefinitions.SUBSTRING, FlinkSqlOperatorTable.SUBSTRING);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.SUBSTR, FlinkSqlOperatorTable.SUBSTR);
         DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.UPPER, FlinkSqlOperatorTable.UPPER);
         DEFINITION_OPERATOR_MAP.put(
                 BuiltInFunctionDefinitions.UPPERCASE, FlinkSqlOperatorTable.UPPER);
@@ -108,13 +112,34 @@ public class DirectConvertRule implements CallExpressionConvertRule {
                 BuiltInFunctionDefinitions.FROM_BASE64, FlinkSqlOperatorTable.FROM_BASE64);
         DEFINITION_OPERATOR_MAP.put(
                 BuiltInFunctionDefinitions.TO_BASE64, FlinkSqlOperatorTable.TO_BASE64);
+        DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.ASCII, FlinkSqlOperatorTable.ASCII);
+        DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.CHR, FlinkSqlOperatorTable.CHR);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.DECODE, FlinkSqlOperatorTable.DECODE);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.ENCODE, FlinkSqlOperatorTable.ENCODE);
+        DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.LEFT, FlinkSqlOperatorTable.LEFT);
+        DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.RIGHT, FlinkSqlOperatorTable.RIGHT);
+        DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.INSTR, FlinkSqlOperatorTable.INSTR);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.LOCATE, FlinkSqlOperatorTable.LOCATE);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.PARSE_URL, FlinkSqlOperatorTable.PARSE_URL);
         DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.UUID, FlinkSqlOperatorTable.UUID);
         DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.LTRIM, FlinkSqlOperatorTable.LTRIM);
         DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.RTRIM, FlinkSqlOperatorTable.RTRIM);
         DEFINITION_OPERATOR_MAP.put(
                 BuiltInFunctionDefinitions.REPEAT, FlinkSqlOperatorTable.REPEAT);
         DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.REGEXP, FlinkSqlOperatorTable.REGEXP);
+        DEFINITION_OPERATOR_MAP.put(
                 BuiltInFunctionDefinitions.REGEXP_REPLACE, FlinkSqlOperatorTable.REGEXP_REPLACE);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.REVERSE, FlinkSqlOperatorTable.REVERSE);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.SPLIT_INDEX, FlinkSqlOperatorTable.SPLIT_INDEX);
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.STR_TO_MAP, FlinkSqlOperatorTable.STR_TO_MAP);
 
         // math functions
         DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.MINUS, FlinkSqlOperatorTable.MINUS);
@@ -181,8 +206,15 @@ public class DirectConvertRule implements CallExpressionConvertRule {
         DEFINITION_OPERATOR_MAP.put(
                 BuiltInFunctionDefinitions.DATE_FORMAT, FlinkSqlOperatorTable.DATE_FORMAT);
         DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.FROM_UNIXTIME, FlinkSqlOperatorTable.FROM_UNIXTIME);
+        DEFINITION_OPERATOR_MAP.put(
                 BuiltInFunctionDefinitions.TO_TIMESTAMP_LTZ,
                 FlinkSqlOperatorTable.TO_TIMESTAMP_LTZ);
+
+        // catalog functions
+        DEFINITION_OPERATOR_MAP.put(
+                BuiltInFunctionDefinitions.CURRENT_DATABASE,
+                FlinkSqlOperatorTable.CURRENT_DATABASE);
 
         // collection
         DEFINITION_OPERATOR_MAP.put(BuiltInFunctionDefinitions.AT, FlinkSqlOperatorTable.ITEM);

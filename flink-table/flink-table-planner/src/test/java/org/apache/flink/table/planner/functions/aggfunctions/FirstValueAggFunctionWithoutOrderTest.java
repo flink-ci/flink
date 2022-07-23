@@ -24,6 +24,7 @@ import org.apache.flink.table.data.DecimalDataUtils;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.functions.AggregateFunction;
+import org.apache.flink.table.runtime.functions.aggregate.FirstValueAggFunction;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BooleanType;
 import org.apache.flink.table.types.logical.DecimalType;
@@ -252,7 +253,7 @@ public final class FirstValueAggFunctionWithoutOrderTest {
 
     /** Test base for {@link FirstValueAggFunction} without order. */
     public abstract static class FirstValueAggFunctionWithoutOrderTestBase<T>
-            extends AggFunctionTestBase<T, RowData> {
+            extends AggFunctionTestBase<T, T, RowData> {
 
         @Override
         protected Class<?> getAccClass() {

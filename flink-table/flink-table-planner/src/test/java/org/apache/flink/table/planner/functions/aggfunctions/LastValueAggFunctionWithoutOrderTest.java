@@ -24,6 +24,7 @@ import org.apache.flink.table.data.DecimalDataUtils;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.functions.AggregateFunction;
+import org.apache.flink.table.runtime.functions.aggregate.LastValueAggFunction;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BooleanType;
 import org.apache.flink.table.types.logical.DecimalType;
@@ -249,7 +250,7 @@ public final class LastValueAggFunctionWithoutOrderTest {
 
     /** Test base for {@link LastValueAggFunction} without order. */
     public abstract static class LastValueAggFunctionWithoutOrderTestBase<T>
-            extends AggFunctionTestBase<T, RowData> {
+            extends AggFunctionTestBase<T, T, RowData> {
 
         @Override
         protected Class<?> getAccClass() {

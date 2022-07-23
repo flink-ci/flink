@@ -51,6 +51,12 @@ Flink 支持对状态和时间的细粒度控制，以此来实现复杂的事�
 
 这个代码练习假定你对 Java 或 Scala 有一定的了解，当然，如果你之前使用的是其他开发语言，你也应该能够跟随本教程进行学习。
 
+### 在 IDE 中运行
+
+在 IDE 中运行该项目可能会遇到 `java.langNoClassDefFoundError` 的异常。这很可能是因为运行所需要的 Flink 的依赖库没有默认被全部加载到类路径（classpath）里。
+
+IntelliJ IDE：前往 运行 > 编辑配置 > 修改选项 > 选中 将带有 "provided" 范围的依赖项添加到类路径。这样的话，运行配置将会包含所有在 IDE 中运行所必须的类。
+
 <a name="help-im-stuck"></a>
 
 ## 困难求助
@@ -64,14 +70,15 @@ Flink 支持对状态和时间的细粒度控制，以此来实现复杂的事�
 
 首先，你需要在你的电脑上准备以下环境：
 
-* Java 8 or 11
+* Java 11
 * Maven
 
 一个准备好的 Flink Maven Archetype 能够快速创建一个包含了必要依赖的 Flink 程序骨架，基于此，你可以把精力集中在编写业务逻辑上即可。
 这些已包含的依赖包括 `flink-streaming-java`、`flink-walkthrough-common` 等，他们分别是 Flink 应用程序的核心依赖项和这个代码练习需要的数据生成器，当然还包括其他本代码练习所依赖的类。
 
-{% panel **说明:** 为简洁起见，本练习中的代码块中可能不包含完整的类路径。完整的类路径可以在文档底部 [链接](#final-application) 中找到。 %}
-
+{{< hint info >}}
+**说明：** 为简洁起见，本练习中的代码块中可能不包含完整的类路径。完整的类路径可以在文档底部 [链接](#final-application) 中找到。
+{{< /hint >}}
 
 {{< tabs "archetype" >}}
 {{< tab "Java" >}}
@@ -104,7 +111,7 @@ $ mvn archetype:generate \
 
 {{< unstable >}}
 {{< hint warning >}}
-    **注意** Maven 3.0 及更高版本，不再支持通过命令行指定仓库（-DarchetypeCatalog）。有关这个改动的详细信息，
+    Maven 3.0 及更高版本，不再支持通过命令行指定仓库（-DarchetypeCatalog）。有关这个改动的详细信息，
     请参阅 [Maven 官方文档](http://maven.apache.org/archetype/maven-archetype-plugin/archetype-repository.html)
     如果你希望使用快照仓库，则需要在 settings.xml 文件中添加一个仓库条目。例如：
 ```xml

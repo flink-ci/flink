@@ -17,33 +17,39 @@
 
 package org.apache.flink.runtime.rpc.akka;
 
-import org.apache.flink.api.common.time.Time;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.concurrent.akka.AkkaFutureUtils;
+import org.apache.flink.runtime.rpc.Local;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcGateway;
 import org.apache.flink.runtime.rpc.RpcService;
-import org.apache.flink.util.TestLogger;
+import org.apache.flink.runtime.rpc.RpcUtils;
 import org.apache.flink.util.concurrent.FutureUtils;
 
 import akka.actor.ActorSystem;
 import akka.actor.Terminated;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
+import javax.annotation.Nullable;
+
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.Serializable;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.concurrent.akka.ClassLoadingUtils.runWithContextClassLoader;
-import static org.hamcrest.CoreMatchers.either;
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.core.Is.is;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests the context class loader handling in various parts of the akka rpc system.
@@ -53,9 +59,7 @@ import static org.hamcrest.core.Is.is;
  * loader does not get accidentally leaked, e.g., via thread locals or thread pools on the Flink
  * side.
  */
-public class ContextClassLoadingSettingTest extends TestLogger {
-
-    private static final Time TIMEOUT = Time.milliseconds(10000L);
+class ContextClassLoadingSettingTest {
 
     // Many of the contained tests assert that a future is completed with a specific context class
     // loader by applying a synchronous operation.
@@ -71,8 +75,8 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     private ActorSystem actorSystem;
     private AkkaRpcService akkaRpcService;
 
-    @Before
-    public void setup() {
+    @BeforeEach
+    void setup() {
         pretendFlinkClassLoader =
                 new URLClassLoader(
                         new URL[0], ContextClassLoadingSettingTest.class.getClassLoader());
@@ -82,23 +86,25 @@ public class ContextClassLoadingSettingTest extends TestLogger {
                         actorSystem,
                         AkkaRpcServiceConfiguration.defaultConfiguration(),
                         pretendFlinkClassLoader);
+
+        PickyObject.classLoaderAssertion = this::assertIsFlinkClassLoader;
     }
 
-    @After
-    public void shutdown() throws InterruptedException, ExecutionException, TimeoutException {
+    @AfterEach
+    void shutdown() throws InterruptedException, ExecutionException, TimeoutException {
         final CompletableFuture<Void> rpcTerminationFuture = akkaRpcService.stopService();
         final CompletableFuture<Terminated> actorSystemTerminationFuture =
                 AkkaFutureUtils.toJava(actorSystem.terminate());
 
         FutureUtils.waitForAll(Arrays.asList(rpcTerminationFuture, actorSystemTerminationFuture))
-                .get(TIMEOUT.toMilliseconds(), TimeUnit.MILLISECONDS);
+                .get();
 
         actorSystem = null;
         akkaRpcService = null;
     }
 
     @Test
-    public void testAkkaRpcService_ExecuteRunnableSetsFlinkContextClassLoader()
+    void testAkkaRpcService_ExecuteRunnableSetsFlinkContextClassLoader()
             throws ExecutionException, InterruptedException {
         final CompletableFuture<ClassLoader> contextClassLoader = new CompletableFuture<>();
         akkaRpcService.execute(
@@ -107,7 +113,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcService_ExecuteCallableSetsFlinkContextClassLoader()
+    void testAkkaRpcService_ExecuteCallableSetsFlinkContextClassLoader()
             throws ExecutionException, InterruptedException {
         final CompletableFuture<ClassLoader> contextClassLoader =
                 akkaRpcService.execute(() -> Thread.currentThread().getContextClassLoader());
@@ -115,7 +121,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcService_ExecuteCallableResultCompletedWithFlinkContextClassLoader()
+    void testAkkaRpcService_ExecuteCallableResultCompletedWithFlinkContextClassLoader()
             throws ExecutionException, InterruptedException {
 
         final CompletableFuture<Void> blocker = new CompletableFuture<>();
@@ -136,19 +142,18 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcService_ScheduleSetsFlinkContextClassLoader()
+    void testAkkaRpcService_ScheduleSetsFlinkContextClassLoader()
             throws ExecutionException, InterruptedException {
         final CompletableFuture<ClassLoader> contextClassLoader = new CompletableFuture<>();
         akkaRpcService.scheduleRunnable(
                 () -> contextClassLoader.complete(Thread.currentThread().getContextClassLoader()),
                 5,
                 TimeUnit.MILLISECONDS);
-        assertThat(contextClassLoader.get(), is(pretendFlinkClassLoader));
+        assertThat(contextClassLoader.get()).isSameAs(pretendFlinkClassLoader);
     }
 
     @Test
-    public void testAkkaRpcService_ConnectFutureCompletedWithFlinkContextClassLoader()
-            throws Exception {
+    void testAkkaRpcService_ConnectFutureCompletedWithFlinkContextClassLoader() throws Exception {
         try (final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService)) {
 
             final ClassLoader contextClassLoader =
@@ -169,7 +174,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcService_TerminationFutureCompletedWithFlinkContextClassLoader()
+    void testAkkaRpcService_TerminationFutureCompletedWithFlinkContextClassLoader()
             throws Exception {
         final ClassLoader contextClassLoader =
                 runWithContextClassLoader(
@@ -187,7 +192,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcActor_OnStartCalledWithFlinkContextClassLoader() throws Exception {
+    void testAkkaRpcActor_OnStartCalledWithFlinkContextClassLoader() throws Exception {
         try (final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService)) {
             testEndpoint.start();
             assertIsFlinkClassLoader(testEndpoint.onStartClassLoader.get());
@@ -195,7 +200,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcActor_OnStopCalledWithFlinkContextClassLoader() throws Exception {
+    void testAkkaRpcActor_OnStopCalledWithFlinkContextClassLoader() throws Exception {
         final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService);
         testEndpoint.start();
         testEndpoint.close();
@@ -204,7 +209,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcActor_CallAsyncCalledWithFlinkContextClassLoader() throws Exception {
+    void testAkkaRpcActor_CallAsyncCalledWithFlinkContextClassLoader() throws Exception {
         try (final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService)) {
             testEndpoint.start();
 
@@ -214,7 +219,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcActor_RunAsyncCalledWithFlinkContextClassLoader() throws Exception {
+    void testAkkaRpcActor_RunAsyncCalledWithFlinkContextClassLoader() throws Exception {
         try (final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService)) {
             testEndpoint.start();
 
@@ -224,8 +229,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcActor_RPCReturningVoidCalledWithFlinkContextClassLoader()
-            throws Exception {
+    void testAkkaRpcActor_RPCReturningVoidCalledWithFlinkContextClassLoader() throws Exception {
         try (final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService)) {
             testEndpoint.start();
 
@@ -240,7 +244,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcActor_RPCCalledWithFlinkContextClassLoader() throws Exception {
+    void testAkkaRpcActor_RPCCalledWithFlinkContextClassLoader() throws Exception {
         try (final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService)) {
             testEndpoint.start();
 
@@ -255,7 +259,7 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testAkkaRpcInvocationHandler_RPCFutureCompletedWithFlinkContextClassLoader()
+    void testAkkaRpcInvocationHandler_RPCFutureCompletedWithFlinkContextClassLoader()
             throws Exception {
         try (final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService)) {
             testEndpoint.start();
@@ -281,7 +285,50 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     @Test
-    public void testSupervisorActor_TerminationFutureCompletedWithFlinkContextClassLoader()
+    void testAkkaRpcInvocationHandler_ContextClassLoaderUsedForDeserialization() throws Exception {
+        // setup 2 actor systems and rpc services that support remote connections (for which RPCs go
+        // through serialization)
+        final AkkaRpcService serverAkkaRpcService =
+                new AkkaRpcService(
+                        AkkaUtils.createActorSystem(
+                                "serverActorSystem",
+                                AkkaUtils.getAkkaConfig(
+                                        new Configuration(), new HostAndPort("localhost", 0))),
+                        AkkaRpcServiceConfiguration.defaultConfiguration());
+
+        final AkkaRpcService clientAkkaRpcService =
+                new AkkaRpcService(
+                        AkkaUtils.createActorSystem(
+                                "clientActorSystem",
+                                AkkaUtils.getAkkaConfig(
+                                        new Configuration(), new HostAndPort("localhost", 0))),
+                        AkkaRpcServiceConfiguration.defaultConfiguration(),
+                        pretendFlinkClassLoader);
+
+        try {
+            final TestEndpoint rpcEndpoint =
+                    new TestEndpoint(serverAkkaRpcService, new PickyObject());
+            rpcEndpoint.start();
+
+            final TestEndpointGateway rpcGateway =
+                    rpcEndpoint.getSelfGateway(TestEndpointGateway.class);
+
+            final TestEndpointGateway connect =
+                    clientAkkaRpcService
+                            .connect(rpcGateway.getAddress(), TestEndpointGateway.class)
+                            .get();
+
+            // if the wrong classloader is used the deserialization fails and get() throws an
+            // exception
+            connect.getPickyObject().get();
+        } finally {
+            RpcUtils.terminateRpcService(clientAkkaRpcService);
+            RpcUtils.terminateRpcService(serverAkkaRpcService);
+        }
+    }
+
+    @Test
+    void testSupervisorActor_TerminationFutureCompletedWithFlinkContextClassLoader()
             throws Exception {
         final TestEndpoint testEndpoint = new TestEndpoint(akkaRpcService);
         testEndpoint.start();
@@ -302,7 +349,10 @@ public class ContextClassLoadingSettingTest extends TestLogger {
     }
 
     private void assertIsFlinkClassLoader(ClassLoader classLoader) {
-        assertThat(classLoader, either(is(pretendFlinkClassLoader)).or(is(testClassLoader)));
+        assertThat(classLoader)
+                .satisfiesAnyOf(
+                        cl -> assertThat(cl).isSameAs(pretendFlinkClassLoader),
+                        cl -> assertThat(cl).isSameAs(testClassLoader));
     }
 
     private interface TestEndpointGateway extends RpcGateway {
@@ -310,11 +360,19 @@ public class ContextClassLoadingSettingTest extends TestLogger {
 
         CompletableFuture<Void> doSomethingAsync();
 
-        CompletableFuture<ClassLoader> doCallAsync();
-
-        CompletableFuture<ClassLoader> doRunAsync();
-
         void doSomethingWithoutReturningAnything();
+
+        CompletableFuture<PickyObject> getPickyObject();
+    }
+
+    /** An object that only allows deserialiation if its favorite ContextClassLoader is doing it. */
+    private static class PickyObject implements Serializable {
+        static Consumer<ClassLoader> classLoaderAssertion = null;
+
+        private void readObject(ObjectInputStream aInputStream)
+                throws ClassNotFoundException, IOException {
+            classLoaderAssertion.accept(Thread.currentThread().getContextClassLoader());
+        }
     }
 
     private static class TestEndpoint extends RpcEndpoint implements TestEndpointGateway {
@@ -325,8 +383,15 @@ public class ContextClassLoadingSettingTest extends TestLogger {
                 new CompletableFuture<>();
         private final CompletableFuture<Void> rpcResponseFuture = new CompletableFuture<>();
 
+        @Nullable private final PickyObject pickyObject;
+
         protected TestEndpoint(RpcService rpcService) {
+            this(rpcService, null);
+        }
+
+        protected TestEndpoint(RpcService rpcService, @Nullable PickyObject pickyObject) {
             super(rpcService);
+            this.pickyObject = pickyObject;
         }
 
         @Override
@@ -346,14 +411,11 @@ public class ContextClassLoadingSettingTest extends TestLogger {
             return rpcResponseFuture;
         }
 
-        @Override
         public CompletableFuture<ClassLoader> doCallAsync() {
             return callAsync(
-                    () -> Thread.currentThread().getContextClassLoader(),
-                    Time.of(10, TimeUnit.SECONDS));
+                    () -> Thread.currentThread().getContextClassLoader(), Duration.ofSeconds(10));
         }
 
-        @Override
         public CompletableFuture<ClassLoader> doRunAsync() {
             final CompletableFuture<ClassLoader> contextClassLoader = new CompletableFuture<>();
             runAsync(
@@ -368,11 +430,17 @@ public class ContextClassLoadingSettingTest extends TestLogger {
             voidOperationClassLoader.complete(Thread.currentThread().getContextClassLoader());
         }
 
+        @Override
+        public CompletableFuture<PickyObject> getPickyObject() {
+            return CompletableFuture.completedFuture(pickyObject);
+        }
+
         public void completeRPCFuture() {
             rpcResponseFuture.complete(null);
         }
 
         @Override
+        @Local
         public CompletableFuture<ClassLoader> getContextClassLoader() {
             return CompletableFuture.completedFuture(
                     Thread.currentThread().getContextClassLoader());

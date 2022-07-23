@@ -18,13 +18,12 @@
 
 package org.apache.flink.table.planner.runtime.stream.table;
 
-import org.apache.flink.table.factories.PrintTableSinkFactory;
+import org.apache.flink.connector.print.table.PrintTableSinkFactory;
 import org.apache.flink.table.planner.runtime.utils.StreamingTestBase;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.types.Row;
 
 import org.junit.After;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -38,6 +37,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** End to end tests for {@link PrintTableSinkFactory}. */
 public class PrintConnectorITCase extends StreamingTestBase {
@@ -93,9 +94,62 @@ public class PrintConnectorITCase extends StreamingTestBase {
 
         String expectedLine1 = "test_print:1> +I[" + /* 0 */ "1, " + /* 1 */ "1.1" + "]";
         String expectedLine2 = "test_print:2> +I[" + /* 0 */ "1, " + /* 1 */ "1.1" + "]";
-        Assert.assertTrue(
-                arrayOutputStream.toString().equals(expectedLine1 + "\n")
-                        || arrayOutputStream.toString().equals(expectedLine2 + "\n"));
+        assertThat(
+                        arrayOutputStream.toString().equals(expectedLine1 + "\n")
+                                || arrayOutputStream.toString().equals(expectedLine2 + "\n"))
+                .isTrue();
+    }
+
+    @Test
+    public void testWithPartitionedTableAll() throws Exception {
+        createPartitionedTable();
+        tEnv().executeSql("INSERT INTO print_t PARTITION (f0=1,f1=1.1) SELECT 'n1'").await();
+
+        String expectedLine1 =
+                "test_print:f0=1:f1=1.1:1> +I["
+                        + /* 0 */ "1, "
+                        + /* 1 */ "1.1, "
+                        + /* 2 */ "n1"
+                        + "]";
+        String expectedLine2 =
+                "test_print:f0=1:f1=1.1:2> +I["
+                        + /* 0 */ "1, "
+                        + /* 1 */ "1.1, "
+                        + /* 2 */ "n1"
+                        + "]";
+        assertThat(
+                        arrayOutputStream.toString().equals(expectedLine1 + "\n")
+                                || arrayOutputStream.toString().equals(expectedLine2 + "\n"))
+                .isTrue();
+    }
+
+    @Test
+    public void testWithPartitionedTablePart() throws Exception {
+        createPartitionedTable();
+        tEnv().executeSql("INSERT INTO print_t PARTITION (f0=1) SELECT 1.1, 'n1'").await();
+
+        String expectedLine1 =
+                "test_print:f0=1:1> +I[" + /* 0 */ "1, " + /* 1 */ "1.1, " + /* 2 */ "n1" + "]";
+        String expectedLine2 =
+                "test_print:f0=1:2> +I[" + /* 0 */ "1, " + /* 1 */ "1.1, " + /* 2 */ "n1" + "]";
+        assertThat(
+                        arrayOutputStream.toString().equals(expectedLine1 + "\n")
+                                || arrayOutputStream.toString().equals(expectedLine2 + "\n"))
+                .isTrue();
+    }
+
+    private void createPartitionedTable() {
+        tEnv().executeSql(
+                        "create table print_t ("
+                                + "f0 int,"
+                                + "f1 double,"
+                                + "f2 string) "
+                                + "PARTITIONED BY (f0, f1) "
+                                + "with ("
+                                + "'connector' = 'print',"
+                                + "'print-identifier' = 'test_print',"
+                                + "'sink.parallelism' = '2',"
+                                + "'standard-error'='false')");
     }
 
     private void test(boolean standardError) throws Exception {
@@ -166,8 +220,7 @@ public class PrintConnectorITCase extends StreamingTestBase {
                         +
                         /* 11 */ "+I[1, 1]"
                         + "]";
-        Assert.assertEquals(
-                expectedLine + "\n" + expectedLine + "\n",
-                standardError ? arrayErrorStream.toString() : arrayOutputStream.toString());
+        assertThat(standardError ? arrayErrorStream.toString() : arrayOutputStream.toString())
+                .isEqualTo(expectedLine + "\n" + expectedLine + "\n");
     }
 }

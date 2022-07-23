@@ -28,6 +28,9 @@ import java.util.concurrent.CompletableFuture;
 public class NoOpBufferPool implements BufferPool {
 
     @Override
+    public void reserveSegments(int numberOfSegmentsToReserve) {}
+
+    @Override
     public void lazyDestroy() {}
 
     @Override
@@ -93,6 +96,16 @@ public class NoOpBufferPool implements BufferPool {
 
     @Override
     public void setNumBuffers(int numBuffers) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setMaxOverdraftBuffersPerGate(int maxOverdraftBuffersPerGate) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int getMaxOverdraftBuffersPerGate() {
         throw new UnsupportedOperationException();
     }
 

@@ -40,15 +40,16 @@ class StreamExecutionEnvironmentCompletenessTests(PythonAPICompletenessTestCase,
         # 'isForceCheckpointing', 'getNumberOfExecutionRetries', 'setNumberOfExecutionRetries'
         # is deprecated, exclude them.
         return {'getLastJobExecutionResult', 'getId', 'getIdString',
-                'registerCachedFile', 'createCollectionsEnvironment', 'createLocalEnvironment',
+                'createCollectionsEnvironment', 'createLocalEnvironment',
                 'createRemoteEnvironment', 'addOperator', 'fromElements',
                 'resetContextEnvironment', 'getCachedFiles', 'generateSequence',
                 'getNumberOfExecutionRetries', 'getStreamGraph', 'fromParallelCollection',
                 'readFileStream', 'isForceCheckpointing', 'readFile', 'clean',
                 'createInput', 'createLocalEnvironmentWithWebUI', 'fromCollection',
                 'socketTextStream', 'initializeContextEnvironment', 'readTextFile',
-                'setNumberOfExecutionRetries', 'configure', 'executeAsync', 'registerJobListener',
-                'clearJobListeners', 'getJobListeners', "fromSequence"}
+                'setNumberOfExecutionRetries', 'executeAsync', 'registerJobListener',
+                'clearJobListeners', 'getJobListeners', 'fromSequence', 'getConfiguration',
+                'generateStreamGraph', 'getTransformations', 'areExplicitEnvironmentsAllowed'}
 
 
 if __name__ == '__main__':

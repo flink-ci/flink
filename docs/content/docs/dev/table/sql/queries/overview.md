@@ -205,9 +205,9 @@ tableResult2.print();
 val env = StreamExecutionEnvironment.getExecutionEnvironment()
 val tableEnv = StreamTableEnvironment.create(env, settings)
 // enable checkpointing
-tableEnv.getConfig.getConfiguration.set(
+tableEnv.getConfig.set(
   ExecutionCheckpointingOptions.CHECKPOINTING_MODE, CheckpointingMode.EXACTLY_ONCE)
-tableEnv.getConfig.getConfiguration.set(
+tableEnv.getConfig.set(
   ExecutionCheckpointingOptions.CHECKPOINTING_INTERVAL, Duration.ofSeconds(10))
 
 tableEnv.executeSql("CREATE TABLE Orders (`user` BIGINT, product STRING, amount INT) WITH (...)")
@@ -232,8 +232,8 @@ tableResult2.print()
 env = StreamExecutionEnvironment.get_execution_environment()
 table_env = StreamTableEnvironment.create(env, settings)
 # enable checkpointing
-table_env.get_config().get_configuration().set_string("execution.checkpointing.mode", "EXACTLY_ONCE")
-table_env.get_config().get_configuration().set_string("execution.checkpointing.interval", "10s")
+table_env.get_config().set("execution.checkpointing.mode", "EXACTLY_ONCE")
+table_env.get_config().set("execution.checkpointing.interval", "10s")
 
 table_env.execute_sql("CREATE TABLE Orders (`user` BIGINT, product STRING, amount INT) WITH (...)")
 
@@ -406,7 +406,7 @@ Flink SQL uses a lexical policy for identifier (table, attribute, function names
 
 - The case of identifiers is preserved whether or not they are quoted.
 - After which, identifiers are matched case-sensitively.
-- Unlike Java, back-ticks allow identifiers to contain non-alphanumeric characters (e.g. <code>"SELECT a AS `my field` FROM t"</code>).
+- Unlike Java, back-ticks allow identifiers to contain non-alphanumeric characters (e.g. ``SELECT a AS `my field` FROM t``).
 
 String literals must be enclosed in single quotes (e.g., `SELECT 'Hello World'`). Duplicate a single quote for escaping (e.g., `SELECT 'It''s me'`).
 

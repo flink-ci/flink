@@ -22,16 +22,20 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.CheckpointListener;
+import org.apache.flink.api.common.state.InternalCheckpointListener;
 import org.apache.flink.api.common.state.State;
 import org.apache.flink.api.common.state.StateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.checkpoint.CheckpointType;
-import org.apache.flink.runtime.mailbox.MailboxExecutor;
 import org.apache.flink.runtime.state.AbstractKeyedStateBackend;
+import org.apache.flink.runtime.state.CheckpointStateOutputStream;
+import org.apache.flink.runtime.state.CheckpointStorageLocationReference;
+import org.apache.flink.runtime.state.CheckpointStorageWorkerView;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
 import org.apache.flink.runtime.state.CheckpointableKeyedStateBackend;
+import org.apache.flink.runtime.state.CheckpointedStateScope;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.KeyGroupedInternalPriorityQueue;
 import org.apache.flink.runtime.state.Keyed;
@@ -44,6 +48,7 @@ import org.apache.flink.runtime.state.RegisteredPriorityQueueStateBackendMetaInf
 import org.apache.flink.runtime.state.SavepointResources;
 import org.apache.flink.runtime.state.SnapshotResult;
 import org.apache.flink.runtime.state.StateSnapshotTransformer;
+import org.apache.flink.runtime.state.StreamStateHandle;
 import org.apache.flink.runtime.state.TestableKeyedStateBackend;
 import org.apache.flink.runtime.state.changelog.ChangelogStateBackendHandle;
 import org.apache.flink.runtime.state.changelog.ChangelogStateBackendHandle.ChangelogStateBackendHandleImpl;
@@ -51,38 +56,44 @@ import org.apache.flink.runtime.state.changelog.ChangelogStateHandle;
 import org.apache.flink.runtime.state.changelog.SequenceNumber;
 import org.apache.flink.runtime.state.changelog.StateChangelogWriter;
 import org.apache.flink.runtime.state.heap.HeapPriorityQueueElement;
-import org.apache.flink.runtime.state.heap.InternalKeyContext;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.state.metainfo.StateMetaInfoSnapshot.BackendStateType;
 import org.apache.flink.runtime.state.metrics.LatencyTrackingStateFactory;
 import org.apache.flink.runtime.state.ttl.TtlStateFactory;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
+import org.apache.flink.state.changelog.restore.ChangelogRestoreTarget;
 import org.apache.flink.state.changelog.restore.FunctionDelegationHelper;
-import org.apache.flink.util.FlinkRuntimeException;
+
+import org.apache.flink.shaded.guava30.com.google.common.io.Closer;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import javax.annotation.concurrent.GuardedBy;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.NavigableMap;
+import java.util.Optional;
+import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
+import static java.util.Collections.unmodifiableList;
+import static org.apache.flink.state.changelog.PeriodicMaterializationManager.MaterializationRunnable;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -95,27 +106,17 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 public class ChangelogKeyedStateBackend<K>
         implements CheckpointableKeyedStateBackend<K>,
                 CheckpointListener,
-                TestableKeyedStateBackend<K> {
+                TestableKeyedStateBackend<K>,
+                InternalCheckpointListener {
     private static final Logger LOG = LoggerFactory.getLogger(ChangelogKeyedStateBackend.class);
 
-    private static final Map<StateDescriptor.Type, StateFactory> STATE_FACTORIES =
-            Stream.of(
-                            Tuple2.of(
-                                    StateDescriptor.Type.VALUE,
-                                    (StateFactory) ChangelogValueState::create),
-                            Tuple2.of(
-                                    StateDescriptor.Type.LIST,
-                                    (StateFactory) ChangelogListState::create),
-                            Tuple2.of(
-                                    StateDescriptor.Type.REDUCING,
-                                    (StateFactory) ChangelogReducingState::create),
-                            Tuple2.of(
-                                    StateDescriptor.Type.AGGREGATING,
-                                    (StateFactory) ChangelogAggregatingState::create),
-                            Tuple2.of(
-                                    StateDescriptor.Type.MAP,
-                                    (StateFactory) ChangelogMapState::create))
-                    .collect(Collectors.toMap(t -> t.f0, t -> t.f1));
+    /**
+     * ChangelogStateBackend only supports CheckpointType.CHECKPOINT; The rest of information in
+     * CheckpointOptions is not used in Snapshotable#snapshot(). More details in FLINK-23441.
+     */
+    private static final CheckpointOptions CHECKPOINT_OPTIONS =
+            new CheckpointOptions(
+                    CheckpointType.CHECKPOINT, CheckpointStorageLocationReference.getDefault());
 
     /** delegated keyedStateBackend. */
     private final AbstractKeyedStateBackend<K> keyedStateBackend;
@@ -124,24 +125,25 @@ public class ChangelogKeyedStateBackend<K>
      * This is the cache maintained by the DelegateKeyedStateBackend itself. It is not the same as
      * the underlying delegated keyedStateBackend. InternalKvState is a delegated state.
      */
-    private final HashMap<String, InternalKvState<K, ?, ?>> keyValueStatesByName;
+    private final Map<String, InternalKvState<K, ?, ?>> keyValueStatesByName;
 
-    /**
-     * Unwrapped changelog states used for recovery (not wrapped into e.g. TTL).
-     *
-     * <p>WARN: cleared upon recovery completion.
-     */
-    private final HashMap<String, ChangelogState> changelogStates;
-
-    private final HashMap<String, ChangelogKeyGroupedPriorityQueue<?>> priorityQueueStatesByName;
+    private final ChangelogStateFactory changelogStateFactory;
 
     private final ExecutionConfig executionConfig;
 
     private final TtlTimeProvider ttlTimeProvider;
 
-    private final StateChangelogWriter<ChangelogStateHandle> stateChangelogWriter;
+    private final StateChangelogWriter<? extends ChangelogStateHandle> stateChangelogWriter;
+
+    private final Closer closer = Closer.create();
+
+    private final CheckpointStreamFactory streamFactory;
+
+    private ChangelogSnapshotState changelogSnapshotState;
 
     private long lastCheckpointId = -1L;
+
+    private long materializedId = 0;
 
     /** last accessed partitioned state. */
     @SuppressWarnings("rawtypes")
@@ -153,62 +155,107 @@ public class ChangelogKeyedStateBackend<K>
     private final FunctionDelegationHelper functionDelegationHelper =
             new FunctionDelegationHelper();
 
-    /** Updated initially on restore and later upon materialization (in FLINK-21357). */
-    @GuardedBy("materialized")
-    private final List<KeyedStateHandle> materialized = new ArrayList<>();
-
-    /** Updated initially on restore and later cleared upon materialization (in FLINK-21357). */
-    @GuardedBy("materialized")
-    private final List<ChangelogStateHandle> restoredNonMaterialized = new ArrayList<>();
+    private final ChangelogStateBackendMetricGroup metrics;
 
     /**
      * {@link SequenceNumber} denoting last upload range <b>start</b>, inclusive. Updated to {@link
-     * #materializedTo} when {@link #snapshot(long, long, CheckpointStreamFactory,
-     * CheckpointOptions) starting snapshot}. Used to notify {@link #stateChangelogWriter} about
-     * changelog ranges that were confirmed or aborted by JM.
+     * ChangelogSnapshotState#materializedTo} when {@link #snapshot(long, long,
+     * CheckpointStreamFactory, CheckpointOptions) starting snapshot}. Used to notify {@link
+     * #stateChangelogWriter} about changelog ranges that were confirmed or aborted by JM.
      */
     @Nullable private SequenceNumber lastUploadedFrom;
     /**
      * {@link SequenceNumber} denoting last upload range <b>end</b>, exclusive. Updated to {@link
-     * org.apache.flink.runtime.state.changelog.StateChangelogWriter#lastAppendedSequenceNumber}
-     * when {@link #snapshot(long, long, CheckpointStreamFactory, CheckpointOptions) starting
-     * snapshot}. Used to notify {@link #stateChangelogWriter} about changelog ranges that were
-     * confirmed or aborted by JM.
+     * StateChangelogWriter#nextSequenceNumber()} when {@link #snapshot(long, long,
+     * CheckpointStreamFactory, CheckpointOptions) starting snapshot}. Used to notify {@link
+     * #stateChangelogWriter} about changelog ranges that were confirmed or aborted by JM.
      */
     @Nullable private SequenceNumber lastUploadedTo;
+
+    private final String subtaskName;
+
     /**
-     * The {@link SequenceNumber} up to which the state is materialized, exclusive. The log should
-     * be truncated accordingly.
-     *
-     * <p>WARN: currently not updated - to be changed in FLINK-21357.
-     *
-     * <p>WARN: this value needs to be updated for benchmarking, e.g. in notifyCheckpointComplete.
+     * Provides a unique ID for each state created by this backend instance. A mapping from this ID
+     * to state name is written once along with metadata; afterwards, only ID is written with each
+     * state change for efficiency.
      */
-    private final SequenceNumber materializedTo;
+    private short lastCreatedStateId = -1;
 
-    private final MailboxExecutor mainMailboxExecutor;
+    /** Checkpoint ID mapped to Materialization ID - used to notify nested backend of completion. */
+    private final NavigableMap<Long, Long> materializationIdByCheckpointId = new TreeMap<>();
 
-    private final ExecutorService asyncOperationsThreadPool;
+    private long lastConfirmedMaterializationId = -1L;
+
+    private final ChangelogTruncateHelper changelogTruncateHelper;
 
     public ChangelogKeyedStateBackend(
             AbstractKeyedStateBackend<K> keyedStateBackend,
+            String subtaskName,
             ExecutionConfig executionConfig,
             TtlTimeProvider ttlTimeProvider,
-            StateChangelogWriter<ChangelogStateHandle> stateChangelogWriter,
+            ChangelogStateBackendMetricGroup metricGroup,
+            StateChangelogWriter<? extends ChangelogStateHandle> stateChangelogWriter,
             Collection<ChangelogStateBackendHandle> initialState,
-            MailboxExecutor mainMailboxExecutor,
-            ExecutorService asyncOperationsThreadPool) {
+            CheckpointStorageWorkerView checkpointStorageWorkerView) {
+        this(
+                keyedStateBackend,
+                subtaskName,
+                executionConfig,
+                ttlTimeProvider,
+                metricGroup,
+                stateChangelogWriter,
+                initialState,
+                checkpointStorageWorkerView,
+                new ChangelogStateFactory());
+    }
+
+    @SuppressWarnings("rawtypes")
+    public ChangelogKeyedStateBackend(
+            AbstractKeyedStateBackend<K> keyedStateBackend,
+            String subtaskName,
+            ExecutionConfig executionConfig,
+            TtlTimeProvider ttlTimeProvider,
+            ChangelogStateBackendMetricGroup metricGroup,
+            StateChangelogWriter<? extends ChangelogStateHandle> stateChangelogWriter,
+            Collection<ChangelogStateBackendHandle> initialState,
+            CheckpointStorageWorkerView checkpointStorageWorkerView,
+            ChangelogStateFactory changelogStateFactory) {
         this.keyedStateBackend = keyedStateBackend;
+        this.subtaskName = subtaskName;
         this.executionConfig = executionConfig;
         this.ttlTimeProvider = ttlTimeProvider;
         this.keyValueStatesByName = new HashMap<>();
-        this.priorityQueueStatesByName = new HashMap<>();
+        this.metrics = metricGroup;
+        this.changelogStateFactory = changelogStateFactory;
         this.stateChangelogWriter = stateChangelogWriter;
-        this.materializedTo = stateChangelogWriter.initialSequenceNumber();
-        this.changelogStates = new HashMap<>();
-        this.mainMailboxExecutor = checkNotNull(mainMailboxExecutor);
-        this.asyncOperationsThreadPool = checkNotNull(asyncOperationsThreadPool);
-        this.completeRestore(initialState);
+        this.lastUploadedTo = stateChangelogWriter.initialSequenceNumber();
+        this.closer.register(() -> stateChangelogWriter.truncateAndClose(lastUploadedTo));
+        this.changelogSnapshotState = completeRestore(initialState);
+        this.streamFactory =
+                new CheckpointStreamFactory() {
+
+                    @Override
+                    public CheckpointStateOutputStream createCheckpointStateOutputStream(
+                            CheckpointedStateScope scope) throws IOException {
+                        return checkpointStorageWorkerView.createTaskOwnedStateStream();
+                    }
+
+                    @Override
+                    public boolean canFastDuplicate(
+                            StreamStateHandle stateHandle, CheckpointedStateScope scope)
+                            throws IOException {
+                        return false;
+                    }
+
+                    @Override
+                    public List<StreamStateHandle> duplicate(
+                            List<StreamStateHandle> stateHandles, CheckpointedStateScope scope)
+                            throws IOException {
+                        return null;
+                    }
+                };
+        this.closer.register(keyedStateBackend);
+        this.changelogTruncateHelper = new ChangelogTruncateHelper(stateChangelogWriter);
     }
 
     // -------------------- CheckpointableKeyedStateBackend --------------------------------
@@ -219,7 +266,7 @@ public class ChangelogKeyedStateBackend<K>
 
     @Override
     public void close() throws IOException {
-        keyedStateBackend.close();
+        closer.close();
     }
 
     @Override
@@ -253,6 +300,7 @@ public class ChangelogKeyedStateBackend<K>
         lastName = null;
         lastState = null;
         keyValueStatesByName.clear();
+        changelogStateFactory.dispose();
     }
 
     @Override
@@ -329,37 +377,66 @@ public class ChangelogKeyedStateBackend<K>
         // materialization may truncate only a part of the previous result and the backend would
         // have to split it somehow for the former option, so the latter is used.
         lastCheckpointId = checkpointId;
-        lastUploadedFrom = materializedTo;
-        lastUploadedTo = stateChangelogWriter.lastAppendedSequenceNumber().next();
+        lastUploadedFrom = changelogSnapshotState.lastMaterializedTo();
+        lastUploadedTo = stateChangelogWriter.nextSequenceNumber();
+        changelogTruncateHelper.checkpoint(checkpointId, lastUploadedTo);
 
-        LOG.debug(
-                "snapshot for checkpoint {}, change range: {}..{}",
+        LOG.info(
+                "snapshot of {} for checkpoint {}, change range: {}..{}",
+                subtaskName,
                 checkpointId,
                 lastUploadedFrom,
                 lastUploadedTo);
+
+        ChangelogSnapshotState changelogStateBackendStateCopy = changelogSnapshotState;
+
+        materializationIdByCheckpointId.put(
+                checkpointId, changelogStateBackendStateCopy.materializationID);
+
         return toRunnableFuture(
                 stateChangelogWriter
                         .persist(lastUploadedFrom)
-                        .thenApply(this::buildSnapshotResult));
+                        .thenApply(
+                                delta ->
+                                        buildSnapshotResult(
+                                                checkpointId,
+                                                delta,
+                                                changelogStateBackendStateCopy))
+                        .whenComplete(
+                                (snapshotResult, throwable) ->
+                                        metrics.reportSnapshotResult(snapshotResult))
+                        .thenApply(
+                                snapshotResult ->
+                                        SnapshotResult.of(
+                                                snapshotResult.getJobManagerOwnedSnapshot())));
     }
 
-    private SnapshotResult<KeyedStateHandle> buildSnapshotResult(ChangelogStateHandle delta) {
-        // Can be called by either task thread during the sync checkpoint phase (if persist future
-        // was already completed); or by the writer thread otherwise. So need to synchronize.
-        // todo: revisit after FLINK-21357 - use mailbox action?
-        synchronized (materialized) {
-            // collections don't change once started and handles are immutable
-            List<ChangelogStateHandle> prevDeltaCopy = new ArrayList<>(restoredNonMaterialized);
-            if (delta != null && delta.getStateSize() > 0) {
-                prevDeltaCopy.add(delta);
-            }
-            if (prevDeltaCopy.isEmpty() && materialized.isEmpty()) {
-                return SnapshotResult.empty();
-            } else {
-                return SnapshotResult.of(
-                        new ChangelogStateBackendHandleImpl(
-                                materialized, prevDeltaCopy, getKeyGroupRange()));
-            }
+    private SnapshotResult<ChangelogStateBackendHandle> buildSnapshotResult(
+            long checkpointId,
+            ChangelogStateHandle delta,
+            ChangelogSnapshotState changelogStateBackendStateCopy) {
+
+        // collections don't change once started and handles are immutable
+        List<ChangelogStateHandle> prevDeltaCopy =
+                new ArrayList<>(changelogStateBackendStateCopy.getRestoredNonMaterialized());
+        long persistedSizeOfThisCheckpoint = 0L;
+        if (delta != null && delta.getStateSize() > 0) {
+            prevDeltaCopy.add(delta);
+            persistedSizeOfThisCheckpoint += delta.getCheckpointedSize();
+        }
+
+        if (prevDeltaCopy.isEmpty()
+                && changelogStateBackendStateCopy.getMaterializedSnapshot().isEmpty()) {
+            return SnapshotResult.empty();
+        } else {
+            return SnapshotResult.of(
+                    new ChangelogStateBackendHandleImpl(
+                            changelogStateBackendStateCopy.getMaterializedSnapshot(),
+                            prevDeltaCopy,
+                            getKeyGroupRange(),
+                            checkpointId,
+                            changelogStateBackendStateCopy.materializationID,
+                            persistedSizeOfThisCheckpoint));
         }
     }
 
@@ -371,7 +448,9 @@ public class ChangelogKeyedStateBackend<K>
                     @Nonnull String stateName,
                     @Nonnull TypeSerializer<T> byteOrderedElementSerializer) {
         ChangelogKeyGroupedPriorityQueue<T> queue =
-                (ChangelogKeyGroupedPriorityQueue<T>) priorityQueueStatesByName.get(stateName);
+                (ChangelogKeyGroupedPriorityQueue<T>)
+                        changelogStateFactory.getExistingState(
+                                stateName, BackendStateType.PRIORITY_QUEUE);
         if (queue == null) {
             PriorityQueueStateChangeLoggerImpl<K, T> priorityQueueStateChangeLogger =
                     new PriorityQueueStateChangeLoggerImpl<>(
@@ -379,13 +458,15 @@ public class ChangelogKeyedStateBackend<K>
                             keyedStateBackend.getKeyContext(),
                             stateChangelogWriter,
                             new RegisteredPriorityQueueStateBackendMetaInfo<>(
-                                    stateName, byteOrderedElementSerializer));
+                                    stateName, byteOrderedElementSerializer),
+                            ++lastCreatedStateId);
+            closer.register(priorityQueueStateChangeLogger);
             queue =
-                    new ChangelogKeyGroupedPriorityQueue<>(
+                    changelogStateFactory.create(
+                            stateName,
                             keyedStateBackend.create(stateName, byteOrderedElementSerializer),
                             priorityQueueStateChangeLogger,
                             byteOrderedElementSerializer);
-            priorityQueueStatesByName.put(stateName, queue);
         }
         return queue;
     }
@@ -397,8 +478,8 @@ public class ChangelogKeyedStateBackend<K>
     }
 
     @Override
-    public boolean isStateImmutableInStateBackend(CheckpointType checkpointOptions) {
-        return keyedStateBackend.isStateImmutableInStateBackend(checkpointOptions);
+    public boolean isSafeToReuseKVState() {
+        return keyedStateBackend.isSafeToReuseKVState();
     }
 
     @Nonnull
@@ -418,7 +499,14 @@ public class ChangelogKeyedStateBackend<K>
             // This might change if the log ownership changes (the method won't likely be needed).
             stateChangelogWriter.confirm(lastUploadedFrom, lastUploadedTo);
         }
-        keyedStateBackend.notifyCheckpointComplete(checkpointId);
+        Long materializationID = materializationIdByCheckpointId.remove(checkpointId);
+        if (materializationID != null) {
+            if (materializationID > lastConfirmedMaterializationId) {
+                keyedStateBackend.notifyCheckpointComplete(materializationID);
+                lastConfirmedMaterializationId = materializationID;
+            }
+        }
+        materializationIdByCheckpointId.headMap(checkpointId, true).clear();
     }
 
     @Override
@@ -430,7 +518,7 @@ public class ChangelogKeyedStateBackend<K>
             // This might change if the log ownership changes (the method won't likely be needed).
             stateChangelogWriter.reset(lastUploadedFrom, lastUploadedTo);
         }
-        keyedStateBackend.notifyCheckpointAborted(checkpointId);
+        // TODO: Consider notifying nested state backend about checkpoint abortion (FLINK-25850)
     }
 
     // -------- Methods not simply delegating to wrapped state backend ---------
@@ -477,14 +565,6 @@ public class ChangelogKeyedStateBackend<K>
                     StateSnapshotTransformer.StateSnapshotTransformFactory<SEV>
                             snapshotTransformFactory)
             throws Exception {
-        StateFactory stateFactory = STATE_FACTORIES.get(stateDesc.getType());
-        if (stateFactory == null) {
-            String message =
-                    String.format(
-                            "State %s is not supported by %s",
-                            stateDesc.getClass(), this.getClass());
-            throw new FlinkRuntimeException(message);
-        }
         RegisteredKeyValueStateBackendMetaInfo<N, SV> meta =
                 new RegisteredKeyValueStateBackendMetaInfo<>(
                         stateDesc.getType(),
@@ -505,28 +585,127 @@ public class ChangelogKeyedStateBackend<K>
                         keyedStateBackend.getKeyContext(),
                         stateChangelogWriter,
                         meta,
-                        stateDesc.getTtlConfig());
-        IS is =
-                stateFactory.create(
+                        stateDesc.getTtlConfig(),
+                        stateDesc.getDefaultValue(),
+                        ++lastCreatedStateId);
+        closer.register(kvStateChangeLogger);
+        ChangelogState changelogState =
+                changelogStateFactory.create(
+                        stateDesc,
                         state,
                         kvStateChangeLogger,
                         keyedStateBackend /* pass the nested backend as key context so that it get key updates on recovery*/);
-        changelogStates.put(stateDesc.getName(), (ChangelogState) is);
-        return is;
+        return (IS) changelogState;
     }
 
-    private void completeRestore(Collection<ChangelogStateBackendHandle> stateHandles) {
-        if (!stateHandles.isEmpty()) {
-            synchronized (materialized) { // ensure visibility
-                for (ChangelogStateBackendHandle h : stateHandles) {
-                    if (h != null) {
-                        materialized.addAll(h.getMaterializedStateHandles());
-                        restoredNonMaterialized.addAll(h.getNonMaterializedStateHandles());
-                    }
-                }
+    public void registerCloseable(@Nullable Closeable closeable) {
+        closer.register(closeable);
+    }
+
+    private ChangelogSnapshotState completeRestore(
+            Collection<ChangelogStateBackendHandle> stateHandles) {
+        long materializationId = 0L;
+
+        List<KeyedStateHandle> materialized = new ArrayList<>();
+        List<ChangelogStateHandle> restoredNonMaterialized = new ArrayList<>();
+
+        for (ChangelogStateBackendHandle h : stateHandles) {
+            if (h != null) {
+                materialized.addAll(h.getMaterializedStateHandles());
+                restoredNonMaterialized.addAll(h.getNonMaterializedStateHandles());
+                // choose max materializationID to handle rescaling
+                materializationId = Math.max(materializationId, h.getMaterializationID());
             }
         }
-        changelogStates.clear();
+        this.materializedId = materializationId + 1;
+
+        return new ChangelogSnapshotState(
+                materialized,
+                restoredNonMaterialized,
+                stateChangelogWriter.initialSequenceNumber(),
+                materializationId);
+    }
+
+    /**
+     * Initialize state materialization so that materialized data can be persisted durably and
+     * included into the checkpoint.
+     *
+     * <p>This method is not thread safe. It should be called either under a lock or through task
+     * mailbox executor.
+     *
+     * @return a tuple of - future snapshot result from the underlying state backend - a {@link
+     *     SequenceNumber} identifying the latest change in the changelog
+     */
+    public Optional<MaterializationRunnable> initMaterialization() throws Exception {
+        SequenceNumber upTo = stateChangelogWriter.nextSequenceNumber();
+        SequenceNumber lastMaterializedTo = changelogSnapshotState.lastMaterializedTo();
+
+        LOG.info(
+                "Initialize Materialization. Current changelog writers last append to sequence number {}",
+                upTo);
+
+        if (upTo.compareTo(lastMaterializedTo) > 0) {
+
+            LOG.info("Starting materialization from {} : {}", lastMaterializedTo, upTo);
+
+            // This ID is not needed for materialization; But since we are re-using the
+            // streamFactory that is designed for state backend snapshot, which requires unique
+            // checkpoint ID. A faked materialized Id is provided here.
+            long materializationID = materializedId++;
+
+            MaterializationRunnable materializationRunnable =
+                    new MaterializationRunnable(
+                            keyedStateBackend.snapshot(
+                                    materializationID,
+                                    System.currentTimeMillis(),
+                                    // TODO: implement its own streamFactory.
+                                    streamFactory,
+                                    CHECKPOINT_OPTIONS),
+                            materializationID,
+                            upTo);
+
+            // log metadata after materialization is triggered
+            changelogStateFactory.resetAllWritingMetaFlags();
+
+            return Optional.of(materializationRunnable);
+        } else {
+            LOG.debug(
+                    "Skip materialization, last materialized to {} : last log to {}",
+                    lastMaterializedTo,
+                    upTo);
+
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * This method is not thread safe. It should be called either under a lock or through task
+     * mailbox executor.
+     */
+    public void updateChangelogSnapshotState(
+            SnapshotResult<KeyedStateHandle> materializedSnapshot,
+            long materializationID,
+            SequenceNumber upTo) {
+
+        LOG.info(
+                "Task {} finishes materialization, updates the snapshotState upTo {} : {}",
+                subtaskName,
+                upTo,
+                materializedSnapshot);
+        changelogSnapshotState =
+                new ChangelogSnapshotState(
+                        getMaterializedResult(materializedSnapshot),
+                        Collections.emptyList(),
+                        upTo,
+                        materializationID);
+        changelogTruncateHelper.materialized(upTo);
+    }
+
+    // TODO: this method may change after the ownership PR
+    private List<KeyedStateHandle> getMaterializedResult(
+            @Nonnull SnapshotResult<KeyedStateHandle> materializedSnapshot) {
+        KeyedStateHandle jobManagerOwned = materializedSnapshot.getJobManagerOwnedSnapshot();
+        return jobManagerOwned == null ? emptyList() : singletonList(jobManagerOwned);
     }
 
     @Override
@@ -534,45 +713,46 @@ public class ChangelogKeyedStateBackend<K>
         return keyedStateBackend.getDelegatedKeyedStateBackend(recursive);
     }
 
-    // Factory function interface
-    private interface StateFactory {
-        <K, N, SV, S extends State, IS extends S> IS create(
-                InternalKvState<K, N, SV> kvState,
-                KvStateChangeLogger<SV, N> changeLogger,
-                InternalKeyContext<K> keyContext)
-                throws Exception;
+    @Override
+    public void notifyCheckpointSubsumed(long checkpointId) throws Exception {
+        changelogTruncateHelper.checkpointSubsumed(checkpointId);
     }
 
-    /**
-     * @param name state name
-     * @param type state type (the only supported type currently are: {@link
-     *     BackendStateType#KEY_VALUE key value}, {@link BackendStateType#PRIORITY_QUEUE priority
-     *     queue})
-     * @return an existing state, i.e. the one that was already created. The returned state will not
-     *     apply TTL to the passed values, regardless of the TTL settings. This prevents double
-     *     applying of TTL (recovered values are TTL values if TTL was enabled). The state will,
-     *     however, use TTL serializer if TTL is enabled. WARN: only valid during the recovery.
-     * @throws NoSuchElementException if the state wasn't created
-     * @throws UnsupportedOperationException if state type is not supported
-     */
-    public ChangelogState getExistingStateForRecovery(String name, BackendStateType type)
-            throws NoSuchElementException, UnsupportedOperationException {
-        ChangelogState state;
-        switch (type) {
-            case KEY_VALUE:
-                state = changelogStates.get(name);
-                break;
-            case PRIORITY_QUEUE:
-                state = priorityQueueStatesByName.get(name);
-                break;
-            default:
-                throw new UnsupportedOperationException(
-                        String.format("Unknown state type %s (%s)", type, name));
-        }
-        if (state == null) {
-            throw new NoSuchElementException(String.format("%s state %s not found", type, name));
-        }
-        return state;
+    public ChangelogRestoreTarget<K> getChangelogRestoreTarget() {
+        return new ChangelogRestoreTarget<K>() {
+            @Override
+            public KeyGroupRange getKeyGroupRange() {
+                return ChangelogKeyedStateBackend.this.getKeyGroupRange();
+            }
+
+            @Override
+            public <N, S extends State, V> S createKeyedState(
+                    TypeSerializer<N> namespaceSerializer, StateDescriptor<S, V> stateDescriptor)
+                    throws Exception {
+                return ChangelogKeyedStateBackend.this.getOrCreateKeyedState(
+                        namespaceSerializer, stateDescriptor);
+            }
+
+            @Nonnull
+            @Override
+            public <T extends HeapPriorityQueueElement & PriorityComparable<? super T> & Keyed<?>>
+                    KeyGroupedInternalPriorityQueue<T> createPqState(
+                            @Nonnull String stateName,
+                            @Nonnull TypeSerializer<T> byteOrderedElementSerializer) {
+                return ChangelogKeyedStateBackend.this.create(
+                        stateName, byteOrderedElementSerializer);
+            }
+
+            @Override
+            public ChangelogState getExistingState(String name, BackendStateType type) {
+                return changelogStateFactory.getExistingState(name, type);
+            }
+
+            @Override
+            public CheckpointableKeyedStateBackend<K> getRestoredKeyedStateBackend() {
+                return ChangelogKeyedStateBackend.this;
+            }
+        };
     }
 
     private static <T> RunnableFuture<T> toRunnableFuture(CompletableFuture<T> f) {
@@ -608,5 +788,67 @@ public class ChangelogKeyedStateBackend<K>
                 return f.get(timeout, unit);
             }
         };
+    }
+
+    /**
+     * Snapshot State for ChangelogKeyedStatebackend.
+     *
+     * <p>It includes three parts: - materialized snapshot from the underlying delegated state
+     * backend - non-materialized part in the current changelog - non-materialized changelog, from
+     * previous logs (before failover or rescaling)
+     */
+    private static class ChangelogSnapshotState {
+        /**
+         * Materialized snapshot from the underlying delegated state backend. Set initially on
+         * restore and later upon materialization.
+         */
+        private final List<KeyedStateHandle> materializedSnapshot;
+
+        /**
+         * The {@link SequenceNumber} up to which the state is materialized, exclusive. This
+         * indicates the non-materialized part of the current changelog.
+         */
+        private final SequenceNumber materializedTo;
+
+        /**
+         * Non-materialized changelog, from previous logs. Set initially on restore and later
+         * cleared upon materialization.
+         */
+        private final List<ChangelogStateHandle> restoredNonMaterialized;
+
+        /** ID of this materialization corresponding to the nested backend checkpoint ID. */
+        private final long materializationID;
+
+        public ChangelogSnapshotState(
+                List<KeyedStateHandle> materializedSnapshot,
+                List<ChangelogStateHandle> restoredNonMaterialized,
+                SequenceNumber materializedTo,
+                long materializationID) {
+            this.materializedSnapshot = unmodifiableList((materializedSnapshot));
+            this.restoredNonMaterialized = unmodifiableList(restoredNonMaterialized);
+            this.materializedTo = materializedTo;
+            this.materializationID = materializationID;
+        }
+
+        public List<KeyedStateHandle> getMaterializedSnapshot() {
+            return materializedSnapshot;
+        }
+
+        public SequenceNumber lastMaterializedTo() {
+            return materializedTo;
+        }
+
+        public List<ChangelogStateHandle> getRestoredNonMaterialized() {
+            return restoredNonMaterialized;
+        }
+
+        public long getMaterializationID() {
+            return materializationID;
+        }
+    }
+
+    @VisibleForTesting
+    StateChangelogWriter<? extends ChangelogStateHandle> getChangelogWriter() {
+        return stateChangelogWriter;
     }
 }

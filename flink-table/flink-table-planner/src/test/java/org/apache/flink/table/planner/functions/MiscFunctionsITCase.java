@@ -22,32 +22,31 @@ import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 import org.apache.flink.table.functions.ScalarFunction;
 
-import org.junit.runners.Parameterized;
-
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.List;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.api.Expressions.$;
 import static org.apache.flink.table.api.Expressions.call;
 import static org.apache.flink.table.api.Expressions.callSql;
 
 /** Tests for miscellaneous {@link BuiltInFunctionDefinitions}. */
-public class MiscFunctionsITCase extends BuiltInFunctionTestBase {
+class MiscFunctionsITCase extends BuiltInFunctionTestBase {
 
-    @Parameterized.Parameters(name = "{index}: {0}")
-    public static List<TestSpec> testData() {
-        return Arrays.asList(
-                TestSpec.forFunction(BuiltInFunctionDefinitions.TYPE_OF)
+    @Override
+    Stream<TestSetSpec> getTestSetSpecs() {
+        return Stream.of(
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.TYPE_OF)
                         .onFieldsWithData(12, "Hello world", false)
                         .testResult(
                                 call("TYPEOF", $("f0")),
                                 "TYPEOF(f0)",
                                 "INT NOT NULL",
                                 DataTypes.STRING())
-                        .testTableApiError(
-                                call("TYPEOF", $("f0"), $("f2")), "Invalid input arguments.")
-                        .testSqlError(
+                        .testTableApiValidationError(
+                                call("TYPEOF", $("f0"), $("f2")),
+                                "Invalid function call:\n"
+                                        + "TYPEOF(INT NOT NULL, BOOLEAN NOT NULL)")
+                        .testSqlValidationError(
                                 "TYPEOF(f0, f2)",
                                 "SQL validation failed. Invalid function call:\nTYPEOF(INT NOT NULL, BOOLEAN NOT NULL)")
                         .testTableApiResult(
@@ -55,7 +54,7 @@ public class MiscFunctionsITCase extends BuiltInFunctionTestBase {
                                 "CHAR(11) NOT NULL",
                                 DataTypes.STRING())
                         .testSqlResult("TYPEOF(NULL)", "NULL", DataTypes.STRING()),
-                TestSpec.forFunction(BuiltInFunctionDefinitions.IF_NULL)
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.IF_NULL)
                         .onFieldsWithData(null, new BigDecimal("123.45"))
                         .andDataTypes(DataTypes.INT().nullable(), DataTypes.DECIMAL(5, 2).notNull())
                         .withFunction(TakesNotNull.class)
@@ -74,7 +73,7 @@ public class MiscFunctionsITCase extends BuiltInFunctionTestBase {
                                 "IFNULL(f1, f0)",
                                 new BigDecimal("123.45"),
                                 DataTypes.DECIMAL(12, 2).notNull())
-                        .testSqlError(
+                        .testSqlValidationError(
                                 "IFNULL(SUBSTR(''), f0)",
                                 "Invalid number of arguments to function 'SUBSTR'.")
                         .testResult(
@@ -87,7 +86,7 @@ public class MiscFunctionsITCase extends BuiltInFunctionTestBase {
                                 "TakesNotNull(IFNULL(f0, 12))",
                                 12,
                                 DataTypes.INT().notNull()),
-                TestSpec.forExpression("SQL call")
+                TestSetSpec.forExpression("SQL call")
                         .onFieldsWithData(null, 12, "Hello World")
                         .andDataTypes(
                                 DataTypes.INT().nullable(),
@@ -100,7 +99,7 @@ public class MiscFunctionsITCase extends BuiltInFunctionTestBase {
                                 callSql("UPPER(f2)").plus(callSql("LOWER(f2)")).substring(2, 20),
                                 "ELLO WORLDhello worl",
                                 DataTypes.STRING().notNull())
-                        .testTableApiError(
+                        .testTableApiValidationError(
                                 callSql("UPPER(f1)"), "Invalid SQL expression: UPPER(f1)"));
     }
 

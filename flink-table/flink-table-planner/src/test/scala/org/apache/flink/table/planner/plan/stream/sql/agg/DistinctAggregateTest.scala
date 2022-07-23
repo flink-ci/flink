@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.stream.sql.agg
 
 import org.apache.flink.api.common.time.Time
@@ -25,9 +24,9 @@ import org.apache.flink.table.api.config.OptimizerConfigOptions
 import org.apache.flink.table.planner.plan.rules.physical.stream.IncrementalAggregateRule
 import org.apache.flink.table.planner.utils.{AggregatePhaseStrategy, StreamTableTestUtil, TableTestBase}
 
+import org.junit.{Before, Test}
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
-import org.junit.{Before, Test}
 
 import java.util
 
@@ -44,13 +43,14 @@ class DistinctAggregateTest(
   def before(): Unit = {
     util.tableEnv.getConfig.setIdleStateRetentionTime(Time.hours(1), Time.hours(2))
     util.enableMiniBatch()
-    util.tableEnv.getConfig.getConfiguration.setString(
-      OptimizerConfigOptions.TABLE_OPTIMIZER_AGG_PHASE_STRATEGY, aggPhaseEnforcer.toString)
-    util.tableEnv.getConfig.getConfiguration.setBoolean(
-      OptimizerConfigOptions.TABLE_OPTIMIZER_DISTINCT_AGG_SPLIT_ENABLED, splitDistinctAggEnabled)
+    util.tableEnv.getConfig
+      .set(OptimizerConfigOptions.TABLE_OPTIMIZER_AGG_PHASE_STRATEGY, aggPhaseEnforcer.toString)
+    util.tableEnv.getConfig.set(
+      OptimizerConfigOptions.TABLE_OPTIMIZER_DISTINCT_AGG_SPLIT_ENABLED,
+      Boolean.box(splitDistinctAggEnabled))
     // disable incremental agg
-    util.tableEnv.getConfig.getConfiguration.setBoolean(
-      IncrementalAggregateRule.TABLE_OPTIMIZER_INCREMENTAL_AGG_ENABLED, false)
+    util.tableEnv.getConfig
+      .set(IncrementalAggregateRule.TABLE_OPTIMIZER_INCREMENTAL_AGG_ENABLED, Boolean.box(false))
   }
 
   @Test
@@ -166,6 +166,22 @@ class DistinctAggregateTest(
         |  GROUP BY c
         |) GROUP BY a
       """.stripMargin
+    util.verifyRelPlan(sqlQuery, ExplainDetail.CHANGELOG_MODE)
+  }
+
+  @Test
+  def testSumCountWithSingleDistinctAndRetraction(): Unit = {
+    val sqlQuery =
+      s"""
+         |SELECT
+         |  b, SUM(b1), COUNT(DISTINCT b1), COUNT(1)
+         |FROM(
+         |   SELECT
+         |     a, COUNT(b) as b, MAX(b) as b1
+         |   FROM MyTable
+         |   GROUP BY a
+         |) GROUP BY b
+       """.stripMargin
     util.verifyRelPlan(sqlQuery, ExplainDetail.CHANGELOG_MODE)
   }
 

@@ -42,6 +42,7 @@ import org.apache.flink.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import javax.management.AttributeNotFoundException;
 import javax.management.InstanceNotFoundException;
 import javax.management.MBeanException;
@@ -99,18 +100,14 @@ public class MetricUtils {
         return processMetricGroup;
     }
 
-    public static TaskManagerMetricGroup createTaskManagerMetricGroup(
-            MetricRegistry metricRegistry, String hostName, ResourceID resourceID) {
-        return new TaskManagerMetricGroup(metricRegistry, hostName, resourceID.toString());
-    }
-
     public static Tuple2<TaskManagerMetricGroup, MetricGroup> instantiateTaskManagerMetricGroup(
             MetricRegistry metricRegistry,
             String hostName,
             ResourceID resourceID,
             Optional<Time> systemResourceProbeInterval) {
         final TaskManagerMetricGroup taskManagerMetricGroup =
-                createTaskManagerMetricGroup(metricRegistry, hostName, resourceID);
+                TaskManagerMetricGroup.createTaskManagerMetricGroup(
+                        metricRegistry, hostName, resourceID);
 
         MetricGroup statusGroup = createAndInitializeStatusMetricGroup(taskManagerMetricGroup);
 
@@ -185,11 +182,20 @@ public class MetricUtils {
     }
 
     public static RpcService startRemoteMetricsRpcService(
-            Configuration configuration, String hostname, RpcSystem rpcSystem) throws Exception {
+            Configuration configuration,
+            String externalAddress,
+            @Nullable String bindAddress,
+            RpcSystem rpcSystem)
+            throws Exception {
         final String portRange = configuration.getString(MetricOptions.QUERY_SERVICE_PORT);
 
-        return startMetricRpcService(
-                configuration, rpcSystem.remoteServiceBuilder(configuration, hostname, portRange));
+        final RpcSystem.RpcServiceBuilder rpcServiceBuilder =
+                rpcSystem.remoteServiceBuilder(configuration, externalAddress, portRange);
+        if (bindAddress != null) {
+            rpcServiceBuilder.withBindAddress(bindAddress);
+        }
+
+        return startMetricRpcService(configuration, rpcServiceBuilder);
     }
 
     public static RpcService startLocalMetricsRpcService(

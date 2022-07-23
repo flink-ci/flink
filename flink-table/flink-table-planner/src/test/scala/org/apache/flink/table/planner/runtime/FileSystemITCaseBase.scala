@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.runtime
 
 import org.apache.flink.api.common.typeinfo.{TypeInformation, Types}
@@ -28,17 +27,18 @@ import org.apache.flink.table.planner.runtime.utils.BatchTableEnvUtil
 import org.apache.flink.table.planner.runtime.utils.BatchTestBase.row
 import org.apache.flink.types.Row
 
-import org.junit.Assert.assertTrue
-import org.junit.rules.TemporaryFolder
 import org.junit.{Rule, Test}
+import org.junit.Assert.{assertEquals, assertNotNull, assertTrue}
+import org.junit.rules.TemporaryFolder
 
 import java.io.File
+import java.net.URI
+import java.nio.file.Paths
+import java.time.Instant
 
 import scala.collection.{JavaConverters, Seq}
 
-/**
-  * Test File system table factory.
-  */
+/** Test File system table factory. */
 trait FileSystemITCaseBase {
 
   val fileTmpFolder = new TemporaryFolder
@@ -49,17 +49,24 @@ trait FileSystemITCaseBase {
 
   def formatProperties(): Array[String] = Array()
 
+  def getScheme: String = "file"
+
   def tableEnv: TableEnvironment
+
+  def checkPredicate(sqlQuery: String, checkFunc: Row => Unit): Unit
 
   def check(sqlQuery: String, expectedResult: Seq[Row]): Unit
 
   def check(sqlQuery: String, expectedResult: java.util.List[Row]): Unit = {
-    check(sqlQuery,
+    check(
+      sqlQuery,
       JavaConverters.asScalaIteratorConverter(expectedResult.iterator()).asScala.toSeq)
   }
 
+  def supportsReadingMetadata: Boolean = true
+
   def open(): Unit = {
-    resultPath = fileTmpFolder.newFolder().toURI.toString
+    resultPath = fileTmpFolder.newFolder().toURI.getPath
     BatchTableEnvUtil.registerCollection(
       tableEnv,
       "originalT",
@@ -76,11 +83,29 @@ trait FileSystemITCaseBase {
          |  c as b + 1
          |) partitioned by (a, b) with (
          |  'connector' = 'filesystem',
-         |  'path' = '$resultPath',
+         |  'path' = '$getScheme://$resultPath',
          |  ${formatProperties().mkString(",\n")}
          |)
        """.stripMargin
     )
+    if (supportsReadingMetadata) {
+      tableEnv.executeSql(
+        s"""
+           |create table partitionedTableWithMetadata (
+           |  x string,
+           |  y int,
+           |  a int,
+           |  b bigint,
+           |  c as b + 1,
+           |  f string metadata from 'file.path'
+           |) partitioned by (a, b) with (
+           |  'connector' = 'filesystem',
+           |  'path' = '$resultPath',
+           |  ${formatProperties().mkString(",\n")}
+           |)
+           """.stripMargin
+      )
+    }
     tableEnv.executeSql(
       s"""
          |create table nonPartitionedTable (
@@ -90,7 +115,48 @@ trait FileSystemITCaseBase {
          |  b bigint
          |) with (
          |  'connector' = 'filesystem',
-         |  'path' = '$resultPath',
+         |  'path' = '$getScheme://$resultPath',
+         |  ${formatProperties().mkString(",\n")}
+         |)
+       """.stripMargin
+    )
+    if (supportsReadingMetadata) {
+      tableEnv.executeSql(
+        s"""
+           |create table nonPartitionedTableWithMetadata (
+           |  x string,
+           |  y int,
+           |  a int,
+           |  f string metadata from 'file.path',
+           |  b bigint
+           |) with (
+           |  'connector' = 'filesystem',
+           |  'path' = '$resultPath',
+           |  ${formatProperties().mkString(",\n")}
+           |)
+         """.stripMargin
+      )
+    }
+
+    tableEnv.executeSql(
+      s"""
+         |create table hasDecimalFieldWithPrecisionTenAndZeroTable (
+         |  x decimal(10, 0), y int
+         |) with (
+         |  'connector' = 'filesystem',
+         |  'path' = '$getScheme://$resultPath',
+         |  ${formatProperties().mkString(",\n")}
+         |)
+       """.stripMargin
+    )
+
+    tableEnv.executeSql(
+      s"""
+         |create table hasDecimalFieldWithPrecisionThreeAndTwoTable (
+         |  x decimal(3, 2), y int
+         |) with (
+         |  'connector' = 'filesystem',
+         |  'path' = '$getScheme://$resultPath',
          |  ${formatProperties().mkString(",\n")}
          |)
        """.stripMargin
@@ -98,9 +164,46 @@ trait FileSystemITCaseBase {
   }
 
   @Test
+  def testSelectDecimalWithPrecisionTenAndZeroFromFileSystem(): Unit = {
+    tableEnv
+      .executeSql(
+        "insert into hasDecimalFieldWithPrecisionTenAndZeroTable(x, y) " +
+          "values(cast(2113554011 as decimal(10, 0)), 1), " +
+          "(cast(2113554022 as decimal(10,0)), 2)")
+      .await()
+
+    check(
+      "select x, y from hasDecimalFieldWithPrecisionTenAndZeroTable",
+      Seq(
+        row(2113554011, 1),
+        row(2113554022, 2)
+      ))
+  }
+
+  @Test
+  def testSelectDecimalWithPrecisionThreeAndTwoFromFileSystem(): Unit = {
+    tableEnv
+      .executeSql(
+        "insert into hasDecimalFieldWithPrecisionThreeAndTwoTable(x,y) " +
+          "values(cast(1.32 as decimal(3, 2)), 1), " +
+          "(cast(2.64 as decimal(3, 2)), 2)")
+      .await()
+
+    check(
+      "select x, y from hasDecimalFieldWithPrecisionThreeAndTwoTable",
+      Seq(
+        row(1.32, 1),
+        row(2.64, 2)
+      ))
+  }
+
+  @Test
   def testAllStaticPartitions1(): Unit = {
-    tableEnv.executeSql("insert into partitionedTable " +
-        "partition(a='1', b='1') select x, y from originalT where a=1 and b=1").await()
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='1', b='1') select x, y from originalT where a=1 and b=1")
+      .await()
 
     check(
       "select x, y from partitionedTable where a=1 and b=1",
@@ -115,8 +218,11 @@ trait FileSystemITCaseBase {
 
   @Test
   def testAllStaticPartitions2(): Unit = {
-    tableEnv.executeSql("insert into partitionedTable " +
-        "partition(a='2', b='1') select x, y from originalT where a=2 and b=1").await()
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='2', b='1') select x, y from originalT where a=2 and b=1")
+      .await()
 
     check(
       "select x, y from partitionedTable where a=2 and b=1",
@@ -130,9 +236,49 @@ trait FileSystemITCaseBase {
   }
 
   @Test
+  def testAllStaticPartitionsWithMetadata(): Unit = {
+    if (!supportsReadingMetadata) {
+      return
+    }
+
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='1', b='1') select x, y from originalT where a=1 and b=1")
+      .await()
+
+    checkPredicate(
+      "select x, f, y from partitionedTableWithMetadata where a=1 and b=1",
+      row => {
+        assertEquals(3, row.getArity)
+        assertNotNull(row.getField("f"))
+        assertNotNull(row.getField(1))
+        assertTrue(
+          "The filepath value should begin with the temporary test path",
+          row.getFieldAs[String](1).contains(fileTmpFolder.getRoot.getPath))
+      }
+    )
+
+    checkPredicate(
+      "select x, f, y from partitionedTableWithMetadata",
+      row => {
+        assertEquals(3, row.getArity)
+        assertNotNull(row.getField("f"))
+        assertNotNull(row.getField(1))
+        assertTrue(
+          "The filepath value should begin with the temporary test path",
+          row.getFieldAs[String](1).contains(fileTmpFolder.getRoot.getPath))
+      }
+    )
+  }
+
+  @Test
   def testPartialDynamicPartition(): Unit = {
-    tableEnv.executeSql("insert into partitionedTable " +
-        "partition(a=3) select x, y, b from originalT where a=3").await()
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a=3) select x, y, b from originalT where a=3")
+      .await()
 
     check(
       "select x, y from partitionedTable where a=2 and b=1",
@@ -172,8 +318,11 @@ trait FileSystemITCaseBase {
 
   @Test
   def testDynamicPartition(): Unit = {
-    tableEnv.executeSql("insert into partitionedTable " +
-        "select x, y, a, b from originalT").await()
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "select x, y, a, b from originalT")
+      .await()
 
     check(
       "select x, y from partitionedTable where a=1 and b=1",
@@ -198,11 +347,14 @@ trait FileSystemITCaseBase {
 
   @Test
   def testPartitionWithHiddenFile(): Unit = {
-    tableEnv.executeSql("insert into partitionedTable " +
-      "partition(a='1', b='1') select x, y from originalT where a=1 and b=1").await()
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='1', b='1') select x, y from originalT where a=1 and b=1")
+      .await()
 
     // create hidden partition dir
-    assertTrue(new File(new Path(resultPath + "/a=1/.b=2").toUri).mkdir())
+    assertTrue(new File(new Path("file:" + resultPath + "/a=1/.b=2").toUri).mkdir())
 
     check(
       "select x, y from partitionedTable",
@@ -212,8 +364,11 @@ trait FileSystemITCaseBase {
 
   @Test
   def testNonPartition(): Unit = {
-    tableEnv.executeSql("insert into nonPartitionedTable " +
-        "select x, y, a, b from originalT where a=1 and b=1").await()
+    tableEnv
+      .executeSql(
+        "insert into nonPartitionedTable " +
+          "select x, y, a, b from originalT where a=1 and b=1")
+      .await()
 
     check(
       "select x, y from nonPartitionedTable where a=1 and b=1",
@@ -222,26 +377,102 @@ trait FileSystemITCaseBase {
   }
 
   @Test
+  def testNonPartitionWithMetadata(): Unit = {
+    if (!supportsReadingMetadata) {
+      return
+    }
+
+    tableEnv
+      .executeSql(
+        "insert into nonPartitionedTable " +
+          "select x, y, a, b from originalT where a=1 and b=1")
+      .await()
+
+    checkPredicate(
+      "select x, f, y from nonPartitionedTableWithMetadata where a=1 and b=1",
+      row => {
+        assertEquals(3, row.getArity)
+        assertNotNull(row.getField("f"))
+        assertNotNull(row.getField(1))
+        assertTrue(
+          "The filepath value should begin with the temporary test path",
+          row.getFieldAs[String](1).contains(fileTmpFolder.getRoot.getPath))
+      }
+    )
+  }
+
+  @Test
+  def testReadAllMetadata(): Unit = {
+    if (!supportsReadingMetadata) {
+      return
+    }
+
+    tableEnv.executeSql(
+      s"""
+         |CREATE TABLE metadataTable (
+         |  x STRING,
+         |  `file.path` STRING METADATA,
+         |  `file.name` STRING METADATA,
+         |  `file.size` BIGINT METADATA,
+         |  `file.modification-time` TIMESTAMP_LTZ(3) METADATA
+         |) with (
+         |  'connector' = 'filesystem',
+         |  'path' = '$resultPath',
+         |  ${formatProperties().mkString(",\n")}
+         |)
+         """.stripMargin
+    )
+
+    tableEnv
+      .executeSql("INSERT INTO nonPartitionedTable (x) SELECT x FROM originalT LIMIT 1")
+      .await()
+
+    checkPredicate(
+      "SELECT * FROM metadataTable",
+      row => {
+        assertEquals(5, row.getArity)
+
+        // Only one file, because we don't have partitions
+        val file = new File(URI.create(resultPath).getPath).listFiles()(0)
+        val filename = Paths.get(file.toURI).getFileName.toString
+
+        assertTrue(
+          row.getFieldAs[String](1).contains(filename)
+        )
+        assertEquals(
+          filename,
+          row.getFieldAs[String](2)
+        )
+        assertEquals(
+          file.length(),
+          row.getFieldAs[Long](3)
+        )
+        assertEquals(
+          // Note: It's TIMESTAMP_LTZ
+          Instant.ofEpochMilli(file.lastModified()),
+          row.getFieldAs[Instant](4)
+        )
+      }
+    )
+
+  }
+
+  @Test
   def testLimitPushDown(): Unit = {
-    tableEnv.getConfig.getConfiguration.setInteger(
-      ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, 1)
+    tableEnv.getConfig
+      .set(ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, Int.box(1))
     tableEnv.executeSql("insert into nonPartitionedTable select x, y, a, b from originalT").await()
 
     check(
       "select x, y from nonPartitionedTable limit 3",
-      Seq(
-        row("x1", 1),
-        row("x2", 2),
-        row("x3", 3)))
+      Seq(row("x1", 1), row("x2", 2), row("x3", 3)))
   }
 
   @Test
   def testFilterPushDown(): Unit = {
     tableEnv.executeSql("insert into nonPartitionedTable select x, y, a, b from originalT").await()
 
-    check(
-      "select x, y from nonPartitionedTable where a=10086",
-      Seq())
+    check("select x, y from nonPartitionedTable where a=10086", Seq())
   }
 
   @Test
@@ -259,11 +490,13 @@ trait FileSystemITCaseBase {
 
   @Test
   def testInsertAppend(): Unit = {
-    tableEnv.sqlUpdate("insert into partitionedTable select x, y, a, b from originalT")
-    tableEnv.execute("test1")
+    tableEnv
+      .executeSql("insert into partitionedTable select x, y, a, b from originalT")
+      .await()
 
-    tableEnv.sqlUpdate("insert into partitionedTable select x, y, a, b from originalT")
-    tableEnv.execute("test2")
+    tableEnv
+      .executeSql("insert into partitionedTable select x, y, a, b from originalT")
+      .await()
 
     check(
       "select y, b, x from partitionedTable where a=3",
@@ -279,11 +512,13 @@ trait FileSystemITCaseBase {
 
   @Test
   def testInsertOverwrite(): Unit = {
-    tableEnv.sqlUpdate("insert overwrite partitionedTable select x, y, a, b from originalT")
-    tableEnv.execute("test1")
+    tableEnv
+      .executeSql("insert overwrite partitionedTable select x, y, a, b from originalT")
+      .await()
 
-    tableEnv.sqlUpdate("insert overwrite partitionedTable select x, y, a, b from originalT")
-    tableEnv.execute("test2")
+    tableEnv
+      .executeSql("insert overwrite partitionedTable select x, y, a, b from originalT")
+      .await()
 
     check(
       "select y, b, x from partitionedTable where a=3",
@@ -299,12 +534,8 @@ object FileSystemITCaseBase {
 
   val fieldNames = Array("x", "y", "a", "b")
 
-  val fieldTypes: Array[TypeInformation[_]] = Array(
-    Types.STRING,
-    Types.INT,
-    Types.INT,
-    Types.LONG)
-  val dataType = new RowTypeInfo(fieldTypes :_*)
+  val fieldTypes: Array[TypeInformation[_]] = Array(Types.STRING, Types.INT, Types.INT, Types.LONG)
+  val dataType = new RowTypeInfo(fieldTypes: _*)
 
   val data_with_partitions: Seq[Row] = Seq(
     row("x1", 1, 1, 1L),

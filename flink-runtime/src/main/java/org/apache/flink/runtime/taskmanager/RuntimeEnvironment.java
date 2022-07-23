@@ -21,6 +21,7 @@ package org.apache.flink.runtime.taskmanager;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.TaskInfo;
+import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
@@ -38,13 +39,12 @@ import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
-import org.apache.flink.runtime.mailbox.MailboxExecutor;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.state.CheckpointStorageAccess;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
-import org.apache.flink.runtime.throughput.ThroughputCalculator;
 import org.apache.flink.util.UserCodeClassLoader;
 
 import javax.annotation.Nullable;
@@ -54,6 +54,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /** In implementation of the {@link Environment}. */
 public class RuntimeEnvironment implements Environment {
@@ -101,7 +102,7 @@ public class RuntimeEnvironment implements Environment {
 
     @Nullable private ExecutorService asyncOperationsThreadPool;
 
-    private final ThroughputCalculator throughputCalculator;
+    @Nullable private CheckpointStorageAccess checkpointStorageAccess;
 
     // ------------------------------------------------------------------------
 
@@ -131,8 +132,7 @@ public class RuntimeEnvironment implements Environment {
             TaskManagerRuntimeInfo taskManagerInfo,
             TaskMetricGroup metrics,
             Task containingTask,
-            ExternalResourceInfoProvider externalResourceInfoProvider,
-            ThroughputCalculator throughputCalculator) {
+            ExternalResourceInfoProvider externalResourceInfoProvider) {
 
         this.jobId = checkNotNull(jobId);
         this.jobVertexId = checkNotNull(jobVertexId);
@@ -160,7 +160,6 @@ public class RuntimeEnvironment implements Environment {
         this.containingTask = containingTask;
         this.metrics = metrics;
         this.externalResourceInfoProvider = checkNotNull(externalResourceInfoProvider);
-        this.throughputCalculator = throughputCalculator;
     }
 
     // ------------------------------------------------------------------------
@@ -323,6 +322,7 @@ public class RuntimeEnvironment implements Environment {
 
     @Override
     public void setMainMailboxExecutor(MailboxExecutor mainMailboxExecutor) {
+        checkState(this.mainMailboxExecutor == null, "Can not set mainMailboxExecutor twice!");
         this.mainMailboxExecutor = mainMailboxExecutor;
     }
 
@@ -334,6 +334,9 @@ public class RuntimeEnvironment implements Environment {
 
     @Override
     public void setAsyncOperationsThreadPool(ExecutorService executorService) {
+        checkState(
+                this.asyncOperationsThreadPool == null,
+                "Can not set asyncOperationsThreadPool twice!");
         this.asyncOperationsThreadPool = executorService;
     }
 
@@ -345,7 +348,15 @@ public class RuntimeEnvironment implements Environment {
     }
 
     @Override
-    public ThroughputCalculator getThroughputMeter() {
-        return throughputCalculator;
+    public void setCheckpointStorageAccess(CheckpointStorageAccess checkpointStorageAccess) {
+        checkState(
+                this.checkpointStorageAccess == null, "Can not set checkpointStorageAccess twice!");
+        this.checkpointStorageAccess = checkpointStorageAccess;
+    }
+
+    @Override
+    public CheckpointStorageAccess getCheckpointStorageAccess() {
+        return checkNotNull(
+                checkpointStorageAccess, "checkpointStorage has not been initialized yet!");
     }
 }

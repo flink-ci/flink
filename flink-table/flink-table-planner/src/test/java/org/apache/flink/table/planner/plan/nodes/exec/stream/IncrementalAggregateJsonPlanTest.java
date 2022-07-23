@@ -43,26 +43,15 @@ public class IncrementalAggregateJsonPlanTest extends TableTestBase {
         util = streamTestUtil(TableConfig.getDefault());
         tEnv = util.getTableEnv();
         tEnv.getConfig()
-                .getConfiguration()
                 .set(
                         OptimizerConfigOptions.TABLE_OPTIMIZER_AGG_PHASE_STRATEGY,
-                        AggregatePhaseStrategy.TWO_PHASE.name());
-        tEnv.getConfig()
-                .getConfiguration()
-                .set(OptimizerConfigOptions.TABLE_OPTIMIZER_DISTINCT_AGG_SPLIT_ENABLED, true);
-        tEnv.getConfig()
-                .getConfiguration()
-                .set(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ENABLED, true);
-        tEnv.getConfig()
-                .getConfiguration()
+                        AggregatePhaseStrategy.TWO_PHASE.name())
+                .set(OptimizerConfigOptions.TABLE_OPTIMIZER_DISTINCT_AGG_SPLIT_ENABLED, true)
+                .set(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ENABLED, true)
                 .set(
                         ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ALLOW_LATENCY,
-                        Duration.ofSeconds(10));
-        tEnv.getConfig()
-                .getConfiguration()
-                .set(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_SIZE, 5L);
-        tEnv.getConfig()
-                .getConfiguration()
+                        Duration.ofSeconds(10))
+                .set(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_SIZE, 5L)
                 .set(IncrementalAggregateRule.TABLE_OPTIMIZER_INCREMENTAL_AGG_ENABLED(), true);
 
         String srcTableDdl =
@@ -92,5 +81,26 @@ public class IncrementalAggregateJsonPlanTest extends TableTestBase {
                 "insert into MySink select a, "
                         + "count(distinct c) as c "
                         + "from MyTable group by a");
+    }
+
+    @Test
+    public void testIncrementalAggregateWithSumCountDistinctAndRetraction() {
+        String sinkTableDdl =
+                "CREATE TABLE MySink (\n"
+                        + "  b bigint,\n"
+                        + "  sum_b int,\n"
+                        + "  cnt_distinct_b bigint,\n"
+                        + "  cnt1 bigint\n"
+                        + ") with (\n"
+                        + "  'connector' = 'values',\n"
+                        + "  'sink-insert-only' = 'false',\n"
+                        + "  'table-sink-class' = 'DEFAULT')";
+        tEnv.executeSql(sinkTableDdl);
+        util.verifyJsonPlan(
+                "insert into MySink "
+                        + "select b, sum(b1), count(distinct b1), count(1) "
+                        + " from "
+                        + "   (select a, count(b) as b, max(b) as b1 from MyTable group by a)"
+                        + " group by b");
     }
 }

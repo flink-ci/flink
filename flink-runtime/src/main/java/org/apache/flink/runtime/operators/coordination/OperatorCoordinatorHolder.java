@@ -24,6 +24,7 @@ import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.executiongraph.ExecutionJobVertex;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.operators.coordination.util.IncompleteFuturesTracker;
+import org.apache.flink.runtime.scheduler.GlobalFailureHandler;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.SerializedValue;
@@ -36,9 +37,9 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 
 import java.util.Collection;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.function.Consumer;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
@@ -126,7 +127,7 @@ public class OperatorCoordinatorHolder
     private final int operatorParallelism;
     private final int operatorMaxParallelism;
 
-    private Consumer<Throwable> globalFailureHandler;
+    private GlobalFailureHandler globalFailureHandler;
     private ComponentMainThreadExecutor mainThreadExecutor;
 
     private OperatorCoordinatorHolder(
@@ -149,7 +150,7 @@ public class OperatorCoordinatorHolder
     }
 
     public void lazyInitialize(
-            Consumer<Throwable> globalFailureHandler,
+            GlobalFailureHandler globalFailureHandler,
             ComponentMainThreadExecutor mainThreadExecutor) {
 
         this.globalFailureHandler = globalFailureHandler;
@@ -200,14 +201,15 @@ public class OperatorCoordinatorHolder
         context.unInitialize();
     }
 
-    public void handleEventFromOperator(int subtask, OperatorEvent event) throws Exception {
+    public void handleEventFromOperator(int subtask, int attemptNumber, OperatorEvent event)
+            throws Exception {
         mainThreadExecutor.assertRunningInMainThread();
-        coordinator.handleEventFromOperator(subtask, event);
+        coordinator.handleEventFromOperator(subtask, attemptNumber, event);
     }
 
-    public void subtaskFailed(int subtask, @Nullable Throwable reason) {
+    public void executionAttemptFailed(int subtask, int attemptNumber, @Nullable Throwable reason) {
         mainThreadExecutor.assertRunningInMainThread();
-        coordinator.subtaskFailed(subtask, reason);
+        coordinator.executionAttemptFailed(subtask, attemptNumber, reason);
     }
 
     @Override
@@ -304,7 +306,7 @@ public class OperatorCoordinatorHolder
         } catch (Throwable t) {
             ExceptionUtils.rethrowIfFatalErrorOrOOM(t);
             result.completeExceptionally(t);
-            globalFailureHandler.accept(t);
+            globalFailureHandler.handleGlobalFailure(t);
         }
     }
 
@@ -378,9 +380,18 @@ public class OperatorCoordinatorHolder
     }
 
     private void setupSubtaskGateway(int subtask) {
-        // this gets an access to the latest task execution attempt.
-        final SubtaskAccess sta = taskAccesses.getAccessForSubtask(subtask);
+        for (SubtaskAccess sta : taskAccesses.getAccessesForSubtask(subtask)) {
+            setupSubtaskGateway(sta);
+        }
+    }
 
+    public void setupSubtaskGatewayForAttempts(int subtask, Set<Integer> attemptNumbers) {
+        for (int attemptNumber : attemptNumbers) {
+            setupSubtaskGateway(taskAccesses.getAccessForAttempt(subtask, attemptNumber));
+        }
+    }
+
+    private void setupSubtaskGateway(final SubtaskAccess sta) {
         final OperatorCoordinator.SubtaskGateway gateway =
                 new SubtaskGatewayImpl(sta, eventValve, mainThreadExecutor, unconfirmedEvents);
 
@@ -402,17 +413,19 @@ public class OperatorCoordinatorHolder
 
                                     // see bigger comment above
                                     if (sta.isStillRunning()) {
-                                        notifySubtaskReady(subtask, gateway);
+                                        notifySubtaskReady(gateway);
                                     }
                                 }));
     }
 
-    private void notifySubtaskReady(int subtask, OperatorCoordinator.SubtaskGateway gateway) {
+    private void notifySubtaskReady(OperatorCoordinator.SubtaskGateway gateway) {
         try {
-            coordinator.subtaskReady(subtask, gateway);
+            coordinator.executionAttemptReady(
+                    gateway.getSubtask(), gateway.getExecution().getAttemptNumber(), gateway);
         } catch (Throwable t) {
             ExceptionUtils.rethrowIfFatalErrorOrOOM(t);
-            globalFailureHandler.accept(new FlinkException("Error from OperatorCoordinator", t));
+            globalFailureHandler.handleGlobalFailure(
+                    new FlinkException("Error from OperatorCoordinator", t));
         }
     }
 
@@ -423,7 +436,9 @@ public class OperatorCoordinatorHolder
     public static OperatorCoordinatorHolder create(
             SerializedValue<OperatorCoordinator.Provider> serializedProvider,
             ExecutionJobVertex jobVertex,
-            ClassLoader classLoader)
+            ClassLoader classLoader,
+            CoordinatorStore coordinatorStore,
+            boolean supportsConcurrentExecutionAttempts)
             throws Exception {
 
         try (TemporaryClassLoaderContext ignored = TemporaryClassLoaderContext.of(classLoader)) {
@@ -437,11 +452,13 @@ public class OperatorCoordinatorHolder
             return create(
                     opId,
                     provider,
+                    coordinatorStore,
                     jobVertex.getName(),
                     jobVertex.getGraph().getUserClassLoader(),
                     jobVertex.getParallelism(),
                     jobVertex.getMaxParallelism(),
-                    taskAccesses);
+                    taskAccesses,
+                    supportsConcurrentExecutionAttempts);
         }
     }
 
@@ -449,16 +466,23 @@ public class OperatorCoordinatorHolder
     static OperatorCoordinatorHolder create(
             final OperatorID opId,
             final OperatorCoordinator.Provider coordinatorProvider,
+            final CoordinatorStore coordinatorStore,
             final String operatorName,
             final ClassLoader userCodeClassLoader,
             final int operatorParallelism,
             final int operatorMaxParallelism,
-            final SubtaskAccess.SubtaskAccessFactory taskAccesses)
+            final SubtaskAccess.SubtaskAccessFactory taskAccesses,
+            final boolean supportsConcurrentExecutionAttempts)
             throws Exception {
 
         final LazyInitializedCoordinatorContext context =
                 new LazyInitializedCoordinatorContext(
-                        opId, operatorName, userCodeClassLoader, operatorParallelism);
+                        opId,
+                        operatorName,
+                        userCodeClassLoader,
+                        operatorParallelism,
+                        coordinatorStore,
+                        supportsConcurrentExecutionAttempts);
 
         final OperatorCoordinator coordinator = coordinatorProvider.create(context);
 
@@ -494,8 +518,10 @@ public class OperatorCoordinatorHolder
         private final String operatorName;
         private final ClassLoader userCodeClassLoader;
         private final int operatorParallelism;
+        private final CoordinatorStore coordinatorStore;
+        private final boolean supportsConcurrentExecutionAttempts;
 
-        private Consumer<Throwable> globalFailureHandler;
+        private GlobalFailureHandler globalFailureHandler;
         private Executor schedulerExecutor;
 
         private volatile boolean failed;
@@ -504,14 +530,18 @@ public class OperatorCoordinatorHolder
                 final OperatorID operatorId,
                 final String operatorName,
                 final ClassLoader userCodeClassLoader,
-                final int operatorParallelism) {
+                final int operatorParallelism,
+                final CoordinatorStore coordinatorStore,
+                final boolean supportsConcurrentExecutionAttempts) {
             this.operatorId = checkNotNull(operatorId);
             this.operatorName = checkNotNull(operatorName);
             this.userCodeClassLoader = checkNotNull(userCodeClassLoader);
             this.operatorParallelism = operatorParallelism;
+            this.coordinatorStore = checkNotNull(coordinatorStore);
+            this.supportsConcurrentExecutionAttempts = supportsConcurrentExecutionAttempts;
         }
 
-        void lazyInitialize(Consumer<Throwable> globalFailureHandler, Executor schedulerExecutor) {
+        void lazyInitialize(GlobalFailureHandler globalFailureHandler, Executor schedulerExecutor) {
             this.globalFailureHandler = checkNotNull(globalFailureHandler);
             this.schedulerExecutor = checkNotNull(schedulerExecutor);
         }
@@ -560,7 +590,7 @@ public class OperatorCoordinatorHolder
             }
             failed = true;
 
-            schedulerExecutor.execute(() -> globalFailureHandler.accept(e));
+            schedulerExecutor.execute(() -> globalFailureHandler.handleGlobalFailure(e));
         }
 
         @Override
@@ -571,6 +601,16 @@ public class OperatorCoordinatorHolder
         @Override
         public ClassLoader getUserCodeClassloader() {
             return userCodeClassLoader;
+        }
+
+        @Override
+        public CoordinatorStore getCoordinatorStore() {
+            return coordinatorStore;
+        }
+
+        @Override
+        public boolean isConcurrentExecutionAttemptsSupported() {
+            return supportsConcurrentExecutionAttempts;
         }
     }
 }

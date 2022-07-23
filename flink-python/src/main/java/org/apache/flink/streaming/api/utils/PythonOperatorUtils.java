@@ -20,25 +20,28 @@ package org.apache.flink.streaming.api.utils;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.runtime.state.KeyedStateBackend;
+import org.apache.flink.streaming.api.operators.InternalTimerService;
+import org.apache.flink.streaming.api.operators.sorted.state.BatchExecutionInternalTimeService;
 import org.apache.flink.streaming.api.operators.sorted.state.BatchExecutionKeyedStateBackend;
-
-import java.util.Arrays;
 
 /** Utilities used by Python operators. */
 @Internal
 public class PythonOperatorUtils {
-
-    private static final byte[] RECORD_SPLITTER = new byte[] {0x00};
-
-    public static boolean endOfLastFlatMap(int length, byte[] rawData) {
-        return length == 1 && Arrays.equals(rawData, RECORD_SPLITTER);
-    }
 
     /** Set the current key for streaming operator. */
     public static <K> void setCurrentKeyForStreaming(
             KeyedStateBackend<K> stateBackend, K currentKey) {
         if (!inBatchExecutionMode(stateBackend)) {
             stateBackend.setCurrentKey(currentKey);
+        }
+    }
+
+    /** Set the current key for the timer service. */
+    public static <K, N> void setCurrentKeyForTimerService(
+            InternalTimerService<N> internalTimerService, K currentKey) throws Exception {
+        if (internalTimerService instanceof BatchExecutionInternalTimeService) {
+            ((BatchExecutionInternalTimeService<K, N>) internalTimerService)
+                    .setCurrentKey(currentKey);
         }
     }
 

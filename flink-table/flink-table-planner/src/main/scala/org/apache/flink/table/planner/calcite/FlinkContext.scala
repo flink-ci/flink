@@ -15,38 +15,40 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.calcite
 
 import org.apache.flink.table.api.TableConfig
 import org.apache.flink.table.catalog.{CatalogManager, FunctionCatalog}
+import org.apache.flink.table.module.ModuleManager
 
 import org.apache.calcite.plan.Context
+import org.apache.calcite.rex.RexNode
 
-/**
-  * A [[Context]] to allow the store data within the planner session and access it within rules.
-  */
+/** A [[Context]] to allow the store data within the planner session and access it within rules. */
 trait FlinkContext extends Context {
 
-  /**
-    * Gets [[TableConfig]] instance defined in [[org.apache.flink.table.api.TableEnvironment]].
-    */
+  /** Returns whether the planner is in batch mode. */
+  def isBatchMode: Boolean
+
+  /** Returns the [[ClassLoader]]. */
+  def getClassLoader: ClassLoader
+
+  /** Returns the [[TableConfig]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
   def getTableConfig: TableConfig
 
-  /**
-    * Gets [[FunctionCatalog]] instance defined in [[org.apache.flink.table.api.TableEnvironment]].
-    */
+  /** Returns the [[FunctionCatalog]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
   def getFunctionCatalog: FunctionCatalog
 
-  /**
-    * Gets [[CatalogManager]] instance defined in [[org.apache.flink.table.api.TableEnvironment]].
-    */
+  /** Returns the [[CatalogManager]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
   def getCatalogManager: CatalogManager
 
+  /** Returns the [[ModuleManager]] defined in [[org.apache.flink.table.api.TableEnvironment]]. */
+  def getModuleManager: ModuleManager
+
   /**
-    * Gets [[SqlExprToRexConverterFactory]] instance to convert sql expression to rex node.
-    */
-  def getSqlExprToRexConverterFactory: SqlExprToRexConverterFactory
+   * Returns the [[RexFactory]]. A planner internal factory for parsing/translating to [[RexNode]].
+   */
+  def getRexFactory: RexFactory
 
   override def unwrap[C](clazz: Class[C]): C = {
     if (clazz.isInstance(this)) clazz.cast(this) else null.asInstanceOf[C]

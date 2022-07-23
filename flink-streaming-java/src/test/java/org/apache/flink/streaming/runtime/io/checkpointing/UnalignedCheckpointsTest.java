@@ -21,6 +21,7 @@ import org.apache.flink.runtime.checkpoint.CheckpointException;
 import org.apache.flink.runtime.checkpoint.CheckpointMetaData;
 import org.apache.flink.runtime.checkpoint.CheckpointMetricsBuilder;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
+import org.apache.flink.runtime.checkpoint.CheckpointType;
 import org.apache.flink.runtime.checkpoint.channel.InputChannelInfo;
 import org.apache.flink.runtime.checkpoint.channel.RecordingChannelStateWriter;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
@@ -733,7 +734,7 @@ public class UnalignedCheckpointsTest {
 
         // should trigger respective checkpoint
         handler.processBarrier(
-                buildCheckpointBarrier(DEFAULT_CHECKPOINT_ID), new InputChannelInfo(0, 0));
+                buildCheckpointBarrier(DEFAULT_CHECKPOINT_ID), new InputChannelInfo(0, 0), false);
 
         assertTrue(handler.isCheckpointPending());
         assertEquals(DEFAULT_CHECKPOINT_ID, handler.getLatestCheckpointId());
@@ -765,7 +766,7 @@ public class UnalignedCheckpointsTest {
         // it would not trigger checkpoint since the respective cancellation barrier already
         // happened before
         handler.processBarrier(
-                buildCheckpointBarrier(DEFAULT_CHECKPOINT_ID), new InputChannelInfo(0, 0));
+                buildCheckpointBarrier(DEFAULT_CHECKPOINT_ID), new InputChannelInfo(0, 0), false);
 
         verifyTriggeredCheckpoint(handler, invokable, DEFAULT_CHECKPOINT_ID);
     }
@@ -819,7 +820,7 @@ public class UnalignedCheckpointsTest {
 
         // should trigger respective checkpoint
         handler.processBarrier(
-                buildCheckpointBarrier(DEFAULT_CHECKPOINT_ID), new InputChannelInfo(0, 0));
+                buildCheckpointBarrier(DEFAULT_CHECKPOINT_ID), new InputChannelInfo(0, 0), false);
 
         assertTrue(handler.isCheckpointPending());
         assertEquals(DEFAULT_CHECKPOINT_ID, handler.getLatestCheckpointId());
@@ -899,7 +900,9 @@ public class UnalignedCheckpointsTest {
         sizeCounter++;
         return new BufferOrEvent(
                 new CheckpointBarrier(
-                        checkpointId, timestamp, CheckpointOptions.unaligned(getDefault())),
+                        checkpointId,
+                        timestamp,
+                        CheckpointOptions.unaligned(CheckpointType.CHECKPOINT, getDefault())),
                 new InputChannelInfo(0, channel));
     }
 
@@ -1055,7 +1058,8 @@ public class UnalignedCheckpointsTest {
     }
 
     private CheckpointBarrier buildCheckpointBarrier(long id) {
-        return new CheckpointBarrier(id, 0, CheckpointOptions.unaligned(getDefault()));
+        return new CheckpointBarrier(
+                id, 0, CheckpointOptions.unaligned(CheckpointType.CHECKPOINT, getDefault()));
     }
 
     // ------------------------------------------------------------------------

@@ -15,27 +15,26 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.nodes.common
 
-import org.apache.flink.table.planner.plan.nodes.ExpressionFormat.ExpressionFormat
-import org.apache.flink.table.planner.plan.nodes.{ExpressionFormat, FlinkRelNode}
+import org.apache.flink.table.planner.plan.nodes.FlinkRelNode
+import org.apache.flink.table.planner.plan.utils.ExpressionFormat
+import org.apache.flink.table.planner.plan.utils.ExpressionFormat.ExpressionFormat
 import org.apache.flink.table.planner.plan.utils.RelExplainUtil.{conditionToString, preferExpressionFormat}
 
 import org.apache.calcite.plan.{RelOptCluster, RelOptCost, RelOptPlanner, RelTraitSet}
+import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.calcite.rel.core.Calc
 import org.apache.calcite.rel.hint.RelHint
 import org.apache.calcite.rel.metadata.RelMetadataQuery
-import org.apache.calcite.rel.{RelNode, RelWriter}
 import org.apache.calcite.rex.{RexCall, RexInputRef, RexLiteral, RexProgram}
+import org.apache.calcite.sql.SqlExplainLevel
 
 import java.util.Collections
 
 import scala.collection.JavaConversions._
 
-/**
-  * Base class for flink [[Calc]].
-  */
+/** Base class for flink [[Calc]]. */
 abstract class CommonCalc(
     cluster: RelOptCluster,
     traitSet: RelTraitSet,
@@ -63,28 +62,44 @@ abstract class CommonCalc(
 
   override def explainTerms(pw: RelWriter): RelWriter = {
     pw.input("input", getInput)
-      .item("select", projectionToString(preferExpressionFormat(pw)))
-      .itemIf("where",
-        conditionToString(calcProgram, getExpressionString, preferExpressionFormat(pw)),
-        calcProgram.getCondition != null)
+      .item("select", projectionToString(preferExpressionFormat(pw), pw.getDetailLevel))
+      .itemIf(
+        "where",
+        conditionToString(
+          calcProgram,
+          getExpressionString,
+          preferExpressionFormat(pw),
+          convertToExpressionDetail(pw.getDetailLevel)),
+        calcProgram.getCondition != null
+      )
   }
 
   protected def projectionToString(
-      expressionFormat: ExpressionFormat = ExpressionFormat.Prefix): String = {
+      expressionFormat: ExpressionFormat = ExpressionFormat.Prefix,
+      sqlExplainLevel: SqlExplainLevel): String = {
     val projectList = calcProgram.getProjectList.toList
     val inputFieldNames = calcProgram.getInputRowType.getFieldNames.toList
     val localExprs = calcProgram.getExprList.toList
     val outputFieldNames = calcProgram.getOutputRowType.getFieldNames.toList
 
     projectList
-      .map(getExpressionString(_, inputFieldNames, Some(localExprs), expressionFormat))
-      .zip(outputFieldNames).map { case (e, o) =>
-      if (e != o) {
-        e + " AS " + o
-      } else {
-        e
+      .map(
+        getExpressionString(
+          _,
+          inputFieldNames,
+          Some(localExprs),
+          expressionFormat,
+          sqlExplainLevel))
+      .zip(outputFieldNames)
+      .map {
+        case (e, o) =>
+          if (e != o) {
+            e + " AS " + o
+          } else {
+            e
+          }
       }
-    }.mkString(", ")
+      .mkString(", ")
   }
 
 }

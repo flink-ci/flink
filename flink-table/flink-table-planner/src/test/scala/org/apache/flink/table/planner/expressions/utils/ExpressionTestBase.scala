@@ -15,51 +15,52 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.expressions.utils
 
-import java.util.Collections
-import org.apache.calcite.plan.hep.{HepPlanner, HepProgramBuilder}
-import org.apache.calcite.rel.RelNode
-import org.apache.calcite.rel.logical.LogicalCalc
-import org.apache.calcite.rel.rules._
-import org.apache.calcite.rex.RexNode
-import org.apache.calcite.sql.`type`.SqlTypeName.VARCHAR
-import org.apache.flink.api.common.{JobID, TaskInfo}
-import org.apache.flink.api.common.functions.util.RuntimeUDFContext
+import org.apache.flink.api.common.TaskInfo
 import org.apache.flink.api.common.functions.{MapFunction, RichFunction, RichMapFunction}
+import org.apache.flink.api.common.functions.util.RuntimeUDFContext
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.configuration.Configuration
+import org.apache.flink.core.testutils.FlinkAssertions
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment
 import org.apache.flink.table.api
+import org.apache.flink.table.api.{EnvironmentSettings, TableException, ValidationException}
 import org.apache.flink.table.api.bridge.java.internal.StreamTableEnvironmentImpl
-import org.apache.flink.table.api.{EnvironmentSettings, TableConfig, ValidationException}
+import org.apache.flink.table.api.config.ExecutionConfigOptions
 import org.apache.flink.table.data.RowData
 import org.apache.flink.table.data.binary.BinaryRowData
 import org.apache.flink.table.data.conversion.{DataStructureConverter, DataStructureConverters}
 import org.apache.flink.table.data.util.DataFormatConverters
 import org.apache.flink.table.data.util.DataFormatConverters.DataFormatConverter
-import org.apache.flink.table.expressions.{Expression, ExpressionParser}
+import org.apache.flink.table.expressions.Expression
 import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.planner.codegen.{CodeGeneratorContext, ExprCodeGenerator, FunctionCodeGenerator}
 import org.apache.flink.table.planner.delegation.PlannerBase
+import org.apache.flink.table.runtime.generated.GeneratedFunction
 import org.apache.flink.table.runtime.types.TypeInfoLogicalTypeConverter.fromTypeInfoToLogicalType
 import org.apache.flink.table.types.AbstractDataType
 import org.apache.flink.table.types.logical.{RowType, VarCharType}
 import org.apache.flink.table.types.utils.TypeConversions
 import org.apache.flink.types.Row
 
+import org.apache.calcite.plan.hep.{HepPlanner, HepProgramBuilder}
+import org.apache.calcite.rel.RelNode
+import org.apache.calcite.rel.logical.LogicalCalc
+import org.apache.calcite.rel.rules._
+import org.apache.calcite.rex.RexNode
+import org.apache.calcite.sql.`type`.SqlTypeName.VARCHAR
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.{After, Before, Rule}
 import org.junit.Assert.{assertEquals, assertTrue, fail}
 import org.junit.rules.ExpectedException
-import org.junit.{After, Before, Rule}
+
+import java.util.Collections
 
 import scala.collection.JavaConverters._
 import scala.collection.mutable
-import scala.collection.mutable.ListBuffer
 
 abstract class ExpressionTestBase {
-
-  val config = new TableConfig()
 
   // (originalExpr, optimizedExpr, expectedResult)
   private val validExprs = mutable.ArrayBuffer[(String, RexNode, String)]()
@@ -70,25 +71,28 @@ abstract class ExpressionTestBase {
     .ArrayBuffer[(Expression, String, Class[_ <: Throwable])]()
 
   private val env = StreamExecutionEnvironment.createLocalEnvironment(4)
-  private val setting = EnvironmentSettings.newInstance().inStreamingMode().build()
+  private val settings = EnvironmentSettings.newInstance().inStreamingMode().build()
   // use impl class instead of interface class to avoid
   // "Static methods in interface require -target:jvm-1.8"
-  private val tEnv = StreamTableEnvironmentImpl.create(env, setting, config)
+  private val tEnv = StreamTableEnvironmentImpl
+    .create(env, settings)
     .asInstanceOf[StreamTableEnvironmentImpl]
+
+  val tableConfig = tEnv.getConfig
+
   private val resolvedDataType = if (containsLegacyTypes) {
     TypeConversions.fromLegacyInfoToDataType(typeInfo)
   } else {
     tEnv.getCatalogManager.getDataTypeFactory.createDataType(testDataType)
   }
   private val planner = tEnv.getPlanner.asInstanceOf[PlannerBase]
-  private val relBuilder = planner.getRelBuilder
+  private val relBuilder = planner.createRelBuilder
   private val calcitePlanner = planner.createFlinkPlanner
   private val parser = planner.plannerContext.createCalciteParser()
 
   // setup test utils
   private val tableName = "testTable"
-  protected val nullable = "null"
-  protected val notNullable = "not null"
+  protected val nullable = "NULL"
 
   // used for accurate exception information checking.
   val expectedException: ExpectedException = ExpectedException.none()
@@ -98,6 +102,10 @@ abstract class ExpressionTestBase {
 
   @Before
   def prepare(): Unit = {
+    tableConfig.set(
+      ExecutionConfigOptions.TABLE_EXEC_LEGACY_CAST_BEHAVIOUR,
+      ExecutionConfigOptions.LegacyCastBehaviour.DISABLED
+    )
     if (containsLegacyTypes) {
       val ds = env.fromCollection(Collections.emptyList[Row](), typeInfo)
       tEnv.createTemporaryView(tableName, ds, typeInfo.getFieldNames.map(api.$): _*)
@@ -147,44 +155,32 @@ abstract class ExpressionTestBase {
 
     invalidTableApiExprs.foreach {
       case (tableExpr, keywords, clazz) => {
-        try {
-          val invalidExprs = mutable.ArrayBuffer[(String, RexNode, String)]()
-          addTableApiTestExpr(tableExpr, keywords, invalidExprs, clazz)
-          evaluateGivenExprs(invalidExprs)
-          fail(s"Expected a $clazz, but no exception is thrown.")
-        } catch {
-          case e if e.getClass == clazz =>
-            if (keywords != null) {
-              assertTrue(
-                s"The actual exception message \n${e.getMessage}\n" +
-                  s"doesn't contain expected keyword \n$keywords\n",
-                e.getMessage.contains(keywords))
-            }
-          case e: Throwable =>
-            e.printStackTrace()
-            fail(s"Expected throw ${clazz.getSimpleName}, but is $e.")
+        val assertion = if (keywords != null) {
+          FlinkAssertions.anyCauseMatches(clazz, keywords)
+        } else {
+          FlinkAssertions.anyCauseMatches(clazz)
         }
+
+        assertThatThrownBy(
+          () => {
+            val invalidExprs = mutable.ArrayBuffer[(String, RexNode, String)]()
+            addTableApiTestExpr(tableExpr, keywords, invalidExprs, clazz)
+            evaluateGivenExprs(invalidExprs)
+          }).satisfies(assertion)
       }
     }
   }
 
-  def testAllApis(
-      expr: Expression,
-      sqlExpr: String,
-      expected: String): Unit = {
+  def testAllApis(expr: Expression, sqlExpr: String, expected: String): Unit = {
     addTableApiTestExpr(expr, expected, validExprs)
     addSqlTestExpr(sqlExpr, expected, validExprs)
   }
 
-  def testTableApi(
-      expr: Expression,
-      expected: String): Unit = {
+  def testTableApi(expr: Expression, expected: String): Unit = {
     addTableApiTestExpr(expr, expected, validExprs)
   }
 
-  def testSqlApi(
-      sqlExpr: String,
-      expected: String): Unit = {
+  def testSqlApi(sqlExpr: String, expected: String): Unit = {
     addSqlTestExpr(sqlExpr, expected, validExprs)
   }
 
@@ -196,6 +192,7 @@ abstract class ExpressionTestBase {
     invalidTableApiExprs += ((expr, keywords, clazz))
     invalidSqlExprs += ((sqlExpr, keywords, clazz))
   }
+
   def testExpectedSqlException(
       sqlExpr: String,
       keywords: String,
@@ -211,15 +208,17 @@ abstract class ExpressionTestBase {
   }
 
   // return the codegen function instances
-  def getCodeGenFunctions(sqlExprs: List[String]) : MapFunction[RowData, BinaryRowData] = {
+  def getCodeGenFunctions(
+      sqlExprs: List[String]): GeneratedFunction[MapFunction[RowData, BinaryRowData]] = {
     val testSqlExprs = mutable.ArrayBuffer[(String, RexNode, String)]()
     sqlExprs.foreach(exp => addSqlTestExpr(exp, null, testSqlExprs, null))
     getCodeGenFunction(testSqlExprs.map(r => r._2).toList)
   }
 
   // return the codegen function instances
-  def evaluateFunctionResult(mapper: MapFunction[RowData, BinaryRowData])
-  : List[String] = {
+  def evaluateFunctionResult(
+      generatedFunction: GeneratedFunction[MapFunction[RowData, BinaryRowData]]): List[String] = {
+    val mapper = generatedFunction.newInstance(getClass.getClassLoader)
     val isRichFunction = mapper.isInstanceOf[RichFunction]
 
     // call setRuntimeContext method and open method for RichFunction
@@ -247,36 +246,41 @@ abstract class ExpressionTestBase {
         .asInstanceOf[DataStructureConverter[RowData, Row]]
       converter.toInternalOrNull(testData)
     }
-    val result = mapper.map(testRow)
+    try {
+      val result = mapper.map(testRow)
 
-    // call close method for RichFunction
-    if (isRichFunction) {
-      mapper.asInstanceOf[RichMapFunction[_, _]].close()
-    }
-
-    val resultList = new ListBuffer[String]()
-    for (index <- 0 until result.getArity) {
-      // adapt string result
-      val item = if (!result.asInstanceOf[BinaryRowData].isNullAt(index)) {
-        result.asInstanceOf[BinaryRowData].getString(index).toString
-      } else {
-        null
+      // call close method for RichFunction
+      if (isRichFunction) {
+        mapper.asInstanceOf[RichMapFunction[_, _]].close()
       }
-      resultList += item
-    }
-    resultList.toList
-  }
 
-  private def testTableApiTestExpr(tableApiString: String, expected: String): Unit = {
-    addTableApiTestExpr(ExpressionParser.parseExpression(tableApiString), expected, validExprs)
+      Seq
+        .range(0, result.getArity)
+        .map(
+          index =>
+            if (!result.isNullAt(index)) {
+              result.getString(index).toString
+            } else {
+              null
+            })
+        .toList
+    } catch {
+      case te: TableException =>
+        // TableException are exception that might be expected,
+        // so we don't wrap them with more details
+        throw te
+      case e: Throwable =>
+        throw new AssertionError(
+          "Error when executing the expression. Expression code:\n" + generatedFunction.getCode,
+          e)
+    }
   }
 
   private def addSqlTestExpr(
       sqlExpr: String,
       expected: String,
       exprsContainer: mutable.ArrayBuffer[_],
-      exceptionClass: Class[_ <: Throwable] = null)
-  : Unit = {
+      exceptionClass: Class[_ <: Throwable] = null): Unit = {
     // create RelNode from SQL expression
     val parsed = parser.parse(s"SELECT $sqlExpr FROM $tableName")
     val validated = calcitePlanner.validate(parsed)
@@ -291,7 +295,8 @@ abstract class ExpressionTestBase {
       exceptionClass: Class[_ <: Throwable] = null): Unit = {
     // create RelNode from Table API expression
     val relNode = relBuilder
-        .queryOperation(tEnv.from(tableName).select(tableApiExpr).getQueryOperation).build()
+      .queryOperation(tEnv.from(tableName).select(tableApiExpr).getQueryOperation)
+      .build()
 
     addTestExpr(relNode, expected, tableApiExpr.asSummaryString(), null, exprsContainer)
   }
@@ -303,6 +308,7 @@ abstract class ExpressionTestBase {
       exceptionClass: Class[_ <: Throwable],
       exprs: mutable.ArrayBuffer[_]): Unit = {
     val builder = new HepProgramBuilder()
+    builder.addRuleInstance(CoreRules.PROJECT_REDUCE_EXPRESSIONS)
     builder.addRuleInstance(CoreRules.PROJECT_TO_CALC)
     val hep = new HepPlanner(builder.build())
     hep.setRoot(relNode)
@@ -324,8 +330,8 @@ abstract class ExpressionTestBase {
     calcProgram.expandLocalRef(calcProgram.getProjectList.get(0))
   }
 
-  private def evaluateGivenExprs(exprArray: mutable.ArrayBuffer[(String, RexNode, String)])
-  : Unit = {
+  private def evaluateGivenExprs(
+      exprArray: mutable.ArrayBuffer[(String, RexNode, String)]): Unit = {
     val genFunc = getCodeGenFunction(exprArray.map(exp => exp._2).toList)
     val result = evaluateFunctionResult(genFunc)
 
@@ -334,17 +340,17 @@ abstract class ExpressionTestBase {
       .zip(result)
       .foreach {
         case ((originalExpr, optimizedExpr, expected), actual) =>
-
           val original = if (originalExpr == null) "" else s"for: [$originalExpr]"
           assertEquals(
             s"Wrong result $original optimized to: [$optimizedExpr]",
             expected,
-            if (actual == null) "null" else actual)
+            if (actual == null) "NULL" else actual)
       }
   }
 
-  private def getCodeGenFunction(rexNodes: List[RexNode]): MapFunction[RowData, BinaryRowData] = {
-    val ctx = CodeGeneratorContext(config)
+  private def getCodeGenFunction(
+      rexNodes: List[RexNode]): GeneratedFunction[MapFunction[RowData, BinaryRowData]] = {
+    val ctx = new CodeGeneratorContext(tableConfig, Thread.currentThread().getContextClassLoader)
     val inputType = if (containsLegacyTypes) {
       fromTypeInfoToLogicalType(typeInfo)
     } else {
@@ -356,8 +362,7 @@ abstract class ExpressionTestBase {
     val stringTestExprs = rexNodes.map(expr => relBuilder.cast(expr, VARCHAR))
 
     // generate code
-    val resultType = RowType.of(Seq.fill(rexNodes.size)(
-      new VarCharType(VarCharType.MAX_LENGTH)): _*)
+    val resultType = RowType.of(Seq.fill(rexNodes.size)(VarCharType.STRING_TYPE): _*)
 
     val exprs = stringTestExprs.map(exprGenerator.generateExpression)
     val genExpr = exprGenerator.generateResultExpression(exprs, resultType, classOf[BinaryRowData])
@@ -368,14 +373,13 @@ abstract class ExpressionTestBase {
          |return ${genExpr.resultTerm};
         """.stripMargin
 
-    val genFunc = FunctionCodeGenerator.generateFunction[MapFunction[RowData, BinaryRowData]](
+    FunctionCodeGenerator.generateFunction[MapFunction[RowData, BinaryRowData]](
       ctx,
       "TestFunction",
       classOf[MapFunction[RowData, BinaryRowData]],
       bodyCode,
       resultType,
       inputType)
-    genFunc.newInstance(getClass.getClassLoader)
   }
 
   def testData: Row
@@ -397,27 +401,6 @@ abstract class ExpressionTestBase {
   @deprecated
   def typeInfo: RowTypeInfo =
     throw new IllegalArgumentException("Implement this if legacy types are expected.")
-
-  @deprecated
-  def testAllApis(
-      expr: Expression,
-      exprString: String,
-      sqlExpr: String,
-      expected: String): Unit = {
-    testTableApi(expr, expected)
-    testTableApiTestExpr(exprString, expected)
-    testSqlApi(sqlExpr, expected)
-  }
-
-  @deprecated
-  def testTableApi(
-      expr: Expression,
-      exprString: String,
-      expected: String): Unit = {
-    testTableApi(expr, expected)
-    testTableApiTestExpr(exprString, expected)
-  }
-
 
   // ----------------------------------------------------------------------------------------------
   // Utils to construct a TIMESTAMP_LTZ type data

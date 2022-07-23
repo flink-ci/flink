@@ -19,9 +19,9 @@
 package org.apache.flink.streaming.api.graph;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.BatchShuffleMode;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.RuntimeExecutionMode;
-import org.apache.flink.api.common.ShuffleMode;
 import org.apache.flink.api.common.cache.DistributedCache;
 import org.apache.flink.api.common.operators.ResourceSpec;
 import org.apache.flink.api.common.operators.util.SlotSharingGroupUtils;
@@ -33,6 +33,7 @@ import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ExecutionOptions;
 import org.apache.flink.configuration.IllegalConfigurationException;
 import org.apache.flink.configuration.MemorySize;
+import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
@@ -92,6 +93,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -136,7 +138,9 @@ public class StreamGraphGenerator {
     public static final TimeCharacteristic DEFAULT_TIME_CHARACTERISTIC =
             TimeCharacteristic.ProcessingTime;
 
-    public static final String DEFAULT_JOB_NAME = "Flink Streaming Job";
+    public static final String DEFAULT_STREAMING_JOB_NAME = "Flink Streaming Job";
+
+    public static final String DEFAULT_BATCH_JOB_NAME = "Flink Batch Job";
 
     public static final String DEFAULT_SLOT_SHARING_GROUP = "default";
 
@@ -166,13 +170,9 @@ public class StreamGraphGenerator {
 
     private TimeCharacteristic timeCharacteristic = DEFAULT_TIME_CHARACTERISTIC;
 
-    private String jobName = DEFAULT_JOB_NAME;
-
     private SavepointRestoreSettings savepointRestoreSettings;
 
-    private long defaultBufferTimeout = StreamingJobGraphGenerator.UNDEFINED_NETWORK_BUFFER_TIMEOUT;
-
-    private RuntimeExecutionMode runtimeExecutionMode = RuntimeExecutionMode.STREAMING;
+    private long defaultBufferTimeout = ExecutionOptions.BUFFER_TIMEOUT.defaultValue().toMillis();
 
     private boolean shouldExecuteInBatchMode;
 
@@ -242,12 +242,6 @@ public class StreamGraphGenerator {
         this.savepointRestoreSettings = SavepointRestoreSettings.fromConfiguration(configuration);
     }
 
-    public StreamGraphGenerator setRuntimeExecutionMode(
-            final RuntimeExecutionMode runtimeExecutionMode) {
-        this.runtimeExecutionMode = checkNotNull(runtimeExecutionMode);
-        return this;
-    }
-
     public StreamGraphGenerator setSavepointDir(Path savepointDir) {
         this.savepointDir = savepointDir;
         return this;
@@ -285,11 +279,6 @@ public class StreamGraphGenerator {
         return this;
     }
 
-    public StreamGraphGenerator setJobName(String jobName) {
-        this.jobName = jobName;
-        return this;
-    }
-
     /**
      * Specify fine-grained resource requirements for slot sharing groups.
      *
@@ -318,10 +307,10 @@ public class StreamGraphGenerator {
         streamGraph.setEnableCheckpointsAfterTasksFinish(
                 configuration.get(
                         ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH));
-        shouldExecuteInBatchMode = shouldExecuteInBatchMode(runtimeExecutionMode);
+        shouldExecuteInBatchMode = shouldExecuteInBatchMode();
         configureStreamGraph(streamGraph);
 
-        alreadyTransformed = new HashMap<>();
+        alreadyTransformed = new IdentityHashMap<>();
 
         for (Transformation<?> transformation : transformations) {
             transform(transformation);
@@ -359,7 +348,9 @@ public class StreamGraphGenerator {
         graph.setChaining(chaining);
         graph.setUserArtifacts(userArtifacts);
         graph.setTimeCharacteristic(timeCharacteristic);
-        graph.setJobName(jobName);
+        graph.setVertexDescriptionMode(configuration.get(PipelineOptions.VERTEX_DESCRIPTION_MODE));
+        graph.setVertexNameIncludeIndexPrefix(
+                configuration.get(PipelineOptions.VERTEX_NAME_INCLUDE_INDEX_PREFIX));
 
         if (shouldExecuteInBatchMode) {
             configureStreamGraphBatch(graph);
@@ -371,6 +362,7 @@ public class StreamGraphGenerator {
 
     private void configureStreamGraphBatch(final StreamGraph graph) {
         graph.setJobType(JobType.BATCH);
+        graph.setJobName(deriveJobName(DEFAULT_BATCH_JOB_NAME));
 
         if (checkpointConfig.isCheckpointingEnabled()) {
             LOG.info(
@@ -385,6 +377,7 @@ public class StreamGraphGenerator {
 
     private void configureStreamGraphStreaming(final StreamGraph graph) {
         graph.setJobType(JobType.STREAMING);
+        graph.setJobName(deriveJobName(DEFAULT_STREAMING_JOB_NAME));
 
         graph.setStateBackend(stateBackend);
         graph.setChangelogStateBackendEnabled(changelogStateBackendEnabled);
@@ -393,14 +386,19 @@ public class StreamGraphGenerator {
         graph.setGlobalStreamExchangeMode(deriveGlobalStreamExchangeModeStreaming());
     }
 
+    private String deriveJobName(String defaultJobName) {
+        return configuration.getOptional(PipelineOptions.NAME).orElse(defaultJobName);
+    }
+
     private GlobalStreamExchangeMode deriveGlobalStreamExchangeModeBatch() {
-        final ShuffleMode shuffleMode = configuration.get(ExecutionOptions.SHUFFLE_MODE);
+        final BatchShuffleMode shuffleMode = configuration.get(ExecutionOptions.BATCH_SHUFFLE_MODE);
         switch (shuffleMode) {
             case ALL_EXCHANGES_PIPELINED:
                 return GlobalStreamExchangeMode.ALL_EDGES_PIPELINED;
             case ALL_EXCHANGES_BLOCKING:
-            case AUTOMATIC:
                 return GlobalStreamExchangeMode.ALL_EDGES_BLOCKING;
+            case WIP_ALL_EXCHANGES_HYBRID:
+                return GlobalStreamExchangeMode.ALL_EDGES_HYBRID;
             default:
                 throw new IllegalArgumentException(
                         String.format(
@@ -410,21 +408,11 @@ public class StreamGraphGenerator {
     }
 
     private GlobalStreamExchangeMode deriveGlobalStreamExchangeModeStreaming() {
-        final ShuffleMode shuffleMode = configuration.get(ExecutionOptions.SHUFFLE_MODE);
-        switch (shuffleMode) {
-            case ALL_EXCHANGES_PIPELINED:
-            case AUTOMATIC:
-                if (checkpointConfig.isApproximateLocalRecoveryEnabled()) {
-                    checkApproximateLocalRecoveryCompatibility();
-                    return GlobalStreamExchangeMode.ALL_EDGES_PIPELINED_APPROXIMATE;
-                }
-                return GlobalStreamExchangeMode.ALL_EDGES_PIPELINED;
-            default:
-                throw new IllegalArgumentException(
-                        String.format(
-                                "Unsupported shuffle mode '%s' in STREAMING runtime mode.",
-                                shuffleMode.toString()));
+        if (checkpointConfig.isApproximateLocalRecoveryEnabled()) {
+            checkApproximateLocalRecoveryCompatibility();
+            return GlobalStreamExchangeMode.ALL_EDGES_PIPELINED_APPROXIMATE;
         }
+        return GlobalStreamExchangeMode.ALL_EDGES_PIPELINED;
     }
 
     private void checkApproximateLocalRecoveryCompatibility() {
@@ -470,7 +458,10 @@ public class StreamGraphGenerator {
         }
     }
 
-    private boolean shouldExecuteInBatchMode(final RuntimeExecutionMode configuredMode) {
+    private boolean shouldExecuteInBatchMode() {
+        final RuntimeExecutionMode configuredMode =
+                configuration.get(ExecutionOptions.RUNTIME_MODE);
+
         final boolean existsUnboundedSource = existsUnboundedSource();
 
         checkState(
@@ -937,6 +928,11 @@ public class StreamGraphGenerator {
         @Override
         public ReadableConfig getGraphGeneratorConfig() {
             return config;
+        }
+
+        @Override
+        public Collection<Integer> transform(Transformation<?> transformation) {
+            return streamGraphGenerator.transform(transformation);
         }
     }
 }

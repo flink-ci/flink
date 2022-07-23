@@ -29,6 +29,9 @@ public class UnpooledBufferPool implements BufferPool {
     private static final int SEGMENT_SIZE = 1024;
 
     @Override
+    public void reserveSegments(int numberOfSegmentsToReserve) {}
+
+    @Override
     public void lazyDestroy() {}
 
     @Override
@@ -95,6 +98,14 @@ public class UnpooledBufferPool implements BufferPool {
     @Override
     public void setNumBuffers(int numBuffers) {
         throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void setMaxOverdraftBuffersPerGate(int maxOverdraftBuffersPerGate) {}
+
+    @Override
+    public int getMaxOverdraftBuffersPerGate() {
+        return 0;
     }
 
     @Override

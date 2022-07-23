@@ -60,22 +60,22 @@ However, types need to be specified when:
 ### Passing Python records to Java operations
 
 Since Java operators or functions can not identify Python data, types need to be provided to help to convert Python types to Java types for processing.
-For example, types need to be provided if you want to output data using the StreamingFileSink which is implemented in Java.
+For example, types need to be provided if you want to output data using the FileSink which is implemented in Java.
 
 ```python
 from pyflink.common.serialization import Encoder
 from pyflink.common.typeinfo import Types
 from pyflink.datastream import StreamExecutionEnvironment
-from pyflink.datastream.connectors import StreamingFileSink
+from pyflink.datastream.connectors import FileSink
 
 
-def streaming_file_sink():
+def file_sink():
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(1)
     env.from_collection(collection=[(1, 'aaa'), (2, 'bbb')]) \
         .map(lambda record: (record[0]+1, record[1].upper()),
              output_type=Types.ROW([Types.INT(), Types.STRING()])) \
-        .add_sink(StreamingFileSink
+        .add_sink(FileSink
                   .for_row_format('/tmp/output', Encoder.simple_string_encoder())
                   .build())
 
@@ -83,7 +83,7 @@ def streaming_file_sink():
 
 
 if __name__ == '__main__':
-    streaming_file_sink()
+    file_sink()
 
 ```
 
@@ -110,6 +110,7 @@ The table below shows the types supported now and how to define them:
 |`Types.STRING()` | `str` | `java.lang.String` |
 |`Types.BIG_INT()` | `int` | `java.math.BigInteger` |
 |`Types.BIG_DEC()` | `decimal.Decimal` | `java.math.BigDecimal` |
+|`Types.INSTANT()` | `pyflink.common.time.Instant` | `java.time.Instant` |
 |`Types.TUPLE()` | `tuple` | `org.apache.flink.api.java.tuple.Tuple0` ~ `org.apache.flink.api.java.tuple.Tuple25` |
 |`Types.ROW()` | `pyflink.common.Row` | `org.apache.flink.types.Row` |
 |`Types.ROW_NAMED()` | `pyflink.common.Row` | `org.apache.flink.types.Row` |

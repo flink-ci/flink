@@ -21,21 +21,18 @@ package org.apache.flink.table.planner.functions;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
 
-import org.junit.runners.Parameterized.Parameters;
-
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.List;
+import java.util.stream.Stream;
 
 import static org.apache.flink.table.api.Expressions.$;
 
 /** Tests for math {@link BuiltInFunctionDefinitions} that fully use the new type system. */
-public class MathFunctionsITCase extends BuiltInFunctionTestBase {
+class MathFunctionsITCase extends BuiltInFunctionTestBase {
 
-    @Parameters(name = "{index}: {0}")
-    public static List<TestSpec> testData() {
-        return Arrays.asList(
-                TestSpec.forFunction(BuiltInFunctionDefinitions.PLUS)
+    @Override
+    Stream<TestSetSpec> getTestSetSpecs() {
+        return Stream.of(
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.PLUS)
                         .onFieldsWithData(new BigDecimal("1514356320000"))
                         .andDataTypes(DataTypes.DECIMAL(19, 0).notNull())
                         // DECIMAL(19, 0) + INT(10, 0) => DECIMAL(20, 0)
@@ -50,7 +47,7 @@ public class MathFunctionsITCase extends BuiltInFunctionTestBase {
                                 "f0 + f0",
                                 new BigDecimal("3028712640000"),
                                 DataTypes.DECIMAL(20, 0).notNull()),
-                TestSpec.forFunction(BuiltInFunctionDefinitions.MINUS)
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.MINUS)
                         .onFieldsWithData(new BigDecimal("1514356320000"))
                         .andDataTypes(DataTypes.DECIMAL(19, 0))
                         // DECIMAL(19, 0) - INT(10, 0) => DECIMAL(20, 0)
@@ -65,7 +62,7 @@ public class MathFunctionsITCase extends BuiltInFunctionTestBase {
                                 "f0 - f0",
                                 new BigDecimal("0"),
                                 DataTypes.DECIMAL(20, 0)),
-                TestSpec.forFunction(BuiltInFunctionDefinitions.DIVIDE)
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.DIVIDE)
                         .onFieldsWithData(new BigDecimal("1514356320000"))
                         .andDataTypes(DataTypes.DECIMAL(19, 0).notNull())
                         // DECIMAL(19, 0) / INT(10, 0) => DECIMAL(30, 11)
@@ -80,7 +77,7 @@ public class MathFunctionsITCase extends BuiltInFunctionTestBase {
                                 "f0 / f0",
                                 new BigDecimal("1.0000000000000000000"),
                                 DataTypes.DECIMAL(38, 19).notNull()),
-                TestSpec.forFunction(BuiltInFunctionDefinitions.TIMES)
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.TIMES)
                         .onFieldsWithData(new BigDecimal("1514356320000"))
                         .andDataTypes(DataTypes.DECIMAL(19, 0))
                         // DECIMAL(19, 0) * INT(10, 0) => DECIMAL(29, 0)
@@ -95,7 +92,7 @@ public class MathFunctionsITCase extends BuiltInFunctionTestBase {
                                 "f0 * f0",
                                 new BigDecimal("2293275063923942400000000"),
                                 DataTypes.DECIMAL(38, 0)),
-                TestSpec.forFunction(BuiltInFunctionDefinitions.MOD)
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.MOD)
                         .onFieldsWithData(new BigDecimal("1514356320000"), 44L, 3)
                         .andDataTypes(DataTypes.DECIMAL(19, 0), DataTypes.BIGINT(), DataTypes.INT())
                         // DECIMAL(19, 0) % DECIMAL(19, 0) => DECIMAL(19, 0)
@@ -108,13 +105,21 @@ public class MathFunctionsITCase extends BuiltInFunctionTestBase {
                         .testResult($("f0").mod(6), "MOD(f0, 6)", 0, DataTypes.INT())
                         // BIGINT(19, 0) % INT(10, 0) => INT(10, 0)
                         .testResult($("f1").mod($("f2")), "MOD(f1, f2)", 2, DataTypes.INT()),
-                TestSpec.forFunction(BuiltInFunctionDefinitions.ROUND)
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.ROUND)
                         .onFieldsWithData(new BigDecimal("12345.12345"))
                         // ROUND(DECIMAL(10, 5) NOT NULL, 2) => DECIMAL(8, 2) NOT NULL
                         .testResult(
                                 $("f0").round(2),
                                 "ROUND(f0, 2)",
                                 new BigDecimal("12345.12"),
-                                DataTypes.DECIMAL(8, 2).notNull()));
+                                DataTypes.DECIMAL(8, 2).notNull()),
+                TestSetSpec.forFunction(BuiltInFunctionDefinitions.TRUNCATE)
+                        .onFieldsWithData(new BigDecimal("123.456"))
+                        // TRUNCATE(DECIMAL(6, 3) NOT NULL, 2) => DECIMAL(6, 2) NOT NULL
+                        .testResult(
+                                $("f0").truncate(2),
+                                "TRUNCATE(f0, 2)",
+                                new BigDecimal("123.45"),
+                                DataTypes.DECIMAL(6, 2).notNull()));
     }
 }

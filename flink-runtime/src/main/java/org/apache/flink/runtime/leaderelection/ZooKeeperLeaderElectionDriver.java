@@ -23,25 +23,17 @@ import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.util.ZooKeeperUtils;
 import org.apache.flink.util.ExceptionUtils;
 
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.CuratorFramework;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.api.UnhandledErrorListener;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.ChildData;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.cache.TreeCache;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.leader.LeaderLatch;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.recipes.leader.LeaderLatchListener;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.state.ConnectionState;
-import org.apache.flink.shaded.curator4.org.apache.curator.framework.state.ConnectionStateListener;
-import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.CreateMode;
-import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.KeeperException;
-import org.apache.flink.shaded.zookeeper3.org.apache.zookeeper.data.Stat;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.CuratorFramework;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.recipes.cache.ChildData;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.recipes.cache.TreeCache;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.recipes.leader.LeaderLatch;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.recipes.leader.LeaderLatchListener;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.state.ConnectionState;
+import org.apache.flink.shaded.curator5.org.apache.curator.framework.state.ConnectionStateListener;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.util.UUID;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -50,9 +42,11 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * {@link LeaderElectionDriver} implementation for Zookeeper. The leading JobManager is elected
  * using ZooKeeper. The current leader's address as well as its leader session ID is published via
  * ZooKeeper.
+ *
+ * @deprecated in favour of {@link ZooKeeperMultipleComponentLeaderElectionDriver}
  */
-public class ZooKeeperLeaderElectionDriver
-        implements LeaderElectionDriver, LeaderLatchListener, UnhandledErrorListener {
+@Deprecated
+public class ZooKeeperLeaderElectionDriver implements LeaderElectionDriver, LeaderLatchListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(ZooKeeperLeaderElectionDriver.class);
 
@@ -67,6 +61,8 @@ public class ZooKeeperLeaderElectionDriver
 
     /** ZooKeeper path of the node which stores the current leader information. */
     private final String connectionInformationPath;
+
+    private final String leaderLatchPath;
 
     private final ConnectionStateListener listener =
             (client, newState) -> handleStateChange(newState);
@@ -102,14 +98,13 @@ public class ZooKeeperLeaderElectionDriver
         this.fatalErrorHandler = checkNotNull(fatalErrorHandler);
         this.leaderContenderDescription = checkNotNull(leaderContenderDescription);
 
-        leaderLatch = new LeaderLatch(client, ZooKeeperUtils.generateLeaderLatchPath(path));
+        leaderLatchPath = ZooKeeperUtils.generateLeaderLatchPath(path);
+        leaderLatch = new LeaderLatch(client, leaderLatchPath);
         this.cache =
                 ZooKeeperUtils.createTreeCache(
                         client,
                         connectionInformationPath,
                         this::retrieveLeaderInformationFromZooKeeper);
-
-        client.getUnhandledErrorListenable().addListener(this);
 
         running = true;
 
@@ -129,8 +124,6 @@ public class ZooKeeperLeaderElectionDriver
         running = false;
 
         LOG.info("Closing {}", this);
-
-        client.getUnhandledErrorListenable().removeListener(this);
 
         client.getConnectionStateListenable().removeListener(listener);
 
@@ -162,7 +155,7 @@ public class ZooKeeperLeaderElectionDriver
 
     @Override
     public void isLeader() {
-        leaderElectionEventHandler.onGrantLeadership();
+        leaderElectionEventHandler.onGrantLeadership(UUID.randomUUID());
     }
 
     @Override
@@ -174,18 +167,8 @@ public class ZooKeeperLeaderElectionDriver
         if (leaderLatch.hasLeadership()) {
             ChildData childData = cache.getCurrentData(connectionInformationPath);
             if (childData != null) {
-                final byte[] data = childData.getData();
-                if (data != null && data.length > 0) {
-                    final ByteArrayInputStream bais = new ByteArrayInputStream(data);
-                    final ObjectInputStream ois = new ObjectInputStream(bais);
-
-                    final String leaderAddress = ois.readUTF();
-                    final UUID leaderSessionID = (UUID) ois.readObject();
-
-                    leaderElectionEventHandler.onLeaderInformationChange(
-                            LeaderInformation.known(leaderSessionID, leaderAddress));
-                    return;
-                }
+                leaderElectionEventHandler.onLeaderInformationChange(
+                        ZooKeeperUtils.readLeaderInformation(childData.getData()));
             }
             leaderElectionEventHandler.onLeaderInformationChange(LeaderInformation.empty());
         }
@@ -207,51 +190,11 @@ public class ZooKeeperLeaderElectionDriver
         }
 
         try {
-            final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            final ObjectOutputStream oos = new ObjectOutputStream(baos);
-
-            oos.writeUTF(leaderInformation.getLeaderAddress());
-            oos.writeObject(leaderInformation.getLeaderSessionID());
-
-            oos.close();
-
-            boolean dataWritten = false;
-
-            while (!dataWritten && leaderLatch.hasLeadership()) {
-                Stat stat = client.checkExists().forPath(connectionInformationPath);
-
-                if (stat != null) {
-                    long owner = stat.getEphemeralOwner();
-                    long sessionID = client.getZookeeperClient().getZooKeeper().getSessionId();
-
-                    if (owner == sessionID) {
-                        try {
-                            client.setData().forPath(connectionInformationPath, baos.toByteArray());
-
-                            dataWritten = true;
-                        } catch (KeeperException.NoNodeException noNode) {
-                            // node was deleted in the meantime
-                        }
-                    } else {
-                        try {
-                            client.delete().forPath(connectionInformationPath);
-                        } catch (KeeperException.NoNodeException noNode) {
-                            // node was deleted in the meantime --> try again
-                        }
-                    }
-                } else {
-                    try {
-                        client.create()
-                                .creatingParentsIfNeeded()
-                                .withMode(CreateMode.EPHEMERAL)
-                                .forPath(connectionInformationPath, baos.toByteArray());
-
-                        dataWritten = true;
-                    } catch (KeeperException.NodeExistsException nodeExists) {
-                        // node has been created in the meantime --> try again
-                    }
-                }
-            }
+            ZooKeeperUtils.writeLeaderInformationToZooKeeper(
+                    leaderInformation,
+                    client,
+                    leaderLatch::hasLeadership,
+                    connectionInformationPath);
 
             if (LOG.isDebugEnabled()) {
                 LOG.debug("Successfully wrote leader information: {}.", leaderInformation);
@@ -271,10 +214,7 @@ public class ZooKeeperLeaderElectionDriver
                 LOG.debug("Connected to ZooKeeper quorum. Leader election can start.");
                 break;
             case SUSPENDED:
-                LOG.warn(
-                        "Connection to ZooKeeper suspended. The contender "
-                                + leaderContenderDescription
-                                + " no longer participates in the leader election.");
+                LOG.warn("Connection to ZooKeeper suspended, waiting for reconnection.");
                 break;
             case RECONNECTED:
                 LOG.info(
@@ -291,19 +231,10 @@ public class ZooKeeperLeaderElectionDriver
     }
 
     @Override
-    public void unhandledError(String message, Throwable e) {
-        fatalErrorHandler.onFatalError(
-                new LeaderElectionException(
-                        "Unhandled error in ZooKeeperLeaderElectionDriver: " + message, e));
-    }
-
-    @Override
     public String toString() {
-        return "ZooKeeperLeaderElectionDriver{"
-                + "leaderPath='"
-                + connectionInformationPath
-                + '\''
-                + '}';
+        return String.format(
+                "%s{leaderLatchPath='%s', connectionInformationPath='%s'}",
+                getClass().getSimpleName(), leaderLatchPath, connectionInformationPath);
     }
 
     @VisibleForTesting

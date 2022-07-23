@@ -30,7 +30,7 @@ under the License.
 The memory setup has changed a lot with the *1.10* release for [TaskManagers]({{< ref "docs/deployment/memory/mem_setup_tm" >}}) and with the *1.11*
 release for [JobManagers]({{< ref "docs/deployment/memory/mem_setup_jobmanager" >}}). Many configuration options were removed or their semantics changed.
 This guide will help you to migrate the TaskManager memory configuration from Flink
-[<= *1.9*](https://ci.apache.org/projects/flink/flink-docs-release-1.9/ops/mem_setup.html) to >= *1.10* and
+[<= *1.9*](https://nightlies.apache.org/flink/flink-docs-release-1.9/ops/mem_setup.html) to >= *1.10* and
 the JobManager memory configuration from Flink <= *1.10* to >= *1.11*.
 
 {{< hint warning >}}
@@ -279,13 +279,13 @@ The direct or native off-heap memory consumers can now be addressed by the follo
 This section describes the changes of the default `flink-conf.yaml` shipped with Flink.
 
 The total memory for TaskManagers (`taskmanager.heap.size`) is replaced by [`taskmanager.memory.process.size`]({{< ref "docs/deployment/config" >}}#taskmanager-memory-process-size)
-in the default `flink-conf.yaml`. The value increased from 1024Mb to 1728Mb.
+in the default `flink-conf.yaml`. The value increased from 1024MB to 1728MB.
 
 The total memory for JobManagers (`jobmanager.heap.size`) is replaced by [`jobmanager.memory.process.size`]({{< ref "docs/deployment/config" >}}#jobmanager-memory-process-size)
-in the default `flink-conf.yaml`. The value increased from 1024Mb to 1600Mb.
+in the default `flink-conf.yaml`. The value increased from 1024MB to 1600MB.
 
 See also [how to configure total memory now]({{< ref "docs/deployment/memory/mem_setup" >}}#configure-total-memory).
 
-<div class="alert alert-warning">
-  <strong>Warning:</strong> If you use the new default `flink-conf.yaml` it can result in different sizes of memory components and can lead to performance changes.
-</div>
+{{< hint warning >}}
+**Warning:** If you use the new default `flink-conf.yaml` it can result in different sizes of memory components and can lead to performance changes.
+{{< /hint >}}

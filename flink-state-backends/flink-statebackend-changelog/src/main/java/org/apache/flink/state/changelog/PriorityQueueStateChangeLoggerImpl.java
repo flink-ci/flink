@@ -17,7 +17,6 @@
 
 package org.apache.flink.state.changelog;
 
-import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.runtime.state.RegisteredPriorityQueueStateBackendMetaInfo;
@@ -28,16 +27,16 @@ import java.io.IOException;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
-class PriorityQueueStateChangeLoggerImpl<K, T> extends AbstractStateChangeLogger<K, T, Void>
-        implements PriorityQueueStateChangeLogger<T> {
+class PriorityQueueStateChangeLoggerImpl<K, T> extends AbstractStateChangeLogger<K, T, Void> {
     private final TypeSerializer<T> serializer;
 
     PriorityQueueStateChangeLoggerImpl(
             TypeSerializer<T> serializer,
             InternalKeyContext<K> keyContext,
             StateChangelogWriter<?> stateChangelogWriter,
-            RegisteredPriorityQueueStateBackendMetaInfo<T> meta) {
-        super(stateChangelogWriter, keyContext, meta, StateTtlConfig.DISABLED);
+            RegisteredPriorityQueueStateBackendMetaInfo<T> meta,
+            short stateId) {
+        super(stateChangelogWriter, keyContext, meta, stateId);
         this.serializer = checkNotNull(serializer);
     }
 
@@ -49,9 +48,4 @@ class PriorityQueueStateChangeLoggerImpl<K, T> extends AbstractStateChangeLogger
     @Override
     protected void serializeScope(Void unused, DataOutputViewStreamWrapper out)
             throws IOException {}
-
-    @Override
-    public void stateElementPolled() throws IOException {
-        log(StateChangeOperation.REMOVE_FIRST_ELEMENT, null);
-    }
 }

@@ -35,7 +35,6 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.data.util.DataFormatConverters;
 import org.apache.flink.table.data.util.DataFormatConverters.DataFormatConverter;
-import org.apache.flink.table.runtime.functions.SqlDateTimeUtils;
 import org.apache.flink.table.runtime.typeutils.DecimalDataTypeInfo;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.runtime.typeutils.LegacyTimestampTypeInfo;
@@ -47,10 +46,10 @@ import org.apache.flink.table.types.logical.LegacyTypeInformationType;
 import org.apache.flink.table.types.logical.LogicalTypeRoot;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.types.utils.TypeConversions;
+import org.apache.flink.table.utils.DateTimeUtils;
 import org.apache.flink.types.Row;
 import org.apache.flink.types.RowKind;
 
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.sql.Timestamp;
@@ -59,6 +58,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 
 import static org.apache.flink.table.data.util.DataFormatConverters.getConverterForDataType;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link DataFormatConverters}. */
 public class DataFormatConvertersTest {
@@ -107,9 +107,9 @@ public class DataFormatConvertersTest {
                 new short[] {5, 1},
                 new byte[] {5, 1},
                 new char[] {5, 1},
-                SqlDateTimeUtils.unixDateToLocalDate(5),
-                SqlDateTimeUtils.unixTimeToLocalTime(11),
-                SqlDateTimeUtils.unixTimestampToLocalDateTime(11),
+                DateTimeUtils.toLocalDate(5),
+                DateTimeUtils.toLocalTime(11),
+                DateTimeUtils.toLocalDateTime(11),
                 StringData.fromString("hahah")
             };
 
@@ -164,9 +164,7 @@ public class DataFormatConvertersTest {
             converter.toInternal(anotherValue);
         }
 
-        Assert.assertTrue(
-                Arrays.deepEquals(
-                        new Object[] {converter.toExternal(innerValue)}, new Object[] {value}));
+        assertThat(converter.toExternal(innerValue)).isEqualTo(value);
     }
 
     private static DataFormatConverter getConverter(DataType dataType) {
@@ -175,10 +173,7 @@ public class DataFormatConvertersTest {
 
     private static void testDataType(DataType dataType, Object value) {
         DataFormatConverter converter = getConverter(dataType);
-        Assert.assertTrue(
-                Arrays.deepEquals(
-                        new Object[] {converter.toExternal(converter.toInternal(value))},
-                        new Object[] {value}));
+        assertThat(converter.toExternal(converter.toInternal(value))).isEqualTo(value);
     }
 
     @Test
@@ -189,10 +184,10 @@ public class DataFormatConvertersTest {
         test(new RowTypeInfo(simpleTypes), new Row(simpleTypes.length));
         test(new RowTypeInfo(simpleTypes), Row.ofKind(RowKind.DELETE, simpleValues));
         test(
-                InternalTypeInfo.ofFields(new VarCharType(VarCharType.MAX_LENGTH), new IntType()),
+                InternalTypeInfo.ofFields(VarCharType.STRING_TYPE, new IntType()),
                 GenericRowData.of(StringData.fromString("hehe"), 111));
         test(
-                InternalTypeInfo.ofFields(new VarCharType(VarCharType.MAX_LENGTH), new IntType()),
+                InternalTypeInfo.ofFields(VarCharType.STRING_TYPE, new IntType()),
                 GenericRowData.of(null, null));
 
         test(new DecimalDataTypeInfo(10, 5), null);
@@ -201,13 +196,10 @@ public class DataFormatConvertersTest {
         test(Types.BIG_DEC, null);
         {
             DataFormatConverter converter = getConverter(Types.BIG_DEC);
-            Assert.assertTrue(
-                    Arrays.deepEquals(
-                            new Object[] {
-                                converter.toInternal(
-                                        converter.toExternal(DecimalDataUtils.castFrom(5, 19, 18)))
-                            },
-                            new Object[] {DecimalDataUtils.castFrom(5, 19, 18)}));
+            assertThat(
+                            converter.toInternal(
+                                    converter.toExternal(DecimalDataUtils.castFrom(5, 19, 18))))
+                    .isEqualTo(DecimalDataUtils.castFrom(5, 19, 18));
         }
 
         test(new ListTypeInfo<>(Types.STRING), null);

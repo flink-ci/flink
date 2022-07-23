@@ -18,11 +18,11 @@
 
 package org.apache.flink.connectors.hive.read;
 
+import org.apache.flink.connector.file.table.PartitionReader;
 import org.apache.flink.connectors.hive.HiveTablePartition;
 import org.apache.flink.connectors.hive.JobConfWrapper;
 import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.filesystem.PartitionReader;
 import org.apache.flink.table.types.DataType;
 
 import org.apache.hadoop.mapred.JobConf;
@@ -35,6 +35,7 @@ public class HiveInputFormatPartitionReader
         implements PartitionReader<HiveTablePartition, RowData> {
 
     private static final long serialVersionUID = 1L;
+    private final int threadNum;
     private final JobConfWrapper jobConfWrapper;
     private final String hiveVersion;
     protected final ObjectPath tablePath;
@@ -49,6 +50,7 @@ public class HiveInputFormatPartitionReader
     private transient int readingSplitId;
 
     public HiveInputFormatPartitionReader(
+            int threadNum,
             JobConf jobConf,
             String hiveVersion,
             ObjectPath tablePath,
@@ -57,6 +59,7 @@ public class HiveInputFormatPartitionReader
             List<String> partitionKeys,
             int[] selectedFields,
             boolean useMapRedReader) {
+        this.threadNum = threadNum;
         this.jobConfWrapper = new JobConfWrapper(jobConf);
         this.hiveVersion = hiveVersion;
         this.tablePath = tablePath;
@@ -71,6 +74,7 @@ public class HiveInputFormatPartitionReader
     public void open(List<HiveTablePartition> partitions) throws IOException {
         hiveTableInputFormat =
                 new HiveTableInputFormat(
+                        this.threadNum,
                         this.jobConfWrapper.conf(),
                         this.partitionKeys,
                         this.fieldTypes,

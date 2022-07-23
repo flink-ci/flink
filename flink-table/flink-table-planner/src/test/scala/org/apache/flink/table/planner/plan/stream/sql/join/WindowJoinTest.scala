@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.stream.sql.join
 
 import org.apache.flink.table.api.TableException
@@ -23,39 +22,35 @@ import org.apache.flink.table.planner.utils.{StreamTableTestUtil, TableTestBase}
 
 import org.junit.Test
 
-/**
- * Tests for window join.
- */
+/** Tests for window join. */
 class WindowJoinTest extends TableTestBase {
 
   private val util: StreamTableTestUtil = streamTestUtil()
-  util.tableEnv.executeSql(
-    s"""
-       |CREATE TABLE MyTable (
-       |  a INT,
-       |  b STRING NOT NULL,
-       |  c BIGINT,
-       |  rowtime TIMESTAMP(3),
-       |  proctime as PROCTIME(),
-       |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
-       |) with (
-       |  'connector' = 'values'
-       |)
-       |""".stripMargin)
+  util.tableEnv.executeSql(s"""
+                              |CREATE TABLE MyTable (
+                              |  a INT,
+                              |  b STRING NOT NULL,
+                              |  c BIGINT,
+                              |  rowtime TIMESTAMP(3),
+                              |  proctime as PROCTIME(),
+                              |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
+                              |) with (
+                              |  'connector' = 'values'
+                              |)
+                              |""".stripMargin)
 
-  util.tableEnv.executeSql(
-    s"""
-       |CREATE TABLE MyTable2 (
-       |  a INT,
-       |  b STRING NOT NULL,
-       |  c BIGINT,
-       |  rowtime TIMESTAMP(3),
-       |  proctime as PROCTIME(),
-       |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
-       |) with (
-       |  'connector' = 'values'
-       |)
-       |""".stripMargin)
+  util.tableEnv.executeSql(s"""
+                              |CREATE TABLE MyTable2 (
+                              |  a INT,
+                              |  b STRING NOT NULL,
+                              |  c BIGINT,
+                              |  rowtime TIMESTAMP(3),
+                              |  proctime as PROCTIME(),
+                              |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
+                              |) with (
+                              |  'connector' = 'values'
+                              |)
+                              |""".stripMargin)
 
   // ----------------------------------------------------------------------------------------
   // Tests for queries Join on window TVF
@@ -377,7 +372,7 @@ class WindowJoinTest extends TableTestBase {
   // because left window strategy is not equals to right window strategy.
   // ----------------------------------------------------------------------------------------
 
-  /** Window type in left and right child should be same **/
+  /** Window type in left and right child should be same * */
   @Test
   def testNotSameWindowType(): Unit = {
     val sql =
@@ -388,6 +383,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -399,6 +395,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -410,7 +407,7 @@ class WindowJoinTest extends TableTestBase {
     util.verifyRelPlan(sql)
   }
 
-  /** Window spec in left and right child should be same **/
+  /** Window spec in left and right child should be same * */
   @Test
   def testNotSameWindowSpec(): Unit = {
     val sql =
@@ -421,6 +418,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -432,6 +430,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -443,7 +442,7 @@ class WindowJoinTest extends TableTestBase {
     util.verifyRelPlan(sql)
   }
 
-  /** Window spec in left and right child should be same **/
+  /** Window spec in left and right child should be same * */
   @Test
   def testNotSameTimeAttributeType(): Unit = {
     val sql =
@@ -454,6 +453,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -466,6 +466,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -494,6 +495,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(TUMBLE(TABLE MyTable, DESCRIPTOR(rowtime), INTERVAL '15' MINUTE))
@@ -504,6 +506,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(TUMBLE(TABLE MyTable2, DESCRIPTOR(rowtime), INTERVAL '15' MINUTE))
@@ -524,6 +527,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(TUMBLE(TABLE MyTable, DESCRIPTOR(rowtime), INTERVAL '15' MINUTE))
@@ -534,6 +538,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(TUMBLE(TABLE MyTable2, DESCRIPTOR(rowtime), INTERVAL '15' MINUTE))
@@ -554,6 +559,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -565,6 +571,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -586,6 +593,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -597,6 +605,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -618,6 +627,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -630,6 +640,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -652,6 +663,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -664,6 +676,7 @@ class WindowJoinTest extends TableTestBase {
         |    a,
         |    window_start,
         |    window_end,
+        |    window_time,
         |    count(*) as cnt,
         |    count(distinct c) AS uv
         |  FROM TABLE(
@@ -926,19 +939,18 @@ class WindowJoinTest extends TableTestBase {
 
   @Test
   def testTimeAttributePropagateForWindowJoin(): Unit = {
-    util.tableEnv.executeSql(
-      s"""
-         |CREATE TABLE MyTable3 (
-         |  a INT,
-         |  b STRING NOT NULL,
-         |  c BIGINT,
-         |  rowtime TIMESTAMP(3),
-         |  proctime as PROCTIME(),
-         |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
-         |) with (
-         |  'connector' = 'values'
-         |)
-         |""".stripMargin)
+    util.tableEnv.executeSql(s"""
+                                |CREATE TABLE MyTable3 (
+                                |  a INT,
+                                |  b STRING NOT NULL,
+                                |  c BIGINT,
+                                |  rowtime TIMESTAMP(3),
+                                |  proctime as PROCTIME(),
+                                |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
+                                |) with (
+                                |  'connector' = 'values'
+                                |)
+                                |""".stripMargin)
 
     util.tableEnv.executeSql(
       """
@@ -974,19 +986,18 @@ class WindowJoinTest extends TableTestBase {
 
   @Test
   def testTimeAttributePropagateForWindowJoin1(): Unit = {
-    util.tableEnv.executeSql(
-      s"""
-         |CREATE TABLE MyTable4 (
-         |  a INT,
-         |  b STRING NOT NULL,
-         |  c BIGINT,
-         |  rowtime TIMESTAMP(3),
-         |  proctime as PROCTIME(),
-         |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
-         |) with (
-         |  'connector' = 'values'
-         |)
-         |""".stripMargin)
+    util.tableEnv.executeSql(s"""
+                                |CREATE TABLE MyTable4 (
+                                |  a INT,
+                                |  b STRING NOT NULL,
+                                |  c BIGINT,
+                                |  rowtime TIMESTAMP(3),
+                                |  proctime as PROCTIME(),
+                                |  WATERMARK FOR rowtime AS rowtime - INTERVAL '1' SECOND
+                                |) with (
+                                |  'connector' = 'values'
+                                |)
+                                |""".stripMargin)
 
     util.tableEnv.executeSql(
       """

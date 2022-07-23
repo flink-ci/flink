@@ -15,50 +15,40 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.codegen.calls
 
-import org.apache.flink.table.planner.codegen.CodeGenUtils.{className, newName}
-import org.apache.flink.table.planner.codegen.GenerateUtils.generateCallIfArgsNotNull
+import org.apache.flink.table.functions.SqlLikeUtils
 import org.apache.flink.table.planner.codegen.{CodeGeneratorContext, GeneratedExpression}
-import org.apache.flink.table.runtime.functions.{SqlLikeChainChecker, SqlLikeUtils}
+import org.apache.flink.table.planner.codegen.CodeGenUtils.{className, newName, qualifyMethod}
+import org.apache.flink.table.planner.codegen.GenerateUtils.generateCallIfArgsNotNull
+import org.apache.flink.table.runtime.functions.SqlLikeChainChecker
 import org.apache.flink.table.types.logical.{BooleanType, LogicalType}
-
-import org.apache.calcite.runtime.SqlFunctions
 
 import java.util.regex.Pattern
 
-/**
-  * Generates Like function call.
-  */
+/** Generates Like function call. */
 class LikeCallGen extends CallGenerator {
 
-  /**
-    * Accepts simple LIKE patterns like "abc%".
-    */
+  /** Accepts simple LIKE patterns like "abc%". */
   private val BEGIN_PATTERN = Pattern.compile("([^%]+)%")
 
-  /**
-    * Accepts simple LIKE patterns like "%abc".
-    */
+  /** Accepts simple LIKE patterns like "%abc". */
   private val END_PATTERN = Pattern.compile("%([^%]+)")
 
-  /**
-    * Accepts simple LIKE patterns like "%abc%".
-    */
+  /** Accepts simple LIKE patterns like "%abc%". */
   private val MIDDLE_PATTERN = Pattern.compile("%([^%]+)%")
 
-  /**
-    * Accepts simple LIKE patterns like "abc".
-    */
+  /** Accepts simple LIKE patterns like "abc". */
   private val NONE_PATTERN = Pattern.compile("[^%]+")
 
   override def generate(
       ctx: CodeGeneratorContext,
       operands: Seq[GeneratedExpression],
       returnType: LogicalType): GeneratedExpression = {
-    if ((operands.size == 2 && operands(1).literal) ||
-        (operands.size == 3 && operands(1).literal && operands(2).literal)) {
+    if (
+      (operands.size == 2 && operands(1).literal) ||
+      (operands.size == 3 && operands(1).literal && operands(2).literal)
+    ) {
       generateCallIfArgsNotNull(ctx, returnType, operands) {
         terms =>
           val pattern = operands(1).literalValue.get.toString
@@ -110,16 +100,16 @@ class LikeCallGen extends CallGenerator {
             val middleMatcher = MIDDLE_PATTERN.matcher(newPattern)
 
             if (noneMatcher.matches()) {
-              val reusePattern = ctx.addReusableStringConstants(newPattern)
+              val reusePattern = ctx.addReusableEscapedStringConstant(newPattern)
               s"${terms.head}.equals($reusePattern)"
             } else if (beginMatcher.matches()) {
-              val field = ctx.addReusableStringConstants(beginMatcher.group(1))
+              val field = ctx.addReusableEscapedStringConstant(beginMatcher.group(1))
               s"${terms.head}.startsWith($field)"
             } else if (endMatcher.matches()) {
-              val field = ctx.addReusableStringConstants(endMatcher.group(1))
+              val field = ctx.addReusableEscapedStringConstant(endMatcher.group(1))
               s"${terms.head}.endsWith($field)"
             } else if (middleMatcher.matches()) {
-              val field = ctx.addReusableStringConstants(middleMatcher.group(1))
+              val field = ctx.addReusableEscapedStringConstant(middleMatcher.group(1))
               s"${terms.head}.contains($field)"
             } else {
               val field = className[SqlLikeChainChecker]
@@ -160,12 +150,11 @@ class LikeCallGen extends CallGenerator {
       terms =>
         val str1 = s"${terms.head}.toString()"
         val str2 = s"${terms(1)}.toString()"
-        val clsName = className[SqlFunctions]
         if (terms.length == 2) {
-          s"$clsName.like($str1, $str2)"
+          s"${qualifyMethod(BuiltInMethods.STRING_LIKE)}($str1, $str2)"
         } else {
           val str3 = s"${terms(2)}.toString()"
-          s"$clsName.like($str1, $str2, $str3)"
+          s"${qualifyMethod(BuiltInMethods.STRING_LIKE_WITH_ESCAPE)}($str1, $str2, $str3)"
         }
     }
   }

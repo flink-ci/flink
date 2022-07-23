@@ -24,8 +24,12 @@ import org.apache.flink.python.PythonFunctionRunner;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
+import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.functions.python.PythonFunctionInfo;
+import org.apache.flink.table.planner.codegen.CodeGeneratorContext;
+import org.apache.flink.table.planner.codegen.ProjectionCodeGenerator;
+import org.apache.flink.table.runtime.generated.GeneratedProjection;
 import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.runtime.util.RowDataHarnessAssertor;
 import org.apache.flink.table.runtime.utils.PassThroughPythonScalarFunctionRunner;
@@ -36,7 +40,6 @@ import org.apache.flink.types.RowKind;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.HashMap;
 
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.row;
 
@@ -60,8 +63,36 @@ public class PythonScalarFunctionOperatorTest
             RowType outputType,
             int[] udfInputOffsets,
             int[] forwardedFields) {
+        final RowType udfInputType = (RowType) Projection.of(udfInputOffsets).project(inputType);
+        final RowType forwardedFieldType =
+                (RowType) Projection.of(forwardedFields).project(inputType);
+        final RowType udfOutputType =
+                (RowType)
+                        Projection.range(forwardedFields.length, outputType.getFieldCount())
+                                .project(outputType);
+
         return new PassThroughPythonScalarFunctionOperator(
-                config, scalarFunctions, inputType, outputType, udfInputOffsets, forwardedFields);
+                config,
+                scalarFunctions,
+                inputType,
+                udfInputType,
+                udfOutputType,
+                ProjectionCodeGenerator.generateProjection(
+                        new CodeGeneratorContext(
+                                new Configuration(),
+                                Thread.currentThread().getContextClassLoader()),
+                        "UdfInputProjection",
+                        inputType,
+                        udfInputType,
+                        udfInputOffsets),
+                ProjectionCodeGenerator.generateProjection(
+                        new CodeGeneratorContext(
+                                new Configuration(),
+                                Thread.currentThread().getContextClassLoader()),
+                        "ForwardedFieldProjection",
+                        inputType,
+                        forwardedFieldType,
+                        forwardedFields));
     }
 
     @Override
@@ -100,22 +131,29 @@ public class PythonScalarFunctionOperatorTest
                 Configuration config,
                 PythonFunctionInfo[] scalarFunctions,
                 RowType inputType,
-                RowType outputType,
-                int[] udfInputOffsets,
-                int[] forwardedFields) {
-            super(config, scalarFunctions, inputType, outputType, udfInputOffsets, forwardedFields);
+                RowType udfInputType,
+                RowType udfOutputType,
+                GeneratedProjection udfInputGeneratedProjection,
+                GeneratedProjection forwardedFieldGeneratedProjection) {
+            super(
+                    config,
+                    scalarFunctions,
+                    inputType,
+                    udfInputType,
+                    udfOutputType,
+                    udfInputGeneratedProjection,
+                    forwardedFieldGeneratedProjection);
         }
 
         @Override
         public PythonFunctionRunner createPythonFunctionRunner() throws IOException {
             return new PassThroughPythonScalarFunctionRunner(
                     getRuntimeContext().getTaskName(),
-                    PythonTestUtils.createTestEnvironmentManager(),
-                    userDefinedFunctionInputType,
-                    userDefinedFunctionOutputType,
+                    PythonTestUtils.createTestProcessEnvironmentManager(),
+                    udfInputType,
+                    udfOutputType,
                     getFunctionUrn(),
                     getUserDefinedFunctionsProto(),
-                    new HashMap<>(),
                     PythonTestUtils.createMockFlinkMetricContainer());
         }
     }

@@ -18,24 +18,32 @@
 import datetime
 import decimal
 import sys
-from py4j.protocol import Py4JJavaError
+import unittest
 
-from pyflink.common import RowKind
+from py4j.protocol import Py4JJavaError
+from typing import Iterable
+
+from pyflink.common import RowKind, WatermarkStrategy, Configuration
+from pyflink.common.serializer import TypeSerializer
 from pyflink.common.typeinfo import Types
+from pyflink.common.watermark_strategy import TimestampAssigner
+from pyflink.datastream import MergingWindowAssigner, TimeWindow, Trigger, TriggerResult
+from pyflink.datastream.functions import WindowFunction
 from pyflink.datastream.tests.test_util import DataStreamTestSinkFunction
+from pyflink.datastream.window import TimeWindowSerializer
 from pyflink.java_gateway import get_gateway
 from pyflink.table import DataTypes, CsvTableSink, StreamTableEnvironment, EnvironmentSettings, \
     Module, ResultKind, ModuleEntry
 from pyflink.table.catalog import ObjectPath, CatalogBaseTable
 from pyflink.table.explain_detail import ExplainDetail
-from pyflink.table.expressions import col
+from pyflink.table.expressions import col, source_watermark
 from pyflink.table.table_descriptor import TableDescriptor
-from pyflink.table.types import RowType, Row
+from pyflink.table.types import RowType, Row, UserDefinedType
 from pyflink.table.udf import udf
 from pyflink.testing import source_sink_utils
-from pyflink.testing.test_case_utils import \
-    PyFlinkBatchTableTestCase, PyFlinkStreamTableTestCase, \
-    _load_specific_flink_module_jars
+from pyflink.testing.test_case_utils import (
+    PyFlinkBatchTableTestCase, PyFlinkStreamTableTestCase, PyFlinkTestCase,
+    _load_specific_flink_module_jars)
 from pyflink.util.java_utils import get_j_env_configuration
 
 
@@ -81,10 +89,11 @@ class TableEnvironmentTest(object):
             "python_scalar_func", udf(lambda i: i, result_type=DataTypes.INT()))
 
         t_env.register_java_function("scalar_func",
-                                     "org.apache.flink.table.legacyutils.RichFunc0")
+                                     "org.apache.flink.table.utils.TestingFunctions$RichFunc0")
         t_env.register_java_function(
-            "agg_func", "org.apache.flink.table.legacyutils.ByteMaxAggFunction")
-        t_env.register_java_function("table_func", "org.apache.flink.table.legacyutils.TableFunc1")
+            "agg_func", "org.apache.flink.table.utils.TestingFunctions$ByteMaxAggFunction")
+        t_env.register_java_function("table_func",
+                                     "org.apache.flink.table.utils.TestingFunctions$TableFunc1")
 
         actual = t_env.list_user_defined_functions()
         expected = ['python_scalar_func', 'scalar_func', 'agg_func', 'table_func']
@@ -149,11 +158,11 @@ class TableEnvironmentTest(object):
         t_env = self.t_env
 
         t_env.create_java_temporary_system_function(
-            "scalar_func", "org.apache.flink.table.legacyutils.RichFunc0")
+            "scalar_func", "org.apache.flink.table.utils.TestingFunctions$RichFunc0")
         t_env.create_java_function(
-            "agg_func", "org.apache.flink.table.legacyutils.ByteMaxAggFunction")
+            "agg_func", "org.apache.flink.table.utils.TestingFunctions$ByteMaxAggFunction")
         t_env.create_java_temporary_function(
-            "table_func", "org.apache.flink.table.legacyutils.TableFunc1")
+            "table_func", "org.apache.flink.table.utils.TestingFunctions$TableFunc1")
         self.assert_equals(t_env.list_user_defined_functions(),
                            ['scalar_func', 'agg_func', 'table_func'])
 
@@ -218,17 +227,50 @@ class TableEnvironmentTest(object):
         self.assertEqual(schema,
                          Schema(Schema.new_builder()._j_builder
                                 .fromResolvedSchema(table._j_table.getResolvedSchema()).build()))
-        table = CatalogBaseTable(self.t_env._j_tenv
-                                 .getCatalogManager()
-                                 .getTable(table._j_table
-                                           .getQueryOperation()
-                                           .getTableIdentifier())
-                                 .get()
-                                 .getTable())
-        self.assertEqual("fake", table.get_options().get("connector"))
+        contextResolvedTable = table._j_table.getQueryOperation().getContextResolvedTable()
+        options = contextResolvedTable.getTable().getOptions()
+        self.assertEqual("fake", options.get("connector"))
 
 
-class DataStreamConversionTestCases(object):
+class DataStreamConversionTestCases(PyFlinkTestCase):
+
+    def setUp(self) -> None:
+        from pyflink.datastream import StreamExecutionEnvironment
+
+        super(DataStreamConversionTestCases, self).setUp()
+        config = Configuration()
+        config.set_string("akka.ask.timeout", "20 s")
+        self.env = StreamExecutionEnvironment.get_execution_environment(config)
+        self.t_env = StreamTableEnvironment.create(self.env)
+
+        self.env.set_parallelism(2)
+        self.t_env.get_config().set(
+            "python.fn-execution.bundle.size", "1")
+        self.test_sink = DataStreamTestSinkFunction()
+
+    def test_from_data_stream_atomic(self):
+        data_stream = self.env.from_collection([(1,), (2,), (3,), (4,), (5,)])
+        result = self.t_env.from_data_stream(data_stream).execute()
+        self.assertEqual("""(
+  `f0` RAW('[B', '...')
+)""",
+                         result._j_table_result.getResolvedSchema().toString())
+        with result.collect() as result:
+            collected_result = [str(item) for item in result]
+            expected_result = [item for item in map(str, [Row(1), Row(2), Row(3), Row(4), Row(5)])]
+            expected_result.sort()
+            collected_result.sort()
+            self.assertEqual(expected_result, collected_result)
+
+    def test_to_data_stream_atomic(self):
+        table = self.t_env.from_elements([(1,), (2,), (3,)], ["a"])
+        ds = self.t_env.to_data_stream(table)
+        ds.add_sink(self.test_sink)
+        self.env.execute()
+        results = self.test_sink.get_results(False)
+        results.sort()
+        expected = ['+I[1]', '+I[2]', '+I[3]']
+        self.assertEqual(expected, results)
 
     def test_from_data_stream(self):
         self.env.set_parallelism(1)
@@ -239,24 +281,154 @@ class DataStreamConversionTestCases(object):
                                                            Types.STRING()]))
         t_env = self.t_env
         table = t_env.from_data_stream(ds)
-        field_names = ['a', 'b', 'c']
-        field_types = [DataTypes.INT(), DataTypes.STRING(), DataTypes.STRING()]
-        t_env.register_table_sink("Sink",
-                                  source_sink_utils.TestAppendSink(field_names, field_types))
-        t_env.insert_into("Sink", table)
-        t_env.execute("test_from_data_stream")
+        sink_table_ddl = """
+        CREATE TABLE Sink(a INT, b STRING, c STRING) WITH ('connector'='test-sink')
+        """
+        t_env.execute_sql(sink_table_ddl)
+        expr_sink_ddl = """
+        CREATE TABLE ExprSink(a INT, b STRING, c STRING) WITH ('connector'='test-sink')
+        """
+        t_env.execute_sql(expr_sink_ddl)
+        table.execute_insert("Sink").wait()
         result = source_sink_utils.results()
         expected = ['+I[1, Hi, Hello]', '+I[2, Hello, Hi]']
         self.assert_equals(result, expected)
 
-        ds = ds.map(lambda x: x, Types.ROW([Types.INT(), Types.STRING(), Types.STRING()]))
+        ds = ds.map(lambda x: x, Types.ROW([Types.INT(), Types.STRING(), Types.STRING()])) \
+               .map(lambda x: x, Types.ROW([Types.INT(), Types.STRING(), Types.STRING()]))
         table = t_env.from_data_stream(ds, col('a'), col('b'), col('c'))
-        t_env.register_table_sink("ExprSink",
-                                  source_sink_utils.TestAppendSink(field_names, field_types))
-        t_env.insert_into("ExprSink", table)
-        t_env.execute("test_from_data_stream_with_expr")
+        table.execute_insert("ExprSink").wait()
         result = source_sink_utils.results()
         self.assert_equals(result, expected)
+
+    def test_from_data_stream_with_schema(self):
+        from pyflink.table import Schema
+
+        ds = self.env.from_collection([(1, 'Hi', 'Hello'), (2, 'Hello', 'Hi')],
+                                      type_info=Types.ROW_NAMED(
+                                          ["a", "b", "c"],
+                                          [Types.INT(), Types.STRING(), Types.STRING()]))
+
+        table = self.t_env.from_data_stream(ds,
+                                            Schema.new_builder()
+                                                  .column("a", DataTypes.INT())
+                                                  .column("b", DataTypes.STRING())
+                                                  .column("c", DataTypes.STRING())
+                                                  .build())
+        result = table.execute()
+        with result.collect() as result:
+            collected_result = [str(item) for item in result]
+            expected_result = [item for item in
+                               map(str, [Row(1, 'Hi', 'Hello'), Row(2, 'Hello', 'Hi')])]
+            expected_result.sort()
+            collected_result.sort()
+            self.assertEqual(expected_result, collected_result)
+
+    @unittest.skip
+    def test_from_and_to_data_stream_event_time(self):
+        from pyflink.table import Schema
+
+        ds = self.env.from_collection([(1, 42, "a"), (2, 5, "a"), (3, 1000, "c"), (100, 1000, "c")],
+                                      Types.ROW_NAMED(
+                                          ["a", "b", "c"],
+                                          [Types.LONG(), Types.INT(), Types.STRING()]))
+        ds = ds.assign_timestamps_and_watermarks(
+            WatermarkStrategy.for_monotonous_timestamps()
+            .with_timestamp_assigner(MyTimestampAssigner()))
+
+        table = self.t_env.from_data_stream(ds,
+                                            Schema.new_builder()
+                                                  .column_by_metadata("rowtime", "TIMESTAMP_LTZ(3)")
+                                                  .watermark("rowtime", "SOURCE_WATERMARK()")
+                                                  .build())
+        self.assertEqual("""(
+  `a` BIGINT,
+  `b` INT,
+  `c` STRING,
+  `rowtime` TIMESTAMP_LTZ(3) *ROWTIME* METADATA,
+  WATERMARK FOR `rowtime`: TIMESTAMP_LTZ(3) AS SOURCE_WATERMARK()
+)""",
+                         table._j_table.getResolvedSchema().toString())
+        self.t_env.create_temporary_view("t",
+                                         ds,
+                                         Schema.new_builder()
+                                         .column_by_metadata("rowtime", "TIMESTAMP_LTZ(3)")
+                                         .watermark("rowtime", "SOURCE_WATERMARK()")
+                                         .build())
+
+        result = self.t_env.execute_sql("SELECT "
+                                        "c, SUM(b) "
+                                        "FROM t "
+                                        "GROUP BY c, TUMBLE(rowtime, INTERVAL '0.005' SECOND)")
+        with result.collect() as result:
+            collected_result = [str(item) for item in result]
+            expected_result = [item for item in
+                               map(str, [Row('a', 47), Row('c', 1000), Row('c', 1000)])]
+            expected_result.sort()
+            collected_result.sort()
+            self.assertEqual(expected_result, collected_result)
+
+        ds = self.t_env.to_data_stream(table)
+        ds.key_by(lambda k: k.c, key_type=Types.STRING()) \
+            .window(MyTumblingEventTimeWindow()) \
+            .apply(SumWindowFunction(), Types.TUPLE([Types.STRING(), Types.INT()])) \
+            .add_sink(self.test_sink)
+        self.env.execute()
+        expected_results = ['(a,47)', '(c,1000)', '(c,1000)']
+        actual_results = self.test_sink.get_results(False)
+        expected_results.sort()
+        actual_results.sort()
+        self.assertEqual(expected_results, actual_results)
+
+    def test_from_and_to_changelog_stream_event_time(self):
+        from pyflink.table import Schema
+
+        self.env.set_parallelism(1)
+        ds = self.env.from_collection([(1, 42, "a"), (2, 5, "a"), (3, 1000, "c"), (100, 1000, "c")],
+                                      Types.ROW([Types.LONG(), Types.INT(), Types.STRING()]))
+        ds = ds.assign_timestamps_and_watermarks(
+            WatermarkStrategy.for_monotonous_timestamps()
+            .with_timestamp_assigner(MyTimestampAssigner()))
+
+        changelog_stream = ds.map(lambda t: Row(t.f1, t.f2),
+                                  Types.ROW([Types.INT(), Types.STRING()]))
+
+        # derive physical columns and add a rowtime
+        table = self.t_env.from_changelog_stream(
+            changelog_stream,
+            Schema.new_builder()
+                  .column_by_metadata("rowtime", DataTypes.TIMESTAMP_LTZ(3))
+                  .column_by_expression("computed", str(col("f1").upper_case))
+                  .watermark("rowtime", str(source_watermark()))
+                  .build())
+
+        self.t_env.create_temporary_view("t", table)
+
+        # access and reorder columns
+        reordered = self.t_env.sql_query("SELECT computed, rowtime, f0 FROM t")
+
+        # write out the rowtime column with fully declared schema
+        result = self.t_env.to_changelog_stream(
+            reordered,
+            Schema.new_builder()
+            .column("f1", DataTypes.STRING())
+            .column_by_metadata("rowtime", DataTypes.TIMESTAMP_LTZ(3))
+            .column_by_expression("ignored", str(col("f1").upper_case))
+            .column("f0", DataTypes.INT())
+            .build()
+        )
+
+        # test event time window and field access
+        result.key_by(lambda k: k.f1) \
+            .window(MyTumblingEventTimeWindow()) \
+            .apply(SumWindowFunction(), Types.TUPLE([Types.STRING(), Types.INT()])) \
+            .add_sink(self.test_sink)
+        self.env.execute()
+        expected_results = ['(A,47)', '(C,1000)', '(C,1000)']
+        actual_results = self.test_sink.get_results(False)
+        expected_results.sort()
+        actual_results.sort()
+        self.assertEqual(expected_results, actual_results)
 
     def test_to_append_stream(self):
         self.env.set_parallelism(1)
@@ -264,7 +436,7 @@ class DataStreamConversionTestCases(object):
             self.env,
             environment_settings=EnvironmentSettings.in_streaming_mode())
         table = t_env.from_elements([(1, "Hi", "Hello"), (2, "Hello", "Hi")], ["a", "b", "c"])
-        new_table = table.select("a + 1, b + 'flink', c")
+        new_table = table.select(table.a + 1, table.b + 'flink', table.c)
         ds = t_env.to_append_stream(table=new_table, type_info=Types.ROW([Types.LONG(),
                                                                           Types.STRING(),
                                                                           Types.STRING()]))
@@ -281,7 +453,7 @@ class DataStreamConversionTestCases(object):
             self.env,
             environment_settings=EnvironmentSettings.in_streaming_mode())
         table = t_env.from_elements([(1, "Hi", "Hello"), (1, "Hi", "Hello")], ["a", "b", "c"])
-        new_table = table.group_by("c").select("a.sum, c as b")
+        new_table = table.group_by(table.c).select(table.a.sum, table.c.alias("b"))
         ds = t_env.to_retract_stream(table=new_table, type_info=Types.ROW([Types.LONG(),
                                                                            Types.STRING()]))
         test_sink = DataStreamTestSinkFunction()
@@ -364,7 +536,79 @@ class StreamTableEnvironmentTests(TableEnvironmentTest, PyFlinkStreamTableTestCa
             self.assertEqual(expected_result, collected_result)
 
 
+class VectorUDT(UserDefinedType):
+
+    @classmethod
+    def sql_type(cls):
+        return DataTypes.ROW(
+            [
+                DataTypes.FIELD("type", DataTypes.TINYINT()),
+                DataTypes.FIELD("size", DataTypes.INT()),
+                DataTypes.FIELD("indices", DataTypes.ARRAY(DataTypes.INT())),
+                DataTypes.FIELD("values", DataTypes.ARRAY(DataTypes.DOUBLE())),
+            ]
+        )
+
+    @classmethod
+    def module(cls):
+        return "pyflink.ml.core.linalg"
+
+    def serialize(self, obj):
+        if isinstance(obj, DenseVector):
+            values = [float(v) for v in obj._values]
+            return 1, None, None, values
+        else:
+            raise TypeError("Cannot serialize {!r} of type {!r}".format(obj, type(obj)))
+
+    def deserialize(self, datum):
+        pass
+
+
+class DenseVector(object):
+    __UDT__ = VectorUDT()
+
+    def __init__(self, values):
+        self._values = values
+
+    def size(self) -> int:
+        return len(self._values)
+
+    def get(self, i: int):
+        return self._values[i]
+
+    def to_array(self):
+        return self._values
+
+    @property
+    def values(self):
+        return self._values
+
+    def __str__(self):
+        return "[" + ",".join([str(v) for v in self._values]) + "]"
+
+    def __repr__(self):
+        return "DenseVector([%s])" % (", ".join(str(i) for i in self._values))
+
+
 class BatchTableEnvironmentTests(PyFlinkBatchTableTestCase):
+
+    def test_udt(self):
+        self.t_env.from_elements([
+            (DenseVector([1, 2, 3, 4]), 0., 1.),
+            (DenseVector([2, 2, 3, 4]), 0., 2.),
+            (DenseVector([3, 2, 3, 4]), 0., 3.),
+            (DenseVector([4, 2, 3, 4]), 0., 4.),
+            (DenseVector([5, 2, 3, 4]), 0., 5.),
+            (DenseVector([11, 2, 3, 4]), 1., 1.),
+            (DenseVector([12, 2, 3, 4]), 1., 2.),
+            (DenseVector([13, 2, 3, 4]), 1., 3.),
+            (DenseVector([14, 2, 3, 4]), 1., 4.),
+            (DenseVector([15, 2, 3, 4]), 1., 5.),
+        ],
+            DataTypes.ROW([
+                DataTypes.FIELD("features", VectorUDT()),
+                DataTypes.FIELD("label", DataTypes.DOUBLE()),
+                DataTypes.FIELD("weight", DataTypes.DOUBLE())]))
 
     def test_explain_with_multi_sinks(self):
         t_env = self.t_env
@@ -390,13 +634,13 @@ class BatchTableEnvironmentTests(PyFlinkBatchTableTestCase):
         t_env = self.t_env
 
         t_env.register_java_function(
-            "scalar_func", "org.apache.flink.table.legacyutils.RichFunc0")
+            "scalar_func", "org.apache.flink.table.utils.TestingFunctions$RichFunc0")
 
         t_env.register_java_function(
-            "agg_func", "org.apache.flink.table.legacyutils.ByteMaxAggFunction")
+            "agg_func", "org.apache.flink.table.utils.TestingFunctions$ByteMaxAggFunction")
 
         t_env.register_java_function(
-            "table_func", "org.apache.flink.table.legacyutils.TableFunc1")
+            "table_func", "org.apache.flink.table.utils.TestingFunctions$TableFunc1")
 
         actual = t_env.list_user_defined_functions()
         expected = ['scalar_func', 'agg_func', 'table_func']
@@ -468,11 +712,11 @@ class BatchTableEnvironmentTests(PyFlinkBatchTableTestCase):
         t_env = self.t_env
 
         t_env.create_java_temporary_system_function(
-            "scalar_func", "org.apache.flink.table.legacyutils.RichFunc0")
+            "scalar_func", "org.apache.flink.table.utils.TestingFunctions$RichFunc0")
         t_env.create_java_function(
-            "agg_func", "org.apache.flink.table.legacyutils.ByteMaxAggFunction")
+            "agg_func", "org.apache.flink.table.utils.TestingFunctions$ByteMaxAggFunction")
         t_env.create_java_temporary_function(
-            "table_func", "org.apache.flink.table.legacyutils.TableFunc1")
+            "table_func", "org.apache.flink.table.utils.TestingFunctions$TableFunc1")
         self.assert_equals(t_env.list_user_defined_functions(),
                            ['scalar_func', 'agg_func', 'table_func'])
 
@@ -480,3 +724,81 @@ class BatchTableEnvironmentTests(PyFlinkBatchTableTestCase):
         t_env.drop_function("agg_func")
         t_env.drop_temporary_function("table_func")
         self.assert_equals(t_env.list_user_defined_functions(), [])
+
+
+class MyTimestampAssigner(TimestampAssigner):
+
+    def extract_timestamp(self, value, record_timestamp) -> int:
+        return int(value[0])
+
+
+class MyTumblingEventTimeWindow(MergingWindowAssigner[tuple, TimeWindow]):
+
+    def merge_windows(self,
+                      windows,
+                      callback: 'MergingWindowAssigner.MergeCallback[TimeWindow]') -> None:
+        window_list = [w for w in windows]
+        window_list.sort()
+        for i in range(1, len(window_list)):
+            if window_list[i - 1].end > window_list[i].start:
+                callback.merge([window_list[i - 1], window_list[i]],
+                               TimeWindow(window_list[i - 1].start, window_list[i].end))
+
+    def assign_windows(self,
+                       element: tuple,
+                       timestamp: int,
+                       context):
+        return [TimeWindow(timestamp, timestamp + 5)]
+
+    def get_default_trigger(self, env) -> Trigger[tuple, TimeWindow]:
+        return SimpleTimeWindowTrigger()
+
+    def get_window_serializer(self) -> TypeSerializer[TimeWindow]:
+        return TimeWindowSerializer()
+
+    def is_event_time(self) -> bool:
+        return True
+
+
+class SimpleTimeWindowTrigger(Trigger[tuple, TimeWindow]):
+
+    def on_element(self,
+                   element: tuple,
+                   timestamp: int,
+                   window: TimeWindow,
+                   ctx: 'Trigger.TriggerContext') -> TriggerResult:
+        return TriggerResult.CONTINUE
+
+    def on_processing_time(self,
+                           time: int,
+                           window: TimeWindow,
+                           ctx: 'Trigger.TriggerContext') -> TriggerResult:
+        return TriggerResult.CONTINUE
+
+    def on_event_time(self,
+                      time: int,
+                      window: TimeWindow,
+                      ctx: 'Trigger.TriggerContext') -> TriggerResult:
+        if time >= window.max_timestamp():
+            return TriggerResult.FIRE_AND_PURGE
+        else:
+            return TriggerResult.CONTINUE
+
+    def on_merge(self,
+                 window: TimeWindow,
+                 ctx: 'Trigger.OnMergeContext') -> None:
+        pass
+
+    def clear(self,
+              window: TimeWindow,
+              ctx: 'Trigger.TriggerContext') -> None:
+        pass
+
+
+class SumWindowFunction(WindowFunction[tuple, tuple, str, TimeWindow]):
+
+    def apply(self, key: str, window: TimeWindow, inputs: Iterable[tuple]):
+        result = 0
+        for i in inputs:
+            result += i[1]
+        return [(key, result)]

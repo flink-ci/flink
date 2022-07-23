@@ -21,18 +21,19 @@ package org.apache.flink.table.runtime.typeutils;
 import org.apache.flink.api.common.typeutils.SerializerTestBase;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.data.ArrayData;
-import org.apache.flink.table.data.ColumnarArrayData;
 import org.apache.flink.table.data.GenericArrayData;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.binary.BinaryArrayData;
-import org.apache.flink.table.data.vector.heap.HeapBytesVector;
+import org.apache.flink.table.data.columnar.ColumnarArrayData;
+import org.apache.flink.table.data.columnar.vector.heap.HeapBytesVector;
 import org.apache.flink.table.data.writer.BinaryArrayWriter;
 import org.apache.flink.testutils.DeeplyEqualsChecker;
 
+import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
 
 /** A test for the {@link ArrayDataSerializer}. */
-public class ArrayDataSerializerTest extends SerializerTestBase<ArrayData> {
+class ArrayDataSerializerTest extends SerializerTestBase<ArrayData> {
 
     public ArrayDataSerializerTest() {
         super(
@@ -79,12 +80,16 @@ public class ArrayDataSerializerTest extends SerializerTestBase<ArrayData> {
     @Override
     protected ArrayData[] getTestData() {
         return new ArrayData[] {
-            new GenericArrayData(new StringData[] {StringData.fromString("11")}),
+            new GenericArrayData(
+                    new StringData[] {
+                        StringData.fromString("11"), null, StringData.fromString("ke")
+                    }),
             createArray("11", "haa"),
             createArray("11", "haa", "ke"),
             createArray("11", "haa", "ke"),
             createArray("11", "lele", "haa", "ke"),
             createColumnarArray("11", "lele", "haa", "ke"),
+            createCustomTypeArray("11", "lele", "haa", "ke"),
         };
     }
 
@@ -104,5 +109,15 @@ public class ArrayDataSerializerTest extends SerializerTestBase<ArrayData> {
             vector.fill(v.getBytes(StandardCharsets.UTF_8));
         }
         return new ColumnarArrayData(vector, 0, vs.length);
+    }
+
+    static ArrayData createCustomTypeArray(String... vs) {
+        BinaryArrayData binaryArrayData = createArray(vs);
+        Object customArrayData =
+                Proxy.newProxyInstance(
+                        ArrayDataSerializerTest.class.getClassLoader(),
+                        new Class[] {ArrayData.class},
+                        (proxy, method, args) -> method.invoke(binaryArrayData, args));
+        return (ArrayData) customArrayData;
     }
 }

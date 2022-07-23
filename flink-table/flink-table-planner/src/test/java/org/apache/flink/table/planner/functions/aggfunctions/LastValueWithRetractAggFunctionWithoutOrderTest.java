@@ -23,7 +23,8 @@ import org.apache.flink.table.data.DecimalData;
 import org.apache.flink.table.data.DecimalDataUtils;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.functions.AggregateFunction;
-import org.apache.flink.table.planner.functions.aggfunctions.LastValueWithRetractAggFunction.LastValueWithRetractAccumulator;
+import org.apache.flink.table.runtime.functions.aggregate.LastValueWithRetractAggFunction;
+import org.apache.flink.table.runtime.functions.aggregate.LastValueWithRetractAggFunction.LastValueWithRetractAccumulator;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BooleanType;
 import org.apache.flink.table.types.logical.DecimalType;
@@ -259,7 +260,7 @@ public final class LastValueWithRetractAggFunctionWithoutOrderTest {
 
     /** Test base for {@link LastValueWithRetractAggFunction} without order. */
     public abstract static class LastValueWithRetractAggFunctionWithoutOrderTestBase<T>
-            extends AggFunctionTestBase<T, LastValueWithRetractAccumulator<T>> {
+            extends AggFunctionTestBase<T, T, LastValueWithRetractAccumulator<T>> {
 
         @Override
         protected Class<?> getAccClass() {

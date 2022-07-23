@@ -168,6 +168,11 @@ public class AlignedCheckpointsMassiveRandomTest {
         }
 
         @Override
+        public EndOfDataStatus hasReceivedEndOfData() {
+            return EndOfDataStatus.NOT_END_OF_DATA;
+        }
+
+        @Override
         public InputChannel getChannel(int channelIndex) {
             throw new UnsupportedOperationException();
         }
@@ -234,6 +239,9 @@ public class AlignedCheckpointsMassiveRandomTest {
 
         @Override
         public void checkpointStopped(long cancelledCheckpointId) {}
+
+        @Override
+        public void triggerDebloating() {}
 
         public void acknowledgeAllRecordsProcessed(InputChannelInfo channelInfo)
                 throws IOException {}

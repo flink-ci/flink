@@ -86,7 +86,7 @@ where the UDF's logic is invoked, *e.g.* the `map()` method of your `MapFunction
 Finally, in the case of a normal, fault-free termination of the operator (*e.g.* if the stream is
 finite and its end is reached), the `finish()` method is called to perform any final bookkeeping
 action required by the operator's logic (*e.g.* flush any buffered data, or emit data to mark end of
-procesing), and the `close()` is called after that to free any resources held by the operator
+processing), and the `close()` is called after that to free any resources held by the operator
 (*e.g.* open network connections, io streams, or native memory held by the operator's data).
 
 In the case of a termination due to a failure or due to manual cancellation, the execution jumps directly to the `close()`
@@ -122,6 +122,7 @@ The steps a task goes through when executed until completion without being inter
             open-operators
             run
             finish-operators
+            wait for the final checkponit completed (if enabled)
             close-operators
             task-specific-cleanup
             common-cleanup
@@ -170,7 +171,10 @@ method, the task enters its shutdown process. Initially, the timer service stops
 fired timers that are being executed), clears all not-yet-started timers, and awaits the completion of currently 
 executing timers. Then the `finishAllOperators()` notifies the operators involved in the computation by
 calling the `finish()` method of each operator. Then, any buffered output data is flushed so that they can be processed
-by the downstream tasks, and finally the task tries to clear all the resources held by the operators by calling the
+by the downstream tasks. Then if final checkpoint is enabled, the task would
+[wait for the final checkpoint completed]({{< ref "docs/dev/datastream/fault-tolerance/checkpointing#waiting-for-the-final-checkpoint-before-task-exit" >}})
+to ensure operators using two-phase committing have committed all the records.
+Finally the task tries to clear all the resources held by the operators by calling the
 `close()` method of each one. When opening the different operators, we mentioned that the order is from the
 last to the first. Closing happens in the opposite manner, from first to last.
 

@@ -18,7 +18,12 @@
 package org.apache.flink.streaming.runtime.tasks;
 
 import org.apache.flink.annotation.Internal;
-import org.apache.flink.runtime.mailbox.MailboxExecutor;
+import org.apache.flink.api.common.operators.MailboxExecutor;
+import org.apache.flink.api.common.state.InternalCheckpointListener;
+import org.apache.flink.runtime.io.network.api.StopMode;
+import org.apache.flink.runtime.state.KeyedStateBackend;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
+import org.apache.flink.streaming.api.operators.AbstractStreamOperatorV2;
 import org.apache.flink.streaming.api.operators.BoundedMultiInput;
 import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.StreamOperator;
@@ -39,7 +44,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * This class handles the finish, endInput and other related logic of a {@link StreamOperator}. It
  * also automatically propagates the finish operation to the next wrapper that the {@link #next}
  * points to, so we can use {@link #next} to link all operator wrappers in the operator chain and
- * finish all operators only by calling the {@link #finish(StreamTaskActionExecutor, boolean)}
+ * finish all operators only by calling the {@link #finish(StreamTaskActionExecutor, StopMode)}
  * method of the header operator wrapper.
  */
 @Internal
@@ -100,6 +105,22 @@ public class StreamOperatorWrapper<OUT, OP extends StreamOperator<OUT>> {
         }
     }
 
+    public void notifyCheckpointSubsumed(long checkpointId) throws Exception {
+        if (!closed) {
+            KeyedStateBackend<?> keyedStateBackend = null;
+            if (wrapped instanceof AbstractStreamOperator) {
+                keyedStateBackend = ((AbstractStreamOperator<?>) wrapped).getKeyedStateBackend();
+            } else if (wrapped instanceof AbstractStreamOperatorV2) {
+                keyedStateBackend = ((AbstractStreamOperatorV2<?>) wrapped).getKeyedStateBackend();
+            }
+
+            if (keyedStateBackend instanceof InternalCheckpointListener) {
+                ((InternalCheckpointListener) keyedStateBackend)
+                        .notifyCheckpointSubsumed(checkpointId);
+            }
+        }
+    }
+
     public OP getStreamOperator() {
         return wrapped;
     }
@@ -120,19 +141,19 @@ public class StreamOperatorWrapper<OUT, OP extends StreamOperator<OUT>> {
      * MailboxExecutor#yield()} to take the mails of closing operator and running timers and run
      * them.
      */
-    public void finish(StreamTaskActionExecutor actionExecutor, boolean isStoppingBySyncSavepoint)
+    public void finish(StreamTaskActionExecutor actionExecutor, StopMode stopMode)
             throws Exception {
-        if (!isHead && !isStoppingBySyncSavepoint) {
+        if (!isHead && stopMode == StopMode.DRAIN) {
             // NOTE: This only do for the case where the operator is one-input operator. At present,
             // any non-head operator on the operator chain is one-input operator.
             actionExecutor.runThrowing(() -> endOperatorInput(1));
         }
 
-        quiesceTimeServiceAndFinishOperator(actionExecutor);
+        quiesceTimeServiceAndFinishOperator(actionExecutor, stopMode);
 
         // propagate the close operation to the next wrapper
         if (next != null) {
-            next.finish(actionExecutor, isStoppingBySyncSavepoint);
+            next.finish(actionExecutor, stopMode);
         }
     }
 
@@ -142,7 +163,8 @@ public class StreamOperatorWrapper<OUT, OP extends StreamOperator<OUT>> {
         wrapped.close();
     }
 
-    private void quiesceTimeServiceAndFinishOperator(StreamTaskActionExecutor actionExecutor)
+    private void quiesceTimeServiceAndFinishOperator(
+            StreamTaskActionExecutor actionExecutor, StopMode stopMode)
             throws InterruptedException, ExecutionException {
 
         // step 1. to ensure that there is no longer output triggered by the timers before invoking
@@ -155,7 +177,8 @@ public class StreamOperatorWrapper<OUT, OP extends StreamOperator<OUT>> {
         // in the mailbox are completed before exiting the following mailbox processing loop
         CompletableFuture<Void> finishedFuture =
                 quiesceProcessingTimeService()
-                        .thenCompose(unused -> deferFinishOperatorToMailbox(actionExecutor))
+                        .thenCompose(
+                                unused -> deferFinishOperatorToMailbox(actionExecutor, stopMode))
                         .thenCompose(unused -> sendFinishedMail());
 
         // run the mailbox processing loop until all operations are finished
@@ -177,7 +200,11 @@ public class StreamOperatorWrapper<OUT, OP extends StreamOperator<OUT>> {
     }
 
     private CompletableFuture<Void> deferFinishOperatorToMailbox(
-            StreamTaskActionExecutor actionExecutor) {
+            StreamTaskActionExecutor actionExecutor, StopMode stopMode) {
+        if (stopMode == StopMode.NO_DRAIN) {
+            return CompletableFuture.completedFuture(null);
+        }
+
         final CompletableFuture<Void> finishOperatorFuture = new CompletableFuture<>();
 
         mailboxExecutor.execute(

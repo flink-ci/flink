@@ -17,17 +17,19 @@
 
 package org.apache.flink.state.changelog;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.state.ListState;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
 import org.apache.flink.util.function.ThrowingConsumer;
 
+import java.io.Closeable;
 import java.io.IOException;
 
 /**
  * Logs changes to a state created by {@link ChangelogKeyedStateBackend}. The changes are intended
  * to be stored durably, included into a checkpoint and replayed on recovery in case of failure.
  *
- * <p>Not that the order of updating the delegated state and logging it using this class usually
+ * <p>Note that the order of updating the delegated state and logging it using this class usually
  * doesn't matter. However in some cases an already updated state needs to be logged. Besides that,
  * delegated state update is usually local and would fail faster. Therefore, consider updating the
  * delegated state first and logging the change second.
@@ -41,7 +43,8 @@ import java.io.IOException;
  * @param <Value> type of state (value)
  * @param <Namespace> type of namespace
  */
-interface StateChangeLogger<Value, Namespace> {
+@Internal
+public interface StateChangeLogger<Value, Namespace> extends Closeable {
 
     /** State updated, such as by {@link ListState#update}. */
     void valueUpdated(Value newValue, Namespace ns) throws IOException;
@@ -69,4 +72,7 @@ interface StateChangeLogger<Value, Namespace> {
     void valueElementRemoved(
             ThrowingConsumer<DataOutputViewStreamWrapper, IOException> dataSerializer, Namespace ns)
             throws IOException;
+
+    /** Enable logging meta data before next writes. */
+    void resetWritingMetaFlag();
 }

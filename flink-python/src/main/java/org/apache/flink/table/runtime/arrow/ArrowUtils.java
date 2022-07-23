@@ -29,8 +29,8 @@ import org.apache.flink.table.api.internal.TableEnvironmentImpl;
 import org.apache.flink.table.api.internal.TableImpl;
 import org.apache.flink.table.data.ArrayData;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.columnar.vector.ColumnVector;
 import org.apache.flink.table.data.util.DataFormatConverters;
-import org.apache.flink.table.data.vector.ColumnVector;
 import org.apache.flink.table.operations.OutputConversionModifyOperation;
 import org.apache.flink.table.runtime.arrow.sources.ArrowTableSource;
 import org.apache.flink.table.runtime.arrow.vectors.ArrowArrayColumnVector;
@@ -567,7 +567,7 @@ public final class ArrowUtils {
         TableEnvironment tableEnv = ((TableImpl) table).getTableEnvironment();
         if (tableEnv instanceof TableEnvironmentImpl) {
             final RuntimeExecutionMode mode =
-                    tableEnv.getConfig().getConfiguration().get(ExecutionOptions.RUNTIME_MODE);
+                    tableEnv.getConfig().get(ExecutionOptions.RUNTIME_MODE);
             if (mode == RuntimeExecutionMode.AUTOMATIC) {
                 throw new RuntimeException(
                         String.format("Runtime execution mode '%s' is not supported yet.", mode));

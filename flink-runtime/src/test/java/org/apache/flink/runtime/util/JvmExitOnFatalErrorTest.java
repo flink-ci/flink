@@ -40,7 +40,6 @@ import org.apache.flink.runtime.io.disk.iomanager.IOManager;
 import org.apache.flink.runtime.io.disk.iomanager.IOManagerAsync;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.TaskEventDispatcher;
-import org.apache.flink.runtime.io.network.partition.NoOpResultPartitionConsumableNotifier;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
@@ -76,12 +75,14 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import java.io.File;
 import java.net.InetAddress;
 import java.util.Collections;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
-import static org.junit.Assume.assumeTrue;
+import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.createExecutionAttemptId;
+import static org.junit.Assume.assumeFalse;
 import static org.mockito.Mockito.mock;
 
 /**
@@ -94,13 +95,15 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
 
     @Test
     public void testExitJvmOnOutOfMemory() throws Exception {
-        // this test works only on linux
-        assumeTrue(OperatingSystem.isLinux());
+        // this test works only on linux and MacOS
+        assumeFalse(OperatingSystem.isWindows());
 
         // to check what went wrong (when the test hangs) uncomment this line
-        //		ProcessEntryPoint.main(new String[0]);
+        //        ProcessEntryPoint.main(new
+        // String[]{temporaryFolder.newFolder().getAbsolutePath()});
 
-        final KillOnFatalErrorProcess testProcess = new KillOnFatalErrorProcess();
+        final KillOnFatalErrorProcess testProcess =
+                new KillOnFatalErrorProcess(temporaryFolder.newFolder());
 
         try {
             testProcess.startProcess();
@@ -116,7 +119,11 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
 
     private static final class KillOnFatalErrorProcess extends TestJvmProcess {
 
-        public KillOnFatalErrorProcess() throws Exception {}
+        private final File temporaryFolder;
+
+        public KillOnFatalErrorProcess(File temporaryFolder) throws Exception {
+            this.temporaryFolder = temporaryFolder;
+        }
 
         @Override
         public String getName() {
@@ -125,7 +132,7 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
 
         @Override
         public String[] getJvmArgs() {
-            return new String[0];
+            return new String[] {temporaryFolder.getAbsolutePath()};
         }
 
         @Override
@@ -151,7 +158,7 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
                 final JobID jid = new JobID();
                 final AllocationID allocationID = new AllocationID();
                 final JobVertexID jobVertexId = new JobVertexID();
-                final ExecutionAttemptID executionAttemptID = new ExecutionAttemptID();
+                final ExecutionAttemptID executionAttemptID = createExecutionAttemptId(jobVertexId);
                 final AllocationID slotAllocationId = new AllocationID();
 
                 final SerializedValue<ExecutionConfig> execConfig =
@@ -183,12 +190,14 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
                         new NettyShuffleEnvironmentBuilder().build();
 
                 final Configuration copiedConf = new Configuration(taskManagerConfig);
+                final File tmpWorkingDirectory = new File(args[0]);
                 final TaskManagerRuntimeInfo tmInfo =
                         TaskManagerConfiguration.fromConfiguration(
                                 taskManagerConfig,
                                 TaskExecutorResourceUtils.resourceSpecFromConfigForLocalExecution(
                                         copiedConf),
-                                InetAddress.getLoopbackAddress().getHostAddress());
+                                InetAddress.getLoopbackAddress().getHostAddress(),
+                                tmpWorkingDirectory);
 
                 final Executor executor = Executors.newCachedThreadPool();
 
@@ -197,7 +206,7 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
                                 jid,
                                 allocationID,
                                 jobVertexId,
-                                0,
+                                executionAttemptID.getSubtaskIndex(),
                                 TestLocalRecoveryConfig.disabled(),
                                 executor);
 
@@ -219,8 +228,6 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
                                 taskInformation,
                                 executionAttemptID,
                                 slotAllocationId,
-                                0, // subtaskIndex
-                                0, // attemptNumber
                                 Collections.<ResultPartitionDeploymentDescriptor>emptyList(),
                                 Collections.<InputGateDeploymentDescriptor>emptyList(),
                                 memoryManager,
@@ -242,7 +249,6 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
                                         VoidPermanentBlobService.INSTANCE),
                                 tmInfo,
                                 UnregisteredMetricGroups.createUnregisteredTaskMetricGroup(),
-                                new NoOpResultPartitionConsumableNotifier(),
                                 new NoOpPartitionProducerStateChecker(),
                                 executor);
 

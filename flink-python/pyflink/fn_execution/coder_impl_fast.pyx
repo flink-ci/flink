@@ -27,10 +27,16 @@ import decimal
 import pickle
 from typing import List, Union
 
-from cloudpickle import cloudpickle
+import cloudpickle
+import avro.schema as avro_schema
 
 from pyflink.common import Row, RowKind
-from pyflink.datastream.window import CountWindow, TimeWindow
+from pyflink.common.time import Instant
+from pyflink.datastream.window import CountWindow, TimeWindow, GlobalWindow
+from pyflink.fn_execution.formats.avro import FlinkAvroDecoder, FlinkAvroDatumReader, \
+    FlinkAvroBufferWrapper
+from pyflink.fn_execution.ResettableIO import ResettableIO
+from pyflink.table.utils import pandas_to_arrow, arrow_to_pandas
 
 ROW_KIND_BIT_SIZE = 2
 
@@ -262,9 +268,10 @@ cdef class IterableCoderImpl(LengthPrefixBaseCoderImpl):
         self._separated_with_end_message = separated_with_end_message
 
     cpdef encode_to_stream(self, value, LengthPrefixOutputStream output_stream):
-        for item in value:
-            self._field_coder.encode_to_stream(item, self._data_out_stream)
-            self._write_data_to_output_stream(output_stream)
+        if value:
+            for item in value:
+                self._field_coder.encode_to_stream(item, self._data_out_stream)
+                self._write_data_to_output_stream(output_stream)
 
         # write end message
         if self._separated_with_end_message:
@@ -381,7 +388,7 @@ cdef class RowCoderImpl(FieldCoderImpl):
             row_kind_value = <unsigned char> value.row_kind
         else:
             # the type is Row
-            list_values = <list> value._values
+            list_values = <list> value.get_fields_by_names(self._field_names)
             row_kind_value = <unsigned char> value.get_row_kind().value
         # encode mask value
         self._mask_utils.write_mask(list_values, row_kind_value, out_stream)
@@ -418,6 +425,77 @@ cdef class RowCoderImpl(FieldCoderImpl):
     def __repr__(self):
         return 'RowCoderImpl[%s, %s]' % \
                (', '.join(str(c) for c in self._field_coders), self._field_names)
+
+cdef class ArrowCoderImpl(FieldCoderImpl):
+    """
+    A coder for arrow format data.
+    """
+
+    def __init__(self, schema, row_type, timezone):
+        self._schema = schema
+        self._field_types = row_type.field_types()
+        self._timezone = timezone
+        self._resettable_io = ResettableIO()
+        self._batch_reader = self._load_from_stream(self._resettable_io)
+
+    cpdef encode_to_stream(self, cols, OutputStream out_stream):
+        import pyarrow as pa
+
+        self._resettable_io.set_output_stream(out_stream)
+        batch_writer = pa.RecordBatchStreamWriter(self._resettable_io, self._schema)
+        batch_writer.write_batch(
+            pandas_to_arrow(self._schema, self._timezone, self._field_types, cols))
+
+    cpdef decode_from_stream(self, InputStream in_stream, size_t size):
+        return self.decode_one_batch_from_stream(in_stream, size)
+
+    cdef list decode_one_batch_from_stream(self, InputStream in_stream, size_t size):
+        self._resettable_io.set_input_bytes(in_stream.read(size))
+        # there is only one arrow batch in the underlying input stream
+        return arrow_to_pandas(self._timezone, self._field_types, [next(self._batch_reader)])
+
+    def _load_from_stream(self, stream):
+        import pyarrow as pa
+
+        while stream.readable():
+            reader = pa.ipc.open_stream(stream)
+            yield reader.read_next_batch()
+
+    def __repr__(self):
+        return 'ArrowCoderImpl[%s]' % self._schema
+
+cdef class OverWindowArrowCoderImpl(FieldCoderImpl):
+    """
+    A coder for over window with arrow format data.
+    The data structure: [window data][arrow format data].
+    """
+    def __init__(self, arrow_coder_impl: ArrowCoderImpl):
+        self._arrow_coder = arrow_coder_impl
+        self._int_coder = IntCoderImpl()
+
+    cpdef encode_to_stream(self, cols, OutputStream out_stream):
+        self._arrow_coder.encode_to_stream(cols, out_stream)
+
+    cpdef decode_from_stream(self, InputStream in_stream, size_t size):
+        cdef int32_t window_num, window_size
+        cdef list window_boundaries_and_arrow_data
+        window_num = self._int_coder.decode_from_stream(in_stream, 0)
+        size -= 4
+        window_boundaries_and_arrow_data = []
+        for _ in range(window_num):
+            window_size = self._int_coder.decode_from_stream(in_stream, 0)
+            size -= 4
+            window_boundaries_and_arrow_data.append(
+                [self._int_coder.decode_from_stream(in_stream, 0)
+                 for _ in range(window_size)])
+            size -= 4 * window_size
+        window_boundaries_and_arrow_data.append(
+            self._arrow_coder.decode_one_batch_from_stream(in_stream, size))
+        return window_boundaries_and_arrow_data
+
+    def __repr__(self):
+        return 'OverWindowArrowCoderImpl[%s]' % self._arrow_coder
+
 
 cdef class TinyIntCoderImpl(FieldCoderImpl):
     """
@@ -645,6 +723,34 @@ cdef class LocalZonedTimestampCoderImpl(TimestampCoderImpl):
     cpdef decode_from_stream(self, InputStream in_stream, size_t size):
         return self._timezone.localize(self._decode_timestamp_data_from_stream(in_stream))
 
+cdef class InstantCoderImpl(FieldCoderImpl):
+    """
+    A coder for Instant.
+    """
+
+    def __init__(self):
+        self._null_seconds = -9223372036854775808
+        self._null_nanos = -2147483648
+
+    cpdef encode_to_stream(self, value, OutputStream out_stream):
+        if value is None:
+            out_stream.write_int64(self._null_seconds)
+            out_stream.write_int32(self._null_nanos)
+        else:
+            out_stream.write_int64(value.seconds)
+            out_stream.write_int32(value.nanos)
+
+    cpdef decode_from_stream(self, InputStream in_stream, size_t size):
+        cdef int64_t seconds
+        cdef int32_t nanos
+        seconds = in_stream.read_int64()
+        nanos = in_stream.read_int32()
+        if seconds == self._null_seconds and nanos == self._null_nanos:
+            return None
+        else:
+            return Instant(seconds, nanos)
+
+
 cdef class CloudPickleCoderImpl(FieldCoderImpl):
     """
     A coder used with cloudpickle for all kinds of python object.
@@ -806,6 +912,18 @@ cdef class CountWindowCoderImpl(FieldCoderImpl):
     cpdef decode_from_stream(self, InputStream in_stream, size_t size):
         return CountWindow(in_stream.read_int64())
 
+cdef class GlobalWindowCoderImpl(FieldCoderImpl):
+    """
+    A coder for GlobalWindow.
+    """
+
+    cpdef encode_to_stream(self, value, OutputStream out_stream):
+        out_stream.write_byte(0)
+
+    cpdef decode_from_stream(self, InputStream in_stream, size_t size):
+        in_stream.read_byte()
+        return GlobalWindow()
+
 cdef class DataViewFilterCoderImpl(FieldCoderImpl):
     """
     A coder for CountWindow.
@@ -828,4 +946,17 @@ cdef class DataViewFilterCoderImpl(FieldCoderImpl):
             i += 1
         return row
 
+cdef class AvroCoderImpl(FieldCoderImpl):
 
+    def __init__(self, schema_string: str):
+        self._buffer_wrapper = FlinkAvroBufferWrapper()
+        self._decoder = FlinkAvroDecoder(self._buffer_wrapper)
+        self._schema = avro_schema.parse(schema_string)
+        self._reader = FlinkAvroDatumReader(writer_schema=self._schema, reader_schema=self._schema)
+
+    cpdef encode_to_stream(self, value, OutputStream out_stream):
+        raise NotImplementedError()
+
+    cpdef decode_from_stream(self, InputStream in_stream, size_t size):
+        self._buffer_wrapper.switch_stream(in_stream)
+        return self._reader.read(self._decoder)

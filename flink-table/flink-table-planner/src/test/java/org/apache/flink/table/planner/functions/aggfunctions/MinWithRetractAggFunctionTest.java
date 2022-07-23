@@ -25,7 +25,8 @@ import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.functions.AggregateFunction;
 import org.apache.flink.table.functions.UserDefinedFunctionHelper;
-import org.apache.flink.table.planner.functions.aggfunctions.MinWithRetractAggFunction.MinWithRetractAccumulator;
+import org.apache.flink.table.runtime.functions.aggregate.MinWithRetractAggFunction;
+import org.apache.flink.table.runtime.functions.aggregate.MinWithRetractAggFunction.MinWithRetractAccumulator;
 import org.apache.flink.table.types.logical.BigIntType;
 import org.apache.flink.table.types.logical.BooleanType;
 import org.apache.flink.table.types.logical.DateType;
@@ -493,7 +494,7 @@ public final class MinWithRetractAggFunctionTest {
 
     /** Test base for {@link MinWithRetractAggFunction}. */
     public abstract static class MinWithRetractAggFunctionTestBase<T>
-            extends AggFunctionTestBase<T, MinWithRetractAccumulator<T>> {
+            extends AggFunctionTestBase<T, T, MinWithRetractAccumulator<T>> {
 
         @Override
         protected Class<?> getAccClass() {

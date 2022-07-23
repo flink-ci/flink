@@ -22,13 +22,16 @@ import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CompositeStateHandle;
 import org.apache.flink.runtime.state.SharedStateRegistry;
 import org.apache.flink.runtime.state.StateUtil;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.Preconditions;
+import org.apache.flink.util.SerializedValue;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.Iterators;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -57,34 +60,45 @@ public class TaskStateSnapshot implements CompositeStateHandle {
 
     private static final long serialVersionUID = 1L;
 
-    public static final TaskStateSnapshot FINISHED = new TaskStateSnapshot(new HashMap<>(), true);
+    public static final TaskStateSnapshot FINISHED_ON_RESTORE =
+            new TaskStateSnapshot(new HashMap<>(), true, true);
 
     /** Mapping from an operator id to the state of one subtask of this operator. */
     private final Map<OperatorID, OperatorSubtaskState> subtaskStatesByOperatorID;
 
-    private final boolean isFinished;
+    private final boolean isTaskDeployedAsFinished;
+
+    private final boolean isTaskFinished;
 
     public TaskStateSnapshot() {
-        this(10);
+        this(10, false);
     }
 
-    public TaskStateSnapshot(int size) {
-        this(new HashMap<>(size));
+    public TaskStateSnapshot(int size, boolean isTaskFinished) {
+        this(new HashMap<>(size), false, isTaskFinished);
     }
 
     public TaskStateSnapshot(Map<OperatorID, OperatorSubtaskState> subtaskStatesByOperatorID) {
-        this(subtaskStatesByOperatorID, false);
+        this(subtaskStatesByOperatorID, false, false);
     }
 
     private TaskStateSnapshot(
-            Map<OperatorID, OperatorSubtaskState> subtaskStatesByOperatorID, boolean isFinished) {
+            Map<OperatorID, OperatorSubtaskState> subtaskStatesByOperatorID,
+            boolean isTaskDeployedAsFinished,
+            boolean isTaskFinished) {
         this.subtaskStatesByOperatorID = Preconditions.checkNotNull(subtaskStatesByOperatorID);
-        this.isFinished = isFinished;
+        this.isTaskDeployedAsFinished = isTaskDeployedAsFinished;
+        this.isTaskFinished = isTaskFinished;
     }
 
-    /** Returns whether all the operators of the task are finished. */
-    public boolean isFinished() {
-        return isFinished;
+    /** Returns whether all the operators of the task are already finished on restoring. */
+    public boolean isTaskDeployedAsFinished() {
+        return isTaskDeployedAsFinished;
+    }
+
+    /** Returns whether all the operators of the task have called finished methods. */
+    public boolean isTaskFinished() {
+        return isTaskFinished;
     }
 
     /** Returns the subtask state for the given operator id (or null if not contained). */
@@ -118,7 +132,7 @@ public class TaskStateSnapshot implements CompositeStateHandle {
                 return true;
             }
         }
-        return isFinished;
+        return isTaskDeployedAsFinished;
     }
 
     /**
@@ -156,10 +170,23 @@ public class TaskStateSnapshot implements CompositeStateHandle {
     }
 
     @Override
-    public void registerSharedStates(SharedStateRegistry stateRegistry) {
+    public long getCheckpointedSize() {
+        long size = 0L;
+
+        for (OperatorSubtaskState subtaskState : subtaskStatesByOperatorID.values()) {
+            if (subtaskState != null) {
+                size += subtaskState.getCheckpointedSize();
+            }
+        }
+
+        return size;
+    }
+
+    @Override
+    public void registerSharedStates(SharedStateRegistry stateRegistry, long checkpointID) {
         for (OperatorSubtaskState operatorSubtaskState : subtaskStatesByOperatorID.values()) {
             if (operatorSubtaskState != null) {
-                operatorSubtaskState.registerSharedStates(stateRegistry);
+                operatorSubtaskState.registerSharedStates(stateRegistry, checkpointID);
             }
         }
     }
@@ -176,12 +203,13 @@ public class TaskStateSnapshot implements CompositeStateHandle {
         TaskStateSnapshot that = (TaskStateSnapshot) o;
 
         return subtaskStatesByOperatorID.equals(that.subtaskStatesByOperatorID)
-                && isFinished == that.isFinished;
+                && isTaskDeployedAsFinished == that.isTaskDeployedAsFinished
+                && isTaskFinished == that.isTaskFinished;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(subtaskStatesByOperatorID, isFinished);
+        return Objects.hash(subtaskStatesByOperatorID, isTaskDeployedAsFinished, isTaskFinished);
     }
 
     @Override
@@ -189,8 +217,10 @@ public class TaskStateSnapshot implements CompositeStateHandle {
         return "TaskOperatorSubtaskStates{"
                 + "subtaskStatesByOperatorID="
                 + subtaskStatesByOperatorID
-                + ", isFinished="
-                + isFinished
+                + ", isTaskDeployedAsFinished="
+                + isTaskDeployedAsFinished
+                + ", isTaskFinished="
+                + isTaskFinished
                 + '}';
     }
 
@@ -203,5 +233,25 @@ public class TaskStateSnapshot implements CompositeStateHandle {
                         .filter(mapping -> !mapping.equals(NO_RESCALE))
                         .iterator(),
                 NO_RESCALE);
+    }
+
+    @Nullable
+    public static SerializedValue<TaskStateSnapshot> serializeTaskStateSnapshot(
+            TaskStateSnapshot subtaskState) {
+        try {
+            return subtaskState == null ? null : new SerializedValue<>(subtaskState);
+        } catch (IOException e) {
+            throw new FlinkRuntimeException(e);
+        }
+    }
+
+    @Nullable
+    public static TaskStateSnapshot deserializeTaskStateSnapshot(
+            SerializedValue<TaskStateSnapshot> subtaskState, ClassLoader classLoader) {
+        try {
+            return subtaskState == null ? null : subtaskState.deserializeValue(classLoader);
+        } catch (IOException | ClassNotFoundException e) {
+            throw new FlinkRuntimeException(e);
+        }
     }
 }

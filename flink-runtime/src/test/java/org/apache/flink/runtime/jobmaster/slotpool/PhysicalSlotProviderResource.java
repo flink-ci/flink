@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.clusterframework.types.SlotProfile;
+import org.apache.flink.runtime.clusterframework.types.SlotProfileTestingUtils;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
@@ -40,9 +40,9 @@ import java.util.function.Function;
  */
 public class PhysicalSlotProviderResource extends ExternalResource {
 
-    private final ScheduledExecutorService singleThreadScheduledExecutorService;
+    private ScheduledExecutorService singleThreadScheduledExecutorService;
 
-    private final ComponentMainThreadExecutor mainThreadExecutor;
+    private ComponentMainThreadExecutor mainThreadExecutor;
 
     private final SlotSelectionStrategy slotSelectionStrategy;
 
@@ -51,15 +51,15 @@ public class PhysicalSlotProviderResource extends ExternalResource {
     private PhysicalSlotProvider physicalSlotProvider;
 
     public PhysicalSlotProviderResource(@Nonnull SlotSelectionStrategy slotSelectionStrategy) {
-        this.singleThreadScheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
-        this.mainThreadExecutor =
-                ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
-                        singleThreadScheduledExecutorService);
         this.slotSelectionStrategy = slotSelectionStrategy;
     }
 
     @Override
     protected void before() throws Throwable {
+        this.singleThreadScheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
+        this.mainThreadExecutor =
+                ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
+                        singleThreadScheduledExecutorService);
         slotPool = new DeclarativeSlotPoolBridgeBuilder().buildAndStart(mainThreadExecutor);
         physicalSlotProvider = new PhysicalSlotProviderImpl(slotSelectionStrategy, slotPool);
     }
@@ -67,6 +67,7 @@ public class PhysicalSlotProviderResource extends ExternalResource {
     @Override
     protected void after() {
         CompletableFuture.runAsync(() -> slotPool.close(), mainThreadExecutor).join();
+        singleThreadScheduledExecutorService.shutdown();
     }
 
     public CompletableFuture<PhysicalSlotRequest.Result> allocateSlot(PhysicalSlotRequest request) {
@@ -89,7 +90,9 @@ public class PhysicalSlotProviderResource extends ExternalResource {
 
     public PhysicalSlotRequest createSimpleRequest() {
         return new PhysicalSlotRequest(
-                new SlotRequestId(), SlotProfile.noLocality(ResourceProfile.UNKNOWN), false);
+                new SlotRequestId(),
+                SlotProfileTestingUtils.noLocality(ResourceProfile.UNKNOWN),
+                false);
     }
 
     public ComponentMainThreadExecutor getMainThreadExecutor() {

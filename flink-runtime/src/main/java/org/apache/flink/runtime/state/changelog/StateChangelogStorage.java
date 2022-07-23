@@ -19,6 +19,8 @@
 package org.apache.flink.runtime.state.changelog;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.api.common.operators.MailboxExecutor;
+import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.state.KeyGroupRange;
 
 /**
@@ -27,12 +29,13 @@ import org.apache.flink.runtime.state.KeyGroupRange;
  * obtain an instance.
  */
 @Internal
-public interface StateChangelogStorage<Handle extends ChangelogStateHandle> extends AutoCloseable {
+public interface StateChangelogStorage<Handle extends ChangelogStateHandle>
+        extends StateChangelogStorageView<Handle> {
 
-    StateChangelogWriter<Handle> createWriter(String operatorID, KeyGroupRange keyGroupRange);
+    StateChangelogWriter<Handle> createWriter(
+            String operatorID, KeyGroupRange keyGroupRange, MailboxExecutor mailboxExecutor);
 
-    StateChangelogHandleReader<Handle> createReader();
-
-    @Override
-    default void close() throws Exception {}
+    default AvailabilityProvider getAvailabilityProvider() {
+        return () -> AvailabilityProvider.AVAILABLE;
+    }
 }

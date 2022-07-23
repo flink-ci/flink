@@ -26,9 +26,7 @@ import org.apache.calcite.plan.hep.HepMatchOrder
 import org.apache.calcite.tools.RuleSets
 import org.junit.{Before, Test}
 
-/**
-  * Tests for [[SimplifyJoinConditionRule]].
-  */
+/** Tests for [[SimplifyJoinConditionRule]]. */
 class SimplifyJoinConditionRuleTest extends TableTestBase {
 
   private val util = batchTestUtil()
@@ -63,6 +61,18 @@ class SimplifyJoinConditionRuleTest extends TableTestBase {
         |SELECT a FROM MyTable1 WHERE b = (
         |    SELECT COUNT(*) FROM MyTable2 WHERE (d = a AND d < 2) OR (d = a AND b = 5))
       """.stripMargin
+    util.verifyRelPlan(sqlQuery)
+  }
+
+  @Test
+  def testSimplifyJoinConditionWithCastToTrue(): Unit = {
+    val sqlQuery = "SELECT d FROM MyTable1 JOIN MyTable2 ON CAST(1 AS BOOLEAN)"
+    util.verifyRelPlan(sqlQuery)
+  }
+
+  @Test
+  def testSimplifyJoinConditionWithCastToFalse(): Unit = {
+    val sqlQuery = "SELECT d FROM MyTable1 JOIN MyTable2 ON CAST(0 AS BOOLEAN)"
     util.verifyRelPlan(sqlQuery)
   }
 }

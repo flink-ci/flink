@@ -22,6 +22,7 @@ import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
+import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.TestingHeartbeatServices;
 import org.apache.flink.runtime.highavailability.TestingHighAvailabilityServices;
@@ -32,6 +33,7 @@ import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcEndpoint;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.TestingRpcService;
+import org.apache.flink.runtime.security.token.NoOpDelegationTokenManager;
 import org.apache.flink.runtime.util.TestingFatalErrorHandler;
 import org.apache.flink.util.concurrent.FutureUtils;
 
@@ -184,9 +186,11 @@ public class TestingResourceManagerService implements ResourceManagerService {
                     ResourceManagerServiceImpl.create(
                             StandaloneResourceManagerFactory.getInstance(),
                             new Configuration(),
+                            ResourceID.generate(),
                             rpcService,
                             haServices,
                             new TestingHeartbeatServices(),
+                            new NoOpDelegationTokenManager(),
                             fatalErrorHandler,
                             new ClusterInformation("localhost", 1234),
                             null,

@@ -19,8 +19,12 @@ package org.apache.flink.runtime.io.network.partition;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.deployment.ResultPartitionDeploymentDescriptor;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
+import org.apache.flink.runtime.resourcemanager.ResourceManagerGateway;
+import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Utility for tracking partitions and issuing release calls to task executors and shuffle masters.
@@ -39,7 +43,18 @@ public interface JobMasterPartitionTracker
             ResultPartitionDeploymentDescriptor resultPartitionDeploymentDescriptor);
 
     /** Releases the given partitions and stop the tracking of partitions that were released. */
-    void stopTrackingAndReleasePartitions(Collection<ResultPartitionID> resultPartitionIds);
+    default void stopTrackingAndReleasePartitions(
+            Collection<ResultPartitionID> resultPartitionIds) {
+        stopTrackingAndReleasePartitions(resultPartitionIds, true);
+    }
+
+    /**
+     * Releases the given partitions and stop the tracking of partitions that were released. The
+     * boolean flag indicates whether we need to notify the ShuffleMaster to release all external
+     * resources or not.
+     */
+    void stopTrackingAndReleasePartitions(
+            Collection<ResultPartitionID> resultPartitionIds, boolean releaseOnShuffleMaster);
 
     /**
      * Releases the job partitions and promotes the cluster partitions, and stops the tracking of
@@ -50,4 +65,10 @@ public interface JobMasterPartitionTracker
 
     /** Get all the partitions under tracking. */
     Collection<ResultPartitionDeploymentDescriptor> getAllTrackedPartitions();
+
+    void connectToResourceManager(ResourceManagerGateway resourceManagerGateway);
+
+    /** Get the shuffle descriptors of the cluster partitions ordered by partition number. */
+    List<ShuffleDescriptor> getClusterPartitionShuffleDescriptors(
+            IntermediateDataSetID intermediateDataSetID);
 }

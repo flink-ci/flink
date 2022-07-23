@@ -21,6 +21,7 @@ package org.apache.flink.runtime.resourcemanager.active;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ResourceManagerOptions;
+import org.apache.flink.runtime.blocklist.NoOpBlocklistHandler;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessSpec;
 import org.apache.flink.runtime.clusterframework.TaskExecutorProcessUtils;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -880,7 +881,7 @@ public class ActiveResourceManagerTest extends TestLogger {
                 throws Exception {
             final TestingRpcService rpcService = RPC_SERVICE_RESOURCE.getTestingRpcService();
             final MockResourceManagerRuntimeServices rmServices =
-                    new MockResourceManagerRuntimeServices(rpcService, TIMEOUT_TIME, slotManager);
+                    new MockResourceManagerRuntimeServices(rpcService, slotManager);
             final Duration retryInterval =
                     configuration.get(ResourceManagerOptions.START_WORKER_RETRY_INTERVAL);
             final Duration workerRegistrationTimeout =
@@ -894,8 +895,10 @@ public class ActiveResourceManagerTest extends TestLogger {
                             UUID.randomUUID(),
                             ResourceID.generate(),
                             rmServices.heartbeatServices,
+                            rmServices.delegationTokenManager,
                             rmServices.slotManager,
                             NoOpResourceManagerPartitionTracker::get,
+                            new NoOpBlocklistHandler.Factory(),
                             rmServices.jobLeaderIdService,
                             new ClusterInformation("localhost", 1234),
                             fatalErrorHandler,
@@ -948,7 +951,8 @@ public class ActiveResourceManagerTest extends TestLogger {
                             new HardwareDescription(1, 2L, 3L, 4L),
                             TESTING_CONFIG,
                             ResourceProfile.ZERO,
-                            ResourceProfile.ZERO);
+                            ResourceProfile.ZERO,
+                            resourceID.toString());
 
             return resourceManager
                     .getSelfGateway(ResourceManagerGateway.class)

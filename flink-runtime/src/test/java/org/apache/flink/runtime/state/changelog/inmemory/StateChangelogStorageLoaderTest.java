@@ -17,15 +17,19 @@
 
 package org.apache.flink.runtime.state.changelog.inmemory;
 
-import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.api.common.JobID;
+import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.StateChangelogOptions;
 import org.apache.flink.core.plugin.PluginManager;
+import org.apache.flink.runtime.metrics.groups.TaskManagerJobMetricGroup;
 import org.apache.flink.runtime.state.KeyGroupRange;
 import org.apache.flink.runtime.state.changelog.ChangelogStateHandle;
 import org.apache.flink.runtime.state.changelog.StateChangelogHandleReader;
 import org.apache.flink.runtime.state.changelog.StateChangelogStorage;
 import org.apache.flink.runtime.state.changelog.StateChangelogStorageFactory;
 import org.apache.flink.runtime.state.changelog.StateChangelogStorageLoader;
+import org.apache.flink.runtime.state.changelog.StateChangelogStorageView;
 import org.apache.flink.runtime.state.changelog.StateChangelogWriter;
 
 import org.junit.Test;
@@ -35,6 +39,7 @@ import java.util.Iterator;
 
 import static java.util.Collections.emptyIterator;
 import static java.util.Collections.singletonList;
+import static org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups.createUnregisteredTaskManagerJobMetricGroup;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
@@ -46,7 +51,11 @@ public class StateChangelogStorageLoaderTest {
     @Test
     public void testLoadSpiImplementation() throws IOException {
         StateChangelogStorageLoader.initialize(getPluginManager(emptyIterator()));
-        assertNotNull(StateChangelogStorageLoader.load(new Configuration()));
+        assertNotNull(
+                StateChangelogStorageLoader.load(
+                        JobID.generate(),
+                        new Configuration(),
+                        createUnregisteredTaskManagerJobMetricGroup()));
     }
 
     @Test
@@ -54,8 +63,10 @@ public class StateChangelogStorageLoaderTest {
         StateChangelogStorageLoader.initialize(getPluginManager(emptyIterator()));
         assertNull(
                 StateChangelogStorageLoader.load(
+                        JobID.generate(),
                         new Configuration()
-                                .set(CheckpointingOptions.STATE_CHANGE_LOG_STORAGE, "not_exist")));
+                                .set(StateChangelogOptions.STATE_CHANGE_LOG_STORAGE, "not_exist"),
+                        createUnregisteredTaskManagerJobMetricGroup()));
     }
 
     @Test
@@ -64,7 +75,11 @@ public class StateChangelogStorageLoaderTest {
         StateChangelogStorageFactory factory = new TestStateChangelogStorageFactory();
         PluginManager pluginManager = getPluginManager(singletonList(factory).iterator());
         StateChangelogStorageLoader.initialize(pluginManager);
-        StateChangelogStorage loaded = StateChangelogStorageLoader.load(new Configuration());
+        StateChangelogStorage loaded =
+                StateChangelogStorageLoader.load(
+                        JobID.generate(),
+                        new Configuration(),
+                        createUnregisteredTaskManagerJobMetricGroup());
         assertTrue(loaded instanceof TestStateChangelogStorage);
     }
 
@@ -85,7 +100,7 @@ public class StateChangelogStorageLoaderTest {
             implements StateChangelogStorage<ChangelogStateHandle> {
         @Override
         public StateChangelogWriter<ChangelogStateHandle> createWriter(
-                String operatorID, KeyGroupRange keyGroupRange) {
+                String operatorID, KeyGroupRange keyGroupRange, MailboxExecutor mailboxExecutor) {
             return null;
         }
 
@@ -100,11 +115,17 @@ public class StateChangelogStorageLoaderTest {
         @Override
         public String getIdentifier() {
             // same identifier for overlapping test.
-            return InMemoryStateChangelogStorageFactory.identifier;
+            return InMemoryStateChangelogStorageFactory.IDENTIFIER;
         }
 
         @Override
-        public StateChangelogStorage<?> createStorage(Configuration configuration) {
+        public StateChangelogStorage<?> createStorage(
+                JobID jobID, Configuration configuration, TaskManagerJobMetricGroup metricGroup) {
+            return new TestStateChangelogStorage();
+        }
+
+        @Override
+        public StateChangelogStorageView<?> createStorageView() throws IOException {
             return new TestStateChangelogStorage();
         }
     }

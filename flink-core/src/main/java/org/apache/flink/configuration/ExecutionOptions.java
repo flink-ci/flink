@@ -20,8 +20,8 @@ package org.apache.flink.configuration;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.docs.Documentation;
+import org.apache.flink.api.common.BatchShuffleMode;
 import org.apache.flink.api.common.RuntimeExecutionMode;
-import org.apache.flink.api.common.ShuffleMode;
 import org.apache.flink.configuration.description.Description;
 
 import java.time.Duration;
@@ -31,6 +31,11 @@ import static org.apache.flink.configuration.description.TextElement.text;
 /** {@link ConfigOption}s specific for a single execution of a user program. */
 @PublicEvolving
 public class ExecutionOptions {
+    /** A special marker value for disabling buffer timeout. */
+    public static final long DISABLED_NETWORK_BUFFER_TIMEOUT = -1L;
+
+    /** A special marker value for flushing network buffers after each record. */
+    public static final long FLUSH_AFTER_EVERY_RECORD = 0L;
 
     public static final ConfigOption<RuntimeExecutionMode> RUNTIME_MODE =
             ConfigOptions.key("execution.runtime-mode")
@@ -40,30 +45,33 @@ public class ExecutionOptions {
                             "Runtime execution mode of DataStream programs. Among other things, "
                                     + "this controls task scheduling, network shuffle behavior, and time semantics.");
 
-    public static final ConfigOption<ShuffleMode> SHUFFLE_MODE =
-            ConfigOptions.key("execution.shuffle-mode")
-                    .enumType(ShuffleMode.class)
-                    .defaultValue(ShuffleMode.AUTOMATIC)
+    public static final ConfigOption<BatchShuffleMode> BATCH_SHUFFLE_MODE =
+            ConfigOptions.key("execution.batch-shuffle-mode")
+                    .enumType(BatchShuffleMode.class)
+                    .defaultValue(BatchShuffleMode.ALL_EXCHANGES_BLOCKING)
                     .withDescription(
                             Description.builder()
                                     .text(
-                                            "Mode that defines how data is exchanged between tasks if the shuffling "
-                                                    + "behavior has not been set explicitly for an individual exchange. "
-                                                    + "The shuffle mode depends on the configured '%s' and is only "
-                                                    + "relevant for batch executions on bounded streams.",
+                                            "Defines how data is exchanged between tasks in batch '%s' if the shuffling "
+                                                    + "behavior has not been set explicitly for an individual exchange.",
                                             text(RUNTIME_MODE.key()))
                                     .linebreak()
                                     .text(
-                                            "In streaming mode, upstream and downstream tasks run simultaneously to achieve low latency. "
-                                                    + "An exchange is always pipelined (i.e. a result record is immediately sent to and "
-                                                    + "processed by the downstream task). Thus, the receiver back-pressures the sender.")
+                                            "With pipelined exchanges, upstream and downstream tasks run simultaneously. "
+                                                    + "In order to achieve lower latency, a result record is immediately "
+                                                    + "sent to and processed by the downstream task. Thus, the receiver "
+                                                    + "back-pressures the sender. The streaming mode always uses this "
+                                                    + "exchange.")
                                     .linebreak()
                                     .text(
-                                            "In batch mode, upstream and downstream tasks can run in stages. Blocking exchanges persist "
-                                                    + "records to some storage. Downstream tasks then fetch these records after the "
-                                                    + "upstream tasks finished. Such an exchange reduces the resources required to "
-                                                    + "execute the job as it does not need to run upstream and downstream tasks "
-                                                    + "simultaneously.")
+                                            "With blocking exchanges, upstream and downstream tasks run in stages. "
+                                                    + "Records are persisted to some storage between stages. Downstream "
+                                                    + "tasks then fetch these records after the upstream tasks finished. "
+                                                    + "Such an exchange reduces the resources required to execute the "
+                                                    + "job as it does not need to run upstream and downstream "
+                                                    + "tasks simultaneously.")
+                                    // TODO Add ALL_EXCHANGES_HYBRID's text description when hybrid
+                                    // shuffle mode related codes are all merged.
                                     .build());
 
     /**
@@ -91,14 +99,16 @@ public class ExecutionOptions {
                                             text(
                                                     "A positive value triggers flushing periodically by that interval"),
                                             text(
-                                                    "0 triggers flushing after every record thus minimizing latency"),
+                                                    FLUSH_AFTER_EVERY_RECORD
+                                                            + " triggers flushing after every record thus minimizing latency"),
                                             text(
-                                                    "-1 ms triggers flushing only when the output buffer is full thus maximizing "
+                                                    DISABLED_NETWORK_BUFFER_TIMEOUT
+                                                            + " ms triggers flushing only when the output buffer is full thus maximizing "
                                                             + "throughput"))
                                     .build());
 
     @Documentation.ExcludeFromDocumentation(
-            "This is an expert option, that we do not want to expose in" + " the documentation")
+            "This is an expert option, that we do not want to expose in the documentation")
     public static final ConfigOption<Boolean> SORT_INPUTS =
             ConfigOptions.key("execution.sorted-inputs.enabled")
                     .booleanType()
@@ -108,7 +118,21 @@ public class ExecutionOptions {
                                     + "NOTE: It takes effect only in the BATCH runtime mode.");
 
     @Documentation.ExcludeFromDocumentation(
-            "This is an expert option, that we do not want to expose in" + " the documentation")
+            "This is an expert option, that we do not want to expose in the documentation")
+    public static final ConfigOption<MemorySize> SORTED_INPUTS_MEMORY =
+            ConfigOptions.key("execution.sorted-inputs.memory")
+                    .memoryType()
+                    // in sync with other weights from Table API and DataStream API
+                    .defaultValue(MemorySize.ofMebiBytes(128))
+                    .withDescription(
+                            "Sets the managed memory size for sorting inputs of keyed operators in "
+                                    + "BATCH runtime mode. The memory size is only a weight hint. "
+                                    + "Thus, it will affect the operator's memory weight within a "
+                                    + "task, but the actual memory used depends on the running "
+                                    + "environment.");
+
+    @Documentation.ExcludeFromDocumentation(
+            "This is an expert option, that we do not want to expose in the documentation")
     public static final ConfigOption<Boolean> USE_BATCH_STATE_BACKEND =
             ConfigOptions.key("execution.batch-state-backend.enabled")
                     .booleanType()

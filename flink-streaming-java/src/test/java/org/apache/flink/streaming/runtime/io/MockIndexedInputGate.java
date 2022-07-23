@@ -96,6 +96,11 @@ public class MockIndexedInputGate extends IndexedInputGate {
     }
 
     @Override
+    public EndOfDataStatus hasReceivedEndOfData() {
+        return EndOfDataStatus.NOT_END_OF_DATA;
+    }
+
+    @Override
     public Optional<BufferOrEvent> getNext() {
         throw new UnsupportedOperationException();
     }
@@ -120,4 +125,7 @@ public class MockIndexedInputGate extends IndexedInputGate {
     public List<InputChannelInfo> getUnfinishedChannels() {
         return Collections.emptyList();
     }
+
+    @Override
+    public void triggerDebloating() {}
 }

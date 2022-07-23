@@ -21,6 +21,7 @@ package org.apache.flink.runtime.execution;
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.TaskInfo;
+import org.apache.flink.api.common.operators.MailboxExecutor;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.accumulators.AccumulatorRegistry;
@@ -37,15 +38,14 @@ import org.apache.flink.runtime.io.network.partition.consumer.IndexedInputGate;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.jobgraph.tasks.TaskOperatorEventGateway;
-import org.apache.flink.runtime.mailbox.MailboxExecutor;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.metrics.groups.TaskMetricGroup;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
+import org.apache.flink.runtime.state.CheckpointStorageAccess;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.taskexecutor.GlobalAggregateManager;
 import org.apache.flink.runtime.taskmanager.TaskManagerRuntimeInfo;
-import org.apache.flink.runtime.throughput.ThroughputCalculator;
 import org.apache.flink.util.UserCodeClassLoader;
 
 import java.util.Map;
@@ -236,13 +236,6 @@ public interface Environment {
 
     TaskEventDispatcher getTaskEventDispatcher();
 
-    /**
-     * Returns the throughput meter for calculation the throughput for certain period.
-     *
-     * @return the throughput calculation service.
-     */
-    ThroughputCalculator getThroughputMeter();
-
     // --------------------------------------------------------------------------------------------
     //  Fields set in the StreamTask to provide access to mailbox and other runtime resources
     // --------------------------------------------------------------------------------------------
@@ -256,6 +249,12 @@ public interface Environment {
     default void setAsyncOperationsThreadPool(ExecutorService executorService) {}
 
     default ExecutorService getAsyncOperationsThreadPool() {
+        throw new UnsupportedOperationException();
+    }
+
+    default void setCheckpointStorageAccess(CheckpointStorageAccess checkpointStorageAccess) {}
+
+    default CheckpointStorageAccess getCheckpointStorageAccess() {
         throw new UnsupportedOperationException();
     }
 }

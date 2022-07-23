@@ -19,19 +19,19 @@
 package org.apache.flink.metric.testutils;
 
 import org.apache.flink.metrics.Counter;
-import org.apache.flink.metrics.Gauge;
 import org.apache.flink.metrics.Histogram;
 import org.apache.flink.metrics.HistogramStatistics;
 import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.MetricGroup;
 import org.apache.flink.metrics.testutils.MetricListener;
 
-import org.junit.Test;
+import org.assertj.core.data.Offset;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Test for {@link MetricListener}. */
-public class MetricListenerTest {
+class MetricListenerTest {
     public static final String COUNTER_NAME = "testCounter";
     public static final String GAUGE_NAME = "testGauge";
     public static final String METER_NAME = "testMeter";
@@ -44,20 +44,23 @@ public class MetricListenerTest {
     public static final String GROUP_B_2 = "groupB_2";
 
     @Test
-    public void testRegisterMetrics() {
+    void testRegisterMetrics() {
         MetricListener metricListener = new MetricListener();
         final MetricGroup metricGroup = metricListener.getMetricGroup();
 
         // Counter
         final Counter counter = metricGroup.counter(COUNTER_NAME);
         counter.inc(15213);
-        final Counter registeredCounter = metricListener.getCounter(COUNTER_NAME);
-        assertEquals(15213L, registeredCounter.getCount());
+        assertThat(metricListener.getCounter(COUNTER_NAME))
+                .hasValueSatisfying(
+                        registeredCounter ->
+                                assertThat(registeredCounter.getCount()).isEqualTo(15213L));
 
         // Gauge
         metricGroup.gauge(GAUGE_NAME, () -> 15213);
-        final Gauge<Integer> registeredGauge = metricListener.getGauge(GAUGE_NAME);
-        assertEquals(Integer.valueOf(15213), registeredGauge.getValue());
+        assertThat(metricListener.getGauge(GAUGE_NAME))
+                .hasValueSatisfying(
+                        registeredGauge -> assertThat(registeredGauge.getValue()).isEqualTo(15213));
 
         // Meter
         metricGroup.meter(
@@ -79,9 +82,13 @@ public class MetricListenerTest {
                         return 18213L;
                     }
                 });
-        final Meter registeredMeter = metricListener.getMeter(METER_NAME);
-        assertEquals(15213.0, registeredMeter.getRate(), 0.1);
-        assertEquals(18213L, registeredMeter.getCount());
+        assertThat(metricListener.getMeter(METER_NAME))
+                .hasValueSatisfying(
+                        registeredMeter -> {
+                            assertThat(registeredMeter.getCount()).isEqualTo(18213L);
+                            assertThat(registeredMeter.getRate())
+                                    .isCloseTo(15213.0, Offset.offset(0.1));
+                        });
 
         // Histogram
         metricGroup.histogram(
@@ -100,12 +107,14 @@ public class MetricListenerTest {
                         return null;
                     }
                 });
-        final Histogram registeredHistogram = metricListener.getHistogram(HISTOGRAM_NAME);
-        assertEquals(15213L, registeredHistogram.getCount());
+        assertThat(metricListener.getHistogram(HISTOGRAM_NAME))
+                .hasValueSatisfying(
+                        registeredHistogram ->
+                                assertThat(registeredHistogram.getCount()).isEqualTo(15213L));
     }
 
     @Test
-    public void testRegisterMetricGroup() {
+    void testRegisterMetricGroup() {
         MetricListener metricListener = new MetricListener();
         final MetricGroup rootGroup = metricListener.getMetricGroup();
         final MetricGroup groupA1 = rootGroup.addGroup(GROUP_A).addGroup(GROUP_A_1);
@@ -118,14 +127,15 @@ public class MetricListenerTest {
         groupB2.counter(COUNTER_NAME).inc(15513L);
 
         // groupA.groupA_1.testCounter
-        assertEquals(
-                18213L, metricListener.getCounter(GROUP_A, GROUP_A_1, COUNTER_NAME).getCount());
+        assertThat(metricListener.getCounter(GROUP_A, GROUP_A_1, COUNTER_NAME))
+                .hasValueSatisfying(counter -> assertThat(counter.getCount()).isEqualTo(18213L));
 
         // groupB.groupB_1.testGauge
-        assertEquals(15213L, metricListener.getGauge(GROUP_B, GROUP_B_1, GAUGE_NAME).getValue());
+        assertThat(metricListener.getGauge(GROUP_B, GROUP_B_1, GAUGE_NAME))
+                .hasValueSatisfying(gauge -> assertThat(gauge.getValue()).isEqualTo(15213L));
 
         // groupB.groupB_2.testCounter
-        assertEquals(
-                15513L, metricListener.getCounter(GROUP_B, GROUP_B_2, COUNTER_NAME).getCount());
+        assertThat(metricListener.getCounter(GROUP_B, GROUP_B_2, COUNTER_NAME))
+                .hasValueSatisfying(counter -> assertThat(counter.getCount()).isEqualTo(15513L));
     }
 }

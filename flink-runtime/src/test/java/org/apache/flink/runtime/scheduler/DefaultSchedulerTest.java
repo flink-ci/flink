@@ -19,16 +19,26 @@
 
 package org.apache.flink.runtime.scheduler;
 
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.core.testutils.ScheduledTask;
+import org.apache.flink.metrics.Gauge;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
+import org.apache.flink.runtime.checkpoint.CheckpointIDCounter;
+import org.apache.flink.runtime.checkpoint.CheckpointRecoveryFactory;
+import org.apache.flink.runtime.checkpoint.CheckpointsCleaner;
+import org.apache.flink.runtime.checkpoint.CompletedCheckpointStore;
+import org.apache.flink.runtime.checkpoint.StandaloneCheckpointIDCounter;
+import org.apache.flink.runtime.checkpoint.StandaloneCompletedCheckpointStore;
+import org.apache.flink.runtime.checkpoint.TestingCheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.hooks.TestMasterHook;
+import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
-import org.apache.flink.runtime.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ArchivedExecution;
 import org.apache.flink.runtime.executiongraph.ArchivedExecutionGraph;
@@ -36,6 +46,8 @@ import org.apache.flink.runtime.executiongraph.ArchivedExecutionVertex;
 import org.apache.flink.runtime.executiongraph.ErrorInfo;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
 import org.apache.flink.runtime.executiongraph.ExecutionVertex;
+import org.apache.flink.runtime.executiongraph.JobStatusHook;
+import org.apache.flink.runtime.executiongraph.TestingJobStatusHook;
 import org.apache.flink.runtime.executiongraph.failover.flip1.FailoverStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartAllFailoverStrategy;
 import org.apache.flink.runtime.executiongraph.failover.flip1.RestartPipelinedRegionFailoverStrategy;
@@ -54,6 +66,15 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobmanager.scheduler.NoResourceAvailableException;
 import org.apache.flink.runtime.jobmaster.LogicalSlot;
 import org.apache.flink.runtime.jobmaster.TestingLogicalSlotBuilder;
+import org.apache.flink.runtime.jobmaster.slotpool.DeclarativeSlotPoolBridgeBuilder;
+import org.apache.flink.runtime.jobmaster.slotpool.LocationPreferenceSlotSelectionStrategy;
+import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProvider;
+import org.apache.flink.runtime.jobmaster.slotpool.PhysicalSlotProviderImpl;
+import org.apache.flink.runtime.jobmaster.slotpool.SlotPool;
+import org.apache.flink.runtime.metrics.MetricRegistry;
+import org.apache.flink.runtime.metrics.groups.JobManagerMetricGroup;
+import org.apache.flink.runtime.metrics.util.TestingMetricRegistry;
+import org.apache.flink.runtime.scheduler.adaptive.AdaptiveSchedulerTest;
 import org.apache.flink.runtime.scheduler.exceptionhistory.ExceptionHistoryEntryMatcher;
 import org.apache.flink.runtime.scheduler.exceptionhistory.RootExceptionHistoryEntry;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
@@ -68,10 +89,12 @@ import org.apache.flink.runtime.taskmanager.TaskExecutionState;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.runtime.testtasks.NoOpInvokable;
 import org.apache.flink.runtime.testutils.DirectScheduledExecutorService;
+import org.apache.flink.runtime.util.ResourceCounter;
 import org.apache.flink.util.ExecutorUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.TestLogger;
+import org.apache.flink.util.concurrent.ManuallyTriggeredScheduledExecutor;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.Iterables;
@@ -81,27 +104,37 @@ import org.hamcrest.collection.IsIterableContainingInOrder;
 import org.hamcrest.collection.IsIterableWithSize;
 import org.hamcrest.core.Is;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.slf4j.Logger;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+import static org.apache.flink.runtime.executiongraph.ExecutionGraphTestUtils.createExecutionAttemptId;
+import static org.apache.flink.runtime.jobmaster.slotpool.DefaultDeclarativeSlotPoolTest.createSlotOffersForResourceRequirements;
+import static org.apache.flink.runtime.jobmaster.slotpool.SlotPoolTestUtils.offerSlots;
 import static org.apache.flink.runtime.scheduler.SchedulerTestingUtils.acknowledgePendingCheckpoint;
 import static org.apache.flink.runtime.scheduler.SchedulerTestingUtils.enableCheckpointing;
 import static org.apache.flink.runtime.scheduler.SchedulerTestingUtils.getCheckpointCoordinator;
@@ -129,7 +162,7 @@ public class DefaultSchedulerTest extends TestLogger {
 
     @ClassRule public static final TemporaryFolder TEMPORARY_FOLDER = new TemporaryFolder();
 
-    private ManuallyTriggeredScheduledExecutor taskRestartExecutor =
+    private final ManuallyTriggeredScheduledExecutor taskRestartExecutor =
             new ManuallyTriggeredScheduledExecutor();
 
     private ExecutorService executor;
@@ -140,7 +173,7 @@ public class DefaultSchedulerTest extends TestLogger {
 
     private TestRestartBackoffTimeStrategy testRestartBackoffTimeStrategy;
 
-    private TestExecutionVertexOperationsDecorator testExecutionVertexOperations;
+    private TestExecutionOperationsDecorator testExecutionOperations;
 
     private ExecutionVertexVersioner executionVertexVersioner;
 
@@ -163,8 +196,8 @@ public class DefaultSchedulerTest extends TestLogger {
 
         testRestartBackoffTimeStrategy = new TestRestartBackoffTimeStrategy(true, 0);
 
-        testExecutionVertexOperations =
-                new TestExecutionVertexOperationsDecorator(new DefaultExecutionVertexOperations());
+        testExecutionOperations =
+                new TestExecutionOperationsDecorator(new DefaultExecutionOperations());
 
         executionVertexVersioner = new ExecutionVertexVersioner();
 
@@ -197,7 +230,7 @@ public class DefaultSchedulerTest extends TestLogger {
         createSchedulerAndStartScheduling(jobGraph);
 
         final List<ExecutionVertexID> deployedExecutionVertices =
-                testExecutionVertexOperations.getDeployedVertices();
+                testExecutionOperations.getDeployedVertices();
 
         final ExecutionVertexID executionVertexId = new ExecutionVertexID(onlyJobVertex.getID(), 0);
         assertThat(deployedExecutionVertices, contains(executionVertexId));
@@ -251,13 +284,13 @@ public class DefaultSchedulerTest extends TestLogger {
                         new ExecutionVertexID(onlyJobVertexId, 3));
         schedulingStrategy.schedule(verticesToSchedule);
 
-        assertThat(testExecutionVertexOperations.getDeployedVertices(), hasSize(0));
+        assertThat(testExecutionOperations.getDeployedVertices(), hasSize(0));
 
         testExecutionSlotAllocator.completePendingRequest(verticesToSchedule.get(0));
-        assertThat(testExecutionVertexOperations.getDeployedVertices(), hasSize(0));
+        assertThat(testExecutionOperations.getDeployedVertices(), hasSize(0));
 
         testExecutionSlotAllocator.completePendingRequests();
-        assertThat(testExecutionVertexOperations.getDeployedVertices(), hasSize(4));
+        assertThat(testExecutionOperations.getDeployedVertices(), hasSize(4));
     }
 
     @Test
@@ -285,7 +318,7 @@ public class DefaultSchedulerTest extends TestLogger {
         schedulingStrategy.schedule(desiredScheduleOrder);
 
         final List<ExecutionVertexID> deployedExecutionVertices =
-                testExecutionVertexOperations.getDeployedVertices();
+                testExecutionOperations.getDeployedVertices();
 
         assertEquals(desiredScheduleOrder, deployedExecutionVertices);
     }
@@ -295,15 +328,15 @@ public class DefaultSchedulerTest extends TestLogger {
         final JobGraph jobGraph = singleNonParallelJobVertexJobGraph();
         final JobVertex onlyJobVertex = getOnlyJobVertex(jobGraph);
 
-        testExecutionVertexOperations.enableFailDeploy();
+        testExecutionOperations.enableFailDeploy();
 
         createSchedulerAndStartScheduling(jobGraph);
 
-        testExecutionVertexOperations.disableFailDeploy();
+        testExecutionOperations.disableFailDeploy();
         taskRestartExecutor.triggerScheduledTasks();
 
         final List<ExecutionVertexID> deployedExecutionVertices =
-                testExecutionVertexOperations.getDeployedVertices();
+                testExecutionOperations.getDeployedVertices();
 
         final ExecutionVertexID executionVertexId = new ExecutionVertexID(onlyJobVertex.getID(), 0);
         assertThat(deployedExecutionVertices, contains(executionVertexId, executionVertexId));
@@ -330,7 +363,7 @@ public class DefaultSchedulerTest extends TestLogger {
         taskRestartExecutor.triggerScheduledTasks();
 
         final List<ExecutionVertexID> deployedExecutionVertices =
-                testExecutionVertexOperations.getDeployedVertices();
+                testExecutionOperations.getDeployedVertices();
         final ExecutionVertexID executionVertexId = new ExecutionVertexID(onlyJobVertex.getID(), 0);
         assertThat(deployedExecutionVertices, contains(executionVertexId, executionVertexId));
     }
@@ -341,7 +374,7 @@ public class DefaultSchedulerTest extends TestLogger {
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
 
         final TaskExecutionState taskExecutionState =
-                createFailedTaskExecutionState(new ExecutionAttemptID());
+                createFailedTaskExecutionState(createExecutionAttemptId());
 
         assertFalse(scheduler.updateTaskExecutionState(taskExecutionState));
     }
@@ -507,7 +540,7 @@ public class DefaultSchedulerTest extends TestLogger {
         taskRestartExecutor.triggerScheduledTasks();
 
         assertThat(
-                testExecutionVertexOperations.getDeployedVertices(),
+                testExecutionOperations.getDeployedVertices(),
                 containsInAnyOrder(sourceExecutionVertexId, sinkExecutionVertexId));
         assertThat(
                 scheduler.requestJob().getArchivedExecutionGraph().getState(),
@@ -622,7 +655,7 @@ public class DefaultSchedulerTest extends TestLogger {
         taskRestartExecutor.triggerScheduledTasks();
 
         final List<ExecutionVertexID> deployedExecutionVertices =
-                testExecutionVertexOperations.getDeployedVertices();
+                testExecutionOperations.getDeployedVertices();
         final ExecutionVertexID executionVertexId = new ExecutionVertexID(onlyJobVertex.getID(), 0);
         assertThat(deployedExecutionVertices, contains(executionVertexId, executionVertexId));
     }
@@ -674,7 +707,7 @@ public class DefaultSchedulerTest extends TestLogger {
                 new ExecutionVertexID(onlyJobVertex.getID(), 1);
         assertThat(
                 "The execution vertices should be deployed in a specific order reflecting the scheduling start and the global fail-over afterwards.",
-                testExecutionVertexOperations.getDeployedVertices(),
+                testExecutionOperations.getDeployedVertices(),
                 contains(
                         executionVertexId0,
                         executionVertexId1,
@@ -755,7 +788,11 @@ public class DefaultSchedulerTest extends TestLogger {
 
         final CountDownLatch checkpointTriggeredLatch = getCheckpointTriggeredLatch();
 
-        final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
+        final DefaultScheduler scheduler =
+                createSchedulerAndStartScheduling(
+                        jobGraph,
+                        ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
+                                new DirectScheduledExecutorService()));
 
         final ArchivedExecutionVertex onlyExecutionVertex =
                 Iterables.getOnlyElement(
@@ -785,7 +822,11 @@ public class DefaultSchedulerTest extends TestLogger {
 
         final CountDownLatch checkpointTriggeredLatch = getCheckpointTriggeredLatch();
 
-        final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
+        final DefaultScheduler scheduler =
+                createSchedulerAndStartScheduling(
+                        jobGraph,
+                        ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
+                                new DirectScheduledExecutorService()));
 
         final ArchivedExecutionVertex onlyExecutionVertex =
                 Iterables.getOnlyElement(
@@ -823,7 +864,11 @@ public class DefaultSchedulerTest extends TestLogger {
 
         final CountDownLatch checkpointTriggeredLatch = getCheckpointTriggeredLatch();
 
-        final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
+        final DefaultScheduler scheduler =
+                createSchedulerAndStartScheduling(
+                        jobGraph,
+                        ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
+                                new DirectScheduledExecutorService()));
 
         final ArchivedExecutionVertex onlyExecutionVertex =
                 Iterables.getOnlyElement(
@@ -851,16 +896,17 @@ public class DefaultSchedulerTest extends TestLogger {
 
         scheduler.updateTaskExecutionState(createFailedTaskExecutionState(attemptId));
         taskRestartExecutor.triggerScheduledTasks();
-        final List<ExecutionVertexID> deployedExecutionVertices =
-                testExecutionVertexOperations.getDeployedVertices();
 
         // the first task failover should be skipped on state restore failure
+        List<ExecutionVertexID> deployedExecutionVertices =
+                testExecutionOperations.getDeployedVertices();
         final ExecutionVertexID executionVertexId = new ExecutionVertexID(onlyJobVertex.getID(), 0);
         assertThat(deployedExecutionVertices, contains(executionVertexId));
 
         // a global failure should be triggered on state restore failure
         masterHook.disableFailOnRestore();
         taskRestartExecutor.triggerScheduledTasks();
+        deployedExecutionVertices = testExecutionOperations.getDeployedVertices();
         assertThat(deployedExecutionVertices, contains(executionVertexId, executionVertexId));
     }
 
@@ -962,8 +1008,7 @@ public class DefaultSchedulerTest extends TestLogger {
                 vertexIterator.next().getCurrentExecutionAttempt().getAttemptId();
         final ExecutionAttemptID attemptId2 =
                 vertexIterator.next().getCurrentExecutionAttempt().getAttemptId();
-        final ExecutionVertexID executionVertex2 =
-                scheduler.getExecutionVertexIdOrThrow(attemptId2);
+        final ExecutionVertexID executionVertex2 = attemptId2.getExecutionVertexId();
 
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(
@@ -1050,6 +1095,56 @@ public class DefaultSchedulerTest extends TestLogger {
     }
 
     @Test
+    public void pendingSlotRequestsOfVerticesToRestartWillNotBeFulfilledByReturnedSlots()
+            throws Exception {
+        final int parallelism = 10;
+        final JobGraph jobGraph = sourceSinkJobGraph(parallelism);
+        testExecutionSlotAllocator.disableAutoCompletePendingRequests();
+        testExecutionSlotAllocator.enableCompletePendingRequestsWithReturnedSlots();
+
+        final DefaultScheduler scheduler =
+                createScheduler(
+                        jobGraph,
+                        ComponentMainThreadExecutorServiceAdapter.forMainThread(),
+                        new PipelinedRegionSchedulingStrategy.Factory(),
+                        new RestartAllFailoverStrategy.Factory());
+        scheduler.startScheduling();
+
+        final ExecutionVertex ev1 =
+                Iterables.get(scheduler.getExecutionGraph().getAllExecutionVertices(), 0);
+
+        final Set<CompletableFuture<LogicalSlot>> pendingLogicalSlotFutures =
+                testExecutionSlotAllocator.getPendingRequests().values().stream()
+                        .map(ExecutionSlotAssignment::getLogicalSlotFuture)
+                        .collect(Collectors.toSet());
+        assertThat(pendingLogicalSlotFutures, hasSize(parallelism * 2));
+
+        testExecutionSlotAllocator.completePendingRequest(ev1.getID());
+        assertThat(
+                pendingLogicalSlotFutures.stream().filter(CompletableFuture::isDone).count(),
+                is(1L));
+
+        final String exceptionMessage = "expected exception";
+        scheduler.updateTaskExecutionState(
+                new TaskExecutionState(
+                        ev1.getCurrentExecutionAttempt().getAttemptId(),
+                        ExecutionState.FAILED,
+                        new RuntimeException(exceptionMessage)));
+
+        assertThat(testExecutionSlotAllocator.getPendingRequests().keySet(), hasSize(0));
+
+        // the failed task will return its slot before triggering failover. And the slot
+        // will be returned and re-assigned to another task which is waiting for a slot.
+        // failover will be triggered after that and the re-assigned slot will be returned
+        // once the attached task is canceled, but the slot will not be assigned to other
+        // tasks which are identified to be restarted soon.
+        assertThat(testExecutionSlotAllocator.getReturnedSlots(), hasSize(2));
+        assertThat(
+                pendingLogicalSlotFutures.stream().filter(CompletableFuture::isCancelled).count(),
+                is(parallelism * 2L - 2L));
+    }
+
+    @Test
     public void testExceptionHistoryWithGlobalFailOver() {
         final JobGraph jobGraph = singleNonParallelJobVertexJobGraph();
         final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
@@ -1071,7 +1166,6 @@ public class DefaultSchedulerTest extends TestLogger {
         scheduler.updateTaskExecutionState(
                 new TaskExecutionState(attemptId, ExecutionState.CANCELED, expectedException));
         taskRestartExecutor.triggerScheduledTasks();
-        final long end = System.currentTimeMillis();
 
         final Iterable<RootExceptionHistoryEntry> actualExceptionHistory =
                 scheduler.getExceptionHistory();
@@ -1319,6 +1413,88 @@ public class DefaultSchedulerTest extends TestLogger {
     }
 
     @Test
+    public void testStatusMetrics() throws Exception {
+        // running time acts as a stand-in for generic status time metrics
+        final CompletableFuture<Gauge<Long>> runningTimeMetricFuture = new CompletableFuture<>();
+        final MetricRegistry metricRegistry =
+                TestingMetricRegistry.builder()
+                        .setRegisterConsumer(
+                                (metric, name, group) -> {
+                                    switch (name) {
+                                        case "runningTimeTotal":
+                                            runningTimeMetricFuture.complete((Gauge<Long>) metric);
+                                            break;
+                                    }
+                                })
+                        .build();
+
+        final JobGraph jobGraph = singleNonParallelJobVertexJobGraph();
+        final JobVertex onlyJobVertex = getOnlyJobVertex(jobGraph);
+
+        final Configuration configuration = new Configuration();
+        configuration.set(
+                MetricOptions.JOB_STATUS_METRICS,
+                Arrays.asList(MetricOptions.JobStatusMetrics.TOTAL_TIME));
+
+        final ComponentMainThreadExecutor singleThreadMainThreadExecutor =
+                ComponentMainThreadExecutorServiceAdapter.forSingleThreadExecutor(
+                        scheduledExecutorService);
+
+        final Time slotTimeout = Time.milliseconds(5L);
+        final SlotPool slotPool =
+                new DeclarativeSlotPoolBridgeBuilder()
+                        .setBatchSlotTimeout(slotTimeout)
+                        .buildAndStart(singleThreadMainThreadExecutor);
+        final PhysicalSlotProvider slotProvider =
+                new PhysicalSlotProviderImpl(
+                        LocationPreferenceSlotSelectionStrategy.createDefault(), slotPool);
+
+        final DefaultScheduler scheduler =
+                createSchedulerBuilder(jobGraph, singleThreadMainThreadExecutor)
+                        .setJobMasterConfiguration(configuration)
+                        .setJobManagerJobMetricGroup(
+                                JobManagerMetricGroup.createJobManagerMetricGroup(
+                                                metricRegistry, "localhost")
+                                        .addJob(new JobID(), "jobName"))
+                        .setExecutionSlotAllocatorFactory(
+                                SchedulerTestingUtils.newSlotSharingExecutionSlotAllocatorFactory(
+                                        slotProvider, slotTimeout))
+                        .build();
+
+        final AdaptiveSchedulerTest.SubmissionBufferingTaskManagerGateway taskManagerGateway =
+                new AdaptiveSchedulerTest.SubmissionBufferingTaskManagerGateway(1);
+
+        taskManagerGateway.setCancelConsumer(
+                executionAttemptId -> {
+                    singleThreadMainThreadExecutor.execute(
+                            () ->
+                                    scheduler.updateTaskExecutionState(
+                                            new TaskExecutionState(
+                                                    executionAttemptId, ExecutionState.CANCELED)));
+                });
+
+        singleThreadMainThreadExecutor.execute(
+                () -> {
+                    scheduler.startScheduling();
+
+                    offerSlots(
+                            slotPool,
+                            createSlotOffersForResourceRequirements(
+                                    ResourceCounter.withResource(ResourceProfile.UNKNOWN, 1)),
+                            taskManagerGateway);
+                });
+
+        // wait for the first task submission
+        taskManagerGateway.waitForSubmissions(1, Duration.ofSeconds(5));
+
+        // sleep a bit to ensure uptime is > 0
+        Thread.sleep(10L);
+
+        final Gauge<Long> runningTimeGauge = runningTimeMetricFuture.get();
+        Assert.assertThat(runningTimeGauge.getValue(), greaterThan(0L));
+    }
+
+    @Test
     public void testDeploymentWaitForProducedPartitionRegistration() {
         shuffleMaster.setAutoCompleteRegistration(false);
 
@@ -1335,11 +1511,11 @@ public class DefaultSchedulerTest extends TestLogger {
         createSchedulerAndStartScheduling(jobGraph);
 
         assertThat(trackedPartitions, hasSize(0));
-        assertThat(testExecutionVertexOperations.getDeployedVertices(), hasSize(0));
+        assertThat(testExecutionOperations.getDeployedVertices(), hasSize(0));
 
         shuffleMaster.completeAllPendingRegistrations();
         assertThat(trackedPartitions, hasSize(1));
-        assertThat(testExecutionVertexOperations.getDeployedVertices(), hasSize(2));
+        assertThat(testExecutionOperations.getDeployedVertices(), hasSize(2));
     }
 
     @Test
@@ -1350,12 +1526,12 @@ public class DefaultSchedulerTest extends TestLogger {
 
         createSchedulerAndStartScheduling(jobGraph);
 
-        assertThat(testExecutionVertexOperations.getCanceledVertices(), hasSize(0));
-        assertThat(testExecutionVertexOperations.getFailedVertices(), hasSize(0));
+        assertThat(testExecutionOperations.getCanceledVertices(), hasSize(0));
+        assertThat(testExecutionOperations.getFailedVertices(), hasSize(0));
 
         shuffleMaster.failAllPendingRegistrations();
-        assertThat(testExecutionVertexOperations.getCanceledVertices(), hasSize(2));
-        assertThat(testExecutionVertexOperations.getFailedVertices(), hasSize(1));
+        assertThat(testExecutionOperations.getCanceledVertices(), hasSize(2));
+        assertThat(testExecutionOperations.getFailedVertices(), hasSize(1));
     }
 
     @Test
@@ -1366,8 +1542,8 @@ public class DefaultSchedulerTest extends TestLogger {
 
         createSchedulerAndStartScheduling(jobGraph);
 
-        assertThat(testExecutionVertexOperations.getCanceledVertices(), hasSize(2));
-        assertThat(testExecutionVertexOperations.getFailedVertices(), hasSize(1));
+        assertThat(testExecutionOperations.getCanceledVertices(), hasSize(2));
+        assertThat(testExecutionOperations.getFailedVertices(), hasSize(1));
     }
 
     @Test
@@ -1386,10 +1562,8 @@ public class DefaultSchedulerTest extends TestLogger {
             timeout = Time.milliseconds(1);
             createSchedulerAndStartScheduling(jobGraph, mainThreadExecutor);
 
-            Thread.sleep(100);
-
-            assertThat(testExecutionVertexOperations.getCanceledVertices(), hasSize(2));
-            assertThat(testExecutionVertexOperations.getFailedVertices(), hasSize(1));
+            testExecutionOperations.awaitCanceledExecutions(2);
+            testExecutionOperations.awaitFailedExecutions(1);
         } finally {
             if (scheduledExecutorService != null) {
                 scheduledExecutorService.shutdown();
@@ -1430,7 +1604,185 @@ public class DefaultSchedulerTest extends TestLogger {
         assertThat(shuffleMaster.getExternallyReleasedPartitions(), hasSize(1));
     }
 
-    private static TaskExecutionState createFailedTaskExecutionState(
+    @Test
+    public void testCheckpointCleanerIsClosedAfterCheckpointServices() throws Exception {
+        final ScheduledExecutorService executorService =
+                Executors.newSingleThreadScheduledExecutor();
+        try {
+            doTestCheckpointCleanerIsClosedAfterCheckpointServices(
+                    (checkpointRecoveryFactory, checkpointCleaner) -> {
+                        final JobGraph jobGraph = singleJobVertexJobGraph(1);
+                        enableCheckpointing(jobGraph);
+                        try {
+                            return new DefaultSchedulerBuilder(
+                                            jobGraph,
+                                            ComponentMainThreadExecutorServiceAdapter
+                                                    .forSingleThreadExecutor(executorService),
+                                            executorService)
+                                    .setCheckpointRecoveryFactory(checkpointRecoveryFactory)
+                                    .setCheckpointCleaner(checkpointCleaner)
+                                    .build();
+                        } catch (Exception e) {
+                            throw new RuntimeException(e);
+                        }
+                    },
+                    executorService,
+                    log);
+        } finally {
+            executorService.shutdownNow();
+        }
+    }
+
+    @Test
+    public void testJobStatusHookWithJobFailed() throws Exception {
+        commonJobStatusHookTest(ExecutionState.FAILED, JobStatus.FAILED);
+    }
+
+    @Test
+    public void testJobStatusHookWithJobCanceled() throws Exception {
+        commonJobStatusHookTest(ExecutionState.CANCELED, JobStatus.CANCELED);
+    }
+
+    @Test
+    public void testJobStatusHookWithJobFinished() throws Exception {
+        commonJobStatusHookTest(ExecutionState.FINISHED, JobStatus.FINISHED);
+    }
+
+    private void commonJobStatusHookTest(
+            ExecutionState expectedExecutionState, JobStatus expectedJobStatus) throws Exception {
+        final JobGraph jobGraph = singleNonParallelJobVertexJobGraph();
+
+        TestingJobStatusHook jobStatusHook = new TestingJobStatusHook();
+
+        final List<JobID> onCreatedJobList = new LinkedList<>();
+        jobStatusHook.setOnCreatedConsumer((jobId) -> onCreatedJobList.add(jobId));
+
+        final List<JobID> onJobStatusList = new LinkedList<>();
+        switch (expectedJobStatus) {
+            case FAILED:
+                jobStatusHook.setOnFailedConsumer((jobID, throwable) -> onJobStatusList.add(jobID));
+                break;
+            case CANCELED:
+                jobStatusHook.setOnCanceledConsumer((jobID) -> onJobStatusList.add(jobID));
+                break;
+            case FINISHED:
+                jobStatusHook.setOnFinishedConsumer((jobID) -> onJobStatusList.add(jobID));
+                break;
+            default:
+                throw new UnsupportedOperationException(
+                        "JobStatusHook test is not supported: " + expectedJobStatus);
+        }
+
+        List<JobStatusHook> jobStatusHooks = new ArrayList<>();
+        jobStatusHooks.add(jobStatusHook);
+        jobGraph.setJobStatusHooks(jobStatusHooks);
+
+        testRestartBackoffTimeStrategy.setCanRestart(false);
+
+        final DefaultScheduler scheduler = createSchedulerAndStartScheduling(jobGraph);
+
+        final ArchivedExecutionVertex onlyExecutionVertex =
+                Iterables.getOnlyElement(
+                        scheduler
+                                .requestJob()
+                                .getArchivedExecutionGraph()
+                                .getAllExecutionVertices());
+        final ExecutionAttemptID attemptId =
+                onlyExecutionVertex.getCurrentExecutionAttempt().getAttemptId();
+
+        if (JobStatus.CANCELED == expectedJobStatus) {
+            scheduler.cancel();
+        }
+        scheduler.updateTaskExecutionState(
+                new TaskExecutionState(attemptId, expectedExecutionState));
+
+        taskRestartExecutor.triggerScheduledTasks();
+
+        waitForTermination(scheduler);
+        final JobStatus jobStatus = scheduler.requestJobStatus();
+        org.assertj.core.api.Assertions.assertThat(jobStatus).isEqualTo(expectedJobStatus);
+        org.assertj.core.api.Assertions.assertThat(onCreatedJobList).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(onCreatedJobList.get(0))
+                .isEqualTo(jobGraph.getJobID());
+
+        org.assertj.core.api.Assertions.assertThat(onJobStatusList).hasSize(1);
+        org.assertj.core.api.Assertions.assertThat(onJobStatusList.get(0))
+                .isEqualTo(jobGraph.getJobID());
+    }
+
+    /**
+     * Visible for re-use in {@link
+     * org.apache.flink.runtime.scheduler.adaptive.AdaptiveSchedulerTest}.
+     */
+    public static void doTestCheckpointCleanerIsClosedAfterCheckpointServices(
+            BiFunction<CheckpointRecoveryFactory, CheckpointsCleaner, SchedulerNG> schedulerFactory,
+            ScheduledExecutorService executorService,
+            Logger logger)
+            throws Exception {
+        final CountDownLatch checkpointServicesShutdownBlocked = new CountDownLatch(1);
+        final CountDownLatch cleanerClosed = new CountDownLatch(1);
+        final CompletedCheckpointStore completedCheckpointStore =
+                new StandaloneCompletedCheckpointStore(1) {
+
+                    @Override
+                    public void shutdown(JobStatus jobStatus, CheckpointsCleaner checkpointsCleaner)
+                            throws Exception {
+                        checkpointServicesShutdownBlocked.await();
+                        super.shutdown(jobStatus, checkpointsCleaner);
+                    }
+                };
+        final CheckpointIDCounter checkpointIDCounter =
+                new StandaloneCheckpointIDCounter() {
+
+                    @Override
+                    public CompletableFuture<Void> shutdown(JobStatus jobStatus) {
+                        try {
+                            checkpointServicesShutdownBlocked.await();
+                        } catch (InterruptedException e) {
+                            logger.error(
+                                    "An error occurred while executing waiting for the CheckpointServices shutdown.",
+                                    e);
+                            Thread.currentThread().interrupt();
+                        }
+
+                        return super.shutdown(jobStatus);
+                    }
+                };
+        final CheckpointsCleaner checkpointsCleaner =
+                new CheckpointsCleaner() {
+
+                    @Override
+                    public synchronized CompletableFuture<Void> closeAsync() {
+                        cleanerClosed.countDown();
+                        return super.closeAsync();
+                    }
+                };
+
+        final SchedulerNG scheduler =
+                schedulerFactory.apply(
+                        new TestingCheckpointRecoveryFactory(
+                                completedCheckpointStore, checkpointIDCounter),
+                        checkpointsCleaner);
+        final CompletableFuture<Void> schedulerClosed = new CompletableFuture<>();
+        final CountDownLatch schedulerClosing = new CountDownLatch(1);
+
+        executorService.submit(
+                () -> {
+                    scheduler.closeAsync().thenRun(() -> schedulerClosed.complete(null));
+                    schedulerClosing.countDown();
+                });
+
+        // Wait for scheduler to start closing.
+        schedulerClosing.await();
+        assertFalse(
+                "CheckpointCleaner should not close before checkpoint services.",
+                cleanerClosed.await(10, TimeUnit.MILLISECONDS));
+        checkpointServicesShutdownBlocked.countDown();
+        cleanerClosed.await();
+        schedulerClosed.get();
+    }
+
+    public static TaskExecutionState createFailedTaskExecutionState(
             ExecutionAttemptID executionAttemptID) {
         return new TaskExecutionState(
                 executionAttemptID, ExecutionState.FAILED, new Exception("Expected failure cause"));
@@ -1485,7 +1837,7 @@ public class DefaultSchedulerTest extends TestLogger {
         scheduler.getJobTerminationFuture().get(TIMEOUT_MS, TimeUnit.MILLISECONDS);
     }
 
-    private static JobGraph singleNonParallelJobVertexJobGraph() {
+    public static JobGraph singleNonParallelJobVertexJobGraph() {
         return singleJobVertexJobGraph(1);
     }
 
@@ -1509,6 +1861,21 @@ public class DefaultSchedulerTest extends TestLogger {
         return JobGraphTestUtils.streamingJobGraph(source, sink);
     }
 
+    private static JobGraph sourceSinkJobGraph(final int parallelism) {
+        final JobVertex source = new JobVertex("source");
+        source.setParallelism(parallelism);
+        source.setInvokableClass(NoOpInvokable.class);
+
+        final JobVertex sink = new JobVertex("sink");
+        sink.setParallelism(parallelism);
+        sink.setInvokableClass(NoOpInvokable.class);
+
+        sink.connectNewDataSetAsInput(
+                source, DistributionPattern.ALL_TO_ALL, ResultPartitionType.PIPELINED);
+
+        return JobGraphTestUtils.streamingJobGraph(source, sink);
+    }
+
     private static JobVertex getOnlyJobVertex(final JobGraph jobGraph) {
         final List<JobVertex> sortedVertices = jobGraph.getVerticesSortedTopologicallyFromSources();
         Preconditions.checkState(sortedVertices.size() == 1);
@@ -1522,12 +1889,10 @@ public class DefaultSchedulerTest extends TestLogger {
 
     private DefaultScheduler createSchedulerAndStartScheduling(
             final JobGraph jobGraph, final ComponentMainThreadExecutor mainThreadExecutor) {
-        final SchedulingStrategyFactory schedulingStrategyFactory =
-                new PipelinedRegionSchedulingStrategy.Factory();
 
         try {
             final DefaultScheduler scheduler =
-                    createScheduler(jobGraph, mainThreadExecutor, schedulingStrategyFactory);
+                    createSchedulerBuilder(jobGraph, mainThreadExecutor).build();
             mainThreadExecutor.execute(scheduler::startScheduling);
             return scheduler;
         } catch (Exception e) {
@@ -1540,11 +1905,9 @@ public class DefaultSchedulerTest extends TestLogger {
             final ComponentMainThreadExecutor mainThreadExecutor,
             final SchedulingStrategyFactory schedulingStrategyFactory)
             throws Exception {
-        return createScheduler(
-                jobGraph,
-                mainThreadExecutor,
-                schedulingStrategyFactory,
-                new RestartPipelinedRegionFailoverStrategy.Factory());
+        return createSchedulerBuilder(jobGraph, mainThreadExecutor)
+                .setSchedulingStrategyFactory(schedulingStrategyFactory)
+                .build();
     }
 
     private DefaultScheduler createScheduler(
@@ -1553,12 +1916,10 @@ public class DefaultSchedulerTest extends TestLogger {
             final SchedulingStrategyFactory schedulingStrategyFactory,
             final FailoverStrategy.Factory failoverStrategyFactory)
             throws Exception {
-        return createScheduler(
-                jobGraph,
-                mainThreadExecutor,
-                schedulingStrategyFactory,
-                failoverStrategyFactory,
-                taskRestartExecutor);
+        return createSchedulerBuilder(jobGraph, mainThreadExecutor)
+                .setSchedulingStrategyFactory(schedulingStrategyFactory)
+                .setFailoverStrategyFactory(failoverStrategyFactory)
+                .build();
     }
 
     private DefaultScheduler createScheduler(
@@ -1568,22 +1929,32 @@ public class DefaultSchedulerTest extends TestLogger {
             final FailoverStrategy.Factory failoverStrategyFactory,
             final ScheduledExecutor delayExecutor)
             throws Exception {
-        return SchedulerTestingUtils.newSchedulerBuilder(jobGraph, mainThreadExecutor)
-                .setLogger(log)
-                .setIoExecutor(executor)
-                .setJobMasterConfiguration(configuration)
-                .setFutureExecutor(scheduledExecutorService)
+        return createSchedulerBuilder(jobGraph, mainThreadExecutor)
                 .setDelayExecutor(delayExecutor)
                 .setSchedulingStrategyFactory(schedulingStrategyFactory)
                 .setFailoverStrategyFactory(failoverStrategyFactory)
+                .build();
+    }
+
+    private DefaultSchedulerBuilder createSchedulerBuilder(
+            final JobGraph jobGraph, final ComponentMainThreadExecutor mainThreadExecutor) {
+        return new DefaultSchedulerBuilder(
+                        jobGraph,
+                        mainThreadExecutor,
+                        executor,
+                        scheduledExecutorService,
+                        taskRestartExecutor)
+                .setLogger(log)
+                .setJobMasterConfiguration(configuration)
+                .setSchedulingStrategyFactory(new PipelinedRegionSchedulingStrategy.Factory())
+                .setFailoverStrategyFactory(new RestartPipelinedRegionFailoverStrategy.Factory())
                 .setRestartBackoffTimeStrategy(testRestartBackoffTimeStrategy)
-                .setExecutionVertexOperations(testExecutionVertexOperations)
+                .setExecutionOperations(testExecutionOperations)
                 .setExecutionVertexVersioner(executionVertexVersioner)
                 .setExecutionSlotAllocatorFactory(executionSlotAllocatorFactory)
                 .setShuffleMaster(shuffleMaster)
                 .setPartitionTracker(partitionTracker)
-                .setRpcTimeout(timeout)
-                .build();
+                .setRpcTimeout(timeout);
     }
 
     /**

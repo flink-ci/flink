@@ -19,7 +19,7 @@ package org.apache.flink.streaming.api.operators;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.api.common.state.CheckpointListener;
-import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.jobgraph.OperatorID;
 import org.apache.flink.runtime.state.CheckpointStreamFactory;
@@ -65,11 +65,15 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Ser
      * This method is called at the end of data processing.
      *
      * <p>The method is expected to flush all remaining buffered data. Exceptions during this
-     * flushing of buffered should be propagated, in order to cause the operation to be recognized
-     * as failed, because the last data items are not processed properly.
+     * flushing of buffered data should be propagated, in order to cause the operation to be
+     * recognized as failed, because the last data items are not processed properly.
      *
      * <p><b>After this method is called, no more records can be produced for the downstream
      * operators.</b>
+     *
+     * <p><b>WARNING:</b> It is not safe to use this method to commit any transactions or other side
+     * effects! You can use this method to flush any buffered data that can later on be committed
+     * e.g. in a {@link StreamOperator#notifyCheckpointComplete(long)}.
      *
      * <p><b>NOTE:</b>This method does not need to close any resources. You should release external
      * resources in the {@link #close()} method.
@@ -141,7 +145,7 @@ public interface StreamOperator<OUT> extends CheckpointListener, KeyContext, Ser
 
     void setKeyContextElement2(StreamRecord<?> record) throws Exception;
 
-    MetricGroup getMetricGroup();
+    OperatorMetricGroup getMetricGroup();
 
     OperatorID getOperatorID();
 }

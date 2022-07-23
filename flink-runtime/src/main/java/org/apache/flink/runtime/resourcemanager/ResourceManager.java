@@ -24,6 +24,9 @@ import org.apache.flink.api.common.JobStatus;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.runtime.blob.TransientBlobKey;
+import org.apache.flink.runtime.blocklist.BlockedNode;
+import org.apache.flink.runtime.blocklist.BlocklistContext;
+import org.apache.flink.runtime.blocklist.BlocklistHandler;
 import org.apache.flink.runtime.clusterframework.ApplicationStatus;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -33,8 +36,8 @@ import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.entrypoint.ClusterInformation;
 import org.apache.flink.runtime.heartbeat.HeartbeatListener;
 import org.apache.flink.runtime.heartbeat.HeartbeatManager;
+import org.apache.flink.runtime.heartbeat.HeartbeatSender;
 import org.apache.flink.runtime.heartbeat.HeartbeatServices;
-import org.apache.flink.runtime.heartbeat.HeartbeatTarget;
 import org.apache.flink.runtime.heartbeat.NoOpHeartbeatManager;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.io.network.partition.DataSetMetaInfo;
@@ -56,12 +59,15 @@ import org.apache.flink.runtime.resourcemanager.registration.WorkerRegistration;
 import org.apache.flink.runtime.resourcemanager.slotmanager.ResourceActions;
 import org.apache.flink.runtime.resourcemanager.slotmanager.SlotManager;
 import org.apache.flink.runtime.rest.messages.LogInfo;
+import org.apache.flink.runtime.rest.messages.ThreadDumpInfo;
 import org.apache.flink.runtime.rest.messages.taskmanager.TaskManagerInfo;
-import org.apache.flink.runtime.rest.messages.taskmanager.ThreadDumpInfo;
 import org.apache.flink.runtime.rpc.FatalErrorHandler;
 import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
+import org.apache.flink.runtime.rpc.Local;
 import org.apache.flink.runtime.rpc.RpcService;
 import org.apache.flink.runtime.rpc.RpcServiceUtils;
+import org.apache.flink.runtime.security.token.DelegationTokenManager;
+import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
 import org.apache.flink.runtime.slots.ResourceRequirement;
 import org.apache.flink.runtime.slots.ResourceRequirements;
 import org.apache.flink.runtime.taskexecutor.FileType;
@@ -71,6 +77,7 @@ import org.apache.flink.runtime.taskexecutor.TaskExecutorHeartbeatPayload;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorRegistrationRejection;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorRegistrationSuccess;
 import org.apache.flink.runtime.taskexecutor.TaskExecutorThreadInfoGateway;
+import org.apache.flink.runtime.taskexecutor.partition.ClusterPartitionReport;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
 import org.apache.flink.util.concurrent.FutureUtils;
@@ -80,6 +87,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -91,6 +99,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
+import static org.apache.flink.util.Preconditions.checkState;
 
 /**
  * ResourceManager implementation. The resource manager is responsible for resource de-/allocation
@@ -99,8 +108,8 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * <p>It offers the following methods as part of its rpc interface to interact with him remotely:
  *
  * <ul>
- *   <li>{@link #registerJobManager(JobMasterId, ResourceID, String, JobID, Time)} registers a
- *       {@link JobMaster} at the resource manager
+ *   <li>{@link #registerJobMaster(JobMasterId, ResourceID, String, JobID, Time)} registers a {@link
+ *       JobMaster} at the resource manager
  * </ul>
  */
 public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
@@ -150,13 +159,19 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     /** The heartbeat manager with job managers. */
     private HeartbeatManager<Void, Void> jobManagerHeartbeatManager;
 
+    private final DelegationTokenManager delegationTokenManager;
+
+    protected final BlocklistHandler blocklistHandler;
+
     public ResourceManager(
             RpcService rpcService,
             UUID leaderSessionId,
             ResourceID resourceId,
             HeartbeatServices heartbeatServices,
+            DelegationTokenManager delegationTokenManager,
             SlotManager slotManager,
             ResourceManagerPartitionTrackerFactory clusterPartitionTrackerFactory,
+            BlocklistHandler.Factory blocklistHandlerFactory,
             JobLeaderIdService jobLeaderIdService,
             ClusterInformation clusterInformation,
             FatalErrorHandler fatalErrorHandler,
@@ -181,6 +196,12 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         this.jmResourceIdRegistrations = new HashMap<>(4);
         this.taskExecutors = new HashMap<>(8);
         this.taskExecutorGatewayFutures = new HashMap<>(8);
+        this.blocklistHandler =
+                blocklistHandlerFactory.create(
+                        new ResourceManagerBlocklistContext(),
+                        this::getNodeIdOfTaskManager,
+                        getMainThreadExecutor(),
+                        log);
 
         this.jobManagerHeartbeatManager = NoOpHeartbeatManager.getInstance();
         this.taskManagerHeartbeatManager = NoOpHeartbeatManager.getInstance();
@@ -205,6 +226,8 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         this.ioExecutor = ioExecutor;
 
         this.startedFuture = new CompletableFuture<>();
+
+        this.delegationTokenManager = delegationTokenManager;
     }
 
     // ------------------------------------------------------------------------
@@ -236,7 +259,12 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
             startHeartbeatServices();
 
             slotManager.start(
-                    getFencingToken(), getMainThreadExecutor(), new ResourceActionsImpl());
+                    getFencingToken(),
+                    getMainThreadExecutor(),
+                    new ResourceActionsImpl(),
+                    blocklistHandler::isBlockedTaskManager);
+
+            delegationTokenManager.start();
 
             initialize();
         } catch (Exception e) {
@@ -285,6 +313,12 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                     new ResourceManagerException("Error while shutting down resource manager", e);
         }
 
+        try {
+            delegationTokenManager.stop();
+        } catch (Exception e) {
+            exception = ExceptionUtils.firstOrSuppressed(e, exception);
+        }
+
         stopHeartbeatServices();
 
         try {
@@ -311,7 +345,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     // ------------------------------------------------------------------------
 
     @Override
-    public CompletableFuture<RegistrationResponse> registerJobManager(
+    public CompletableFuture<RegistrationResponse> registerJobMaster(
             final JobMasterId jobMasterId,
             final ResourceID jobManagerResourceId,
             final String jobManagerAddress,
@@ -492,7 +526,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 
     @Override
     public void disconnectTaskManager(final ResourceID resourceId, final Exception cause) {
-        closeTaskManagerConnection(resourceId, cause);
+        closeTaskManagerConnection(resourceId, cause).ifPresent(ResourceManager.this::stopWorker);
     }
 
     @Override
@@ -764,6 +798,22 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     }
 
     @Override
+    public CompletableFuture<Void> reportClusterPartitions(
+            ResourceID taskExecutorId, ClusterPartitionReport clusterPartitionReport) {
+        clusterPartitionTracker.processTaskExecutorClusterPartitionReport(
+                taskExecutorId, clusterPartitionReport);
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<List<ShuffleDescriptor>> getClusterPartitionsShuffleDescriptors(
+            IntermediateDataSetID intermediateDataSetID) {
+        return CompletableFuture.completedFuture(
+                clusterPartitionTracker.getClusterPartitionShuffleDescriptors(
+                        intermediateDataSetID));
+    }
+
+    @Override
     public CompletableFuture<Map<IntermediateDataSetID, DataSetMetaInfo>> listDataSets() {
         return CompletableFuture.completedFuture(clusterPartitionTracker.listDataSets());
     }
@@ -785,6 +835,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     }
 
     @Override
+    @Local // Bug; see FLINK-27954
     public CompletableFuture<TaskExecutorThreadInfoGateway> requestTaskExecutorThreadInfoGateway(
             ResourceID taskManagerId, Time timeout) {
 
@@ -798,9 +849,20 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         }
     }
 
+    @Override
+    public CompletableFuture<Acknowledge> notifyNewBlockedNodes(Collection<BlockedNode> newNodes) {
+        blocklistHandler.addNewBlockedNodes(newNodes);
+        return CompletableFuture.completedFuture(Acknowledge.get());
+    }
+
     // ------------------------------------------------------------------------
     //  Internal methods
     // ------------------------------------------------------------------------
+
+    private String getNodeIdOfTaskManager(ResourceID taskManagerId) {
+        checkState(taskExecutors.containsKey(taskManagerId));
+        return taskExecutors.get(taskManagerId).getNodeId();
+    }
 
     /**
      * Registers a new JobMaster.
@@ -838,6 +900,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                         new JobManagerRegistration(jobId, jobManagerResourceId, jobMasterGateway);
                 jobManagerRegistrations.put(jobId, jobManagerRegistration);
                 jmResourceIdRegistrations.put(jobManagerResourceId, jobManagerRegistration);
+                blocklistHandler.registerBlocklistListener(jobMasterGateway);
             }
         } else {
             // new registration for the job
@@ -845,6 +908,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                     new JobManagerRegistration(jobId, jobManagerResourceId, jobMasterGateway);
             jobManagerRegistrations.put(jobId, jobManagerRegistration);
             jmResourceIdRegistrations.put(jobManagerResourceId, jobManagerRegistration);
+            blocklistHandler.registerBlocklistListener(jobMasterGateway);
         }
 
         log.info(
@@ -854,7 +918,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                 jobId);
 
         jobManagerHeartbeatManager.monitorTarget(
-                jobManagerResourceId, new JobMasterHeartbeatTarget(jobMasterGateway));
+                jobManagerResourceId, new JobMasterHeartbeatSender(jobMasterGateway));
 
         return new JobMasterRegistrationSuccess(getFencingToken(), resourceId);
     }
@@ -907,7 +971,8 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                             taskExecutorRegistration.getHardwareDescription(),
                             taskExecutorRegistration.getMemoryConfiguration(),
                             taskExecutorRegistration.getTotalResourceProfile(),
-                            taskExecutorRegistration.getDefaultSlotResourceProfile());
+                            taskExecutorRegistration.getDefaultSlotResourceProfile(),
+                            taskExecutorRegistration.getNodeId());
 
             log.info(
                     "Registering TaskManager with ResourceID {} ({}) at ResourceManager",
@@ -916,7 +981,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
             taskExecutors.put(taskExecutorResourceId, registration);
 
             taskManagerHeartbeatManager.monitorTarget(
-                    taskExecutorResourceId, new TaskExecutorHeartbeatTarget(taskExecutorGateway));
+                    taskExecutorResourceId, new TaskExecutorHeartbeatSender(taskExecutorGateway));
 
             return new TaskExecutorRegistrationSuccess(
                     registration.getInstanceID(), resourceId, clusterInformation);
@@ -970,6 +1035,7 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
             jobManagerHeartbeatManager.unmonitorTarget(jobManagerResourceId);
 
             jmResourceIdRegistrations.remove(jobManagerResourceId);
+            blocklistHandler.deregisterBlocklistListener(jobMasterGateway);
 
             if (resourceRequirementHandling == ResourceRequirementHandling.CLEAR) {
                 slotManager.clearResourceRequirements(jobId);
@@ -988,8 +1054,10 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
      *
      * @param resourceID Id of the TaskManager that has failed.
      * @param cause The exception which cause the TaskManager failed.
+     * @return The {@link WorkerType} of the closed connection, or empty if already removed.
      */
-    protected void closeTaskManagerConnection(final ResourceID resourceID, final Exception cause) {
+    protected Optional<WorkerType> closeTaskManagerConnection(
+            final ResourceID resourceID, final Exception cause) {
         taskManagerHeartbeatManager.unmonitorTarget(resourceID);
 
         WorkerRegistration<WorkerType> workerRegistration = taskExecutors.remove(resourceID);
@@ -998,7 +1066,9 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
             log.info(
                     "Closing TaskExecutor connection {} because: {}",
                     resourceID.getStringWithMetadata(),
-                    cause.getMessage());
+                    cause.getMessage(),
+                    ExceptionUtils.returnExceptionIfUnexpected(cause.getCause()));
+            ExceptionUtils.logExceptionIfExcepted(cause.getCause(), log);
 
             // TODO :: suggest failed task executor to stop itself
             slotManager.unregisterTaskManager(workerRegistration.getInstanceID(), cause);
@@ -1011,6 +1081,8 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
                     resourceID.getStringWithMetadata(),
                     cause.getMessage());
         }
+
+        return Optional.ofNullable(workerRegistration).map(WorkerRegistration::getWorker);
     }
 
     protected void removeJob(JobID jobId, Exception cause) {
@@ -1193,17 +1265,11 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
     //  Static utility classes
     // ------------------------------------------------------------------------
 
-    private static final class JobMasterHeartbeatTarget implements HeartbeatTarget<Void> {
+    private static final class JobMasterHeartbeatSender extends HeartbeatSender<Void> {
         private final JobMasterGateway jobMasterGateway;
 
-        private JobMasterHeartbeatTarget(JobMasterGateway jobMasterGateway) {
+        private JobMasterHeartbeatSender(JobMasterGateway jobMasterGateway) {
             this.jobMasterGateway = jobMasterGateway;
-        }
-
-        @Override
-        public CompletableFuture<Void> receiveHeartbeat(ResourceID resourceID, Void payload) {
-            // the ResourceManager will always send heartbeat requests to the JobManager
-            return FutureUtils.unsupportedOperationFuture();
         }
 
         @Override
@@ -1212,18 +1278,11 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         }
     }
 
-    private static final class TaskExecutorHeartbeatTarget implements HeartbeatTarget<Void> {
+    private static final class TaskExecutorHeartbeatSender extends HeartbeatSender<Void> {
         private final TaskExecutorGateway taskExecutorGateway;
 
-        private TaskExecutorHeartbeatTarget(TaskExecutorGateway taskExecutorGateway) {
+        private TaskExecutorHeartbeatSender(TaskExecutorGateway taskExecutorGateway) {
             this.taskExecutorGateway = taskExecutorGateway;
-        }
-
-        @Override
-        public CompletableFuture<Void> receiveHeartbeat(ResourceID resourceID, Void payload) {
-            // the ResourceManager will always send heartbeat requests to the
-            // TaskManager
-            return FutureUtils.unsupportedOperationFuture();
         }
 
         @Override
@@ -1325,7 +1384,8 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
 
         private void handleTaskManagerConnectionLoss(ResourceID resourceID, Exception cause) {
             validateRunsInMainThread();
-            closeTaskManagerConnection(resourceID, cause);
+            closeTaskManagerConnection(resourceID, cause)
+                    .ifPresent(ResourceManager.this::stopWorker);
         }
 
         @Override
@@ -1414,13 +1474,21 @@ public abstract class ResourceManager<WorkerType extends ResourceIDRetrievable>
         }
     }
 
+    private class ResourceManagerBlocklistContext implements BlocklistContext {
+        @Override
+        public void blockResources(Collection<BlockedNode> blockedNodes) {}
+
+        @Override
+        public void unblockResources(Collection<BlockedNode> unBlockedNodes) {
+            // when a node is unblocked, we should trigger the resource requirements because the
+            // slots on this node become available again.
+            slotManager.triggerResourceRequirementsCheck();
+        }
+    }
+
     // ------------------------------------------------------------------------
     //  Resource Management
     // ------------------------------------------------------------------------
-
-    protected int getNumberRequiredTaskManagers() {
-        return getRequiredResources().values().stream().reduce(0, Integer::sum);
-    }
 
     protected Map<WorkerResourceSpec, Integer> getRequiredResources() {
         return slotManager.getRequiredResources();

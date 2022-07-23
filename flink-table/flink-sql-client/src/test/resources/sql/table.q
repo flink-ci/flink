@@ -89,6 +89,193 @@ CREATE TABLE `default_catalog`.`default_database`.`orders` (
 
 !ok
 
+# test SHOW COLUMNS
+show columns from orders;
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    name |                        type |  null |       key |        extras |                  watermark |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    user |                      BIGINT | FALSE | PRI(user) |               |                            |
+| product |                 VARCHAR(32) |  TRUE |           |               |                            |
+|  amount |                         INT |  TRUE |           |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |           |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |           | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+5 rows in set
+!ok
+
+show columns in orders;
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    name |                        type |  null |       key |        extras |                  watermark |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    user |                      BIGINT | FALSE | PRI(user) |               |                            |
+| product |                 VARCHAR(32) |  TRUE |           |               |                            |
+|  amount |                         INT |  TRUE |           |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |           |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |           | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+5 rows in set
+!ok
+
+show columns from orders like '%u';
+Empty set
+!ok
+
+show columns in orders like '%u';
+Empty set
+!ok
+
+show columns from orders not like '%u';
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    name |                        type |  null |       key |        extras |                  watermark |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    user |                      BIGINT | FALSE | PRI(user) |               |                            |
+| product |                 VARCHAR(32) |  TRUE |           |               |                            |
+|  amount |                         INT |  TRUE |           |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |           |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |           | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+5 rows in set
+!ok
+
+show columns in orders not like '%u';
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    name |                        type |  null |       key |        extras |                  watermark |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+|    user |                      BIGINT | FALSE | PRI(user) |               |                            |
+| product |                 VARCHAR(32) |  TRUE |           |               |                            |
+|  amount |                         INT |  TRUE |           |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |           |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |           | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----------+---------------+----------------------------+
+5 rows in set
+!ok
+
+show columns from orders like '%r';
++------+--------+-------+-----------+--------+-----------+
+| name |   type |  null |       key | extras | watermark |
++------+--------+-------+-----------+--------+-----------+
+| user | BIGINT | FALSE | PRI(user) |        |           |
++------+--------+-------+-----------+--------+-----------+
+1 row in set
+!ok
+
+show columns in orders like '%r';
++------+--------+-------+-----------+--------+-----------+
+| name |   type |  null |       key | extras | watermark |
++------+--------+-------+-----------+--------+-----------+
+| user | BIGINT | FALSE | PRI(user) |        |           |
++------+--------+-------+-----------+--------+-----------+
+1 row in set
+!ok
+
+show columns from orders not like  '%r';
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+|    name |                        type |  null | key |        extras |                  watermark |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+| product |                 VARCHAR(32) |  TRUE |     |               |                            |
+|  amount |                         INT |  TRUE |     |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |     |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |     | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+4 rows in set
+!ok
+
+show columns in orders not like  '%r';
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+|    name |                        type |  null | key |        extras |                  watermark |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+| product |                 VARCHAR(32) |  TRUE |     |               |                            |
+|  amount |                         INT |  TRUE |     |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |     |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |     | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+4 rows in set
+!ok
+
+show columns from orders like '%u%';
++---------+-------------+-------+-----------+--------+-----------+
+|    name |        type |  null |       key | extras | watermark |
++---------+-------------+-------+-----------+--------+-----------+
+|    user |      BIGINT | FALSE | PRI(user) |        |           |
+| product | VARCHAR(32) |  TRUE |           |        |           |
+|  amount |         INT |  TRUE |           |        |           |
++---------+-------------+-------+-----------+--------+-----------+
+3 rows in set
+!ok
+
+show columns in orders like '%u%';
++---------+-------------+-------+-----------+--------+-----------+
+|    name |        type |  null |       key | extras | watermark |
++---------+-------------+-------+-----------+--------+-----------+
+|    user |      BIGINT | FALSE | PRI(user) |        |           |
+| product | VARCHAR(32) |  TRUE |           |        |           |
+|  amount |         INT |  TRUE |           |        |           |
++---------+-------------+-------+-----------+--------+-----------+
+3 rows in set
+!ok
+
+show columns from orders not like '%u%';
++-------+-----------------------------+-------+-----+---------------+----------------------------+
+|  name |                        type |  null | key |        extras |                  watermark |
++-------+-----------------------------+-------+-----+---------------+----------------------------+
+|    ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |     |               | `ts` - INTERVAL '1' SECOND |
+| ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |     | AS PROCTIME() |                            |
++-------+-----------------------------+-------+-----+---------------+----------------------------+
+2 rows in set
+!ok
+
+show columns in orders not like '%u%';
++-------+-----------------------------+-------+-----+---------------+----------------------------+
+|  name |                        type |  null | key |        extras |                  watermark |
++-------+-----------------------------+-------+-----+---------------+----------------------------+
+|    ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |     |               | `ts` - INTERVAL '1' SECOND |
+| ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |     | AS PROCTIME() |                            |
++-------+-----------------------------+-------+-----+---------------+----------------------------+
+2 rows in set
+!ok
+
+show columns from orders like 'use_';
++------+--------+-------+-----------+--------+-----------+
+| name |   type |  null |       key | extras | watermark |
++------+--------+-------+-----------+--------+-----------+
+| user | BIGINT | FALSE | PRI(user) |        |           |
++------+--------+-------+-----------+--------+-----------+
+1 row in set
+!ok
+
+show columns in orders like 'use_';
++------+--------+-------+-----------+--------+-----------+
+| name |   type |  null |       key | extras | watermark |
++------+--------+-------+-----------+--------+-----------+
+| user | BIGINT | FALSE | PRI(user) |        |           |
++------+--------+-------+-----------+--------+-----------+
+1 row in set
+!ok
+
+show columns from orders not like 'use_';
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+|    name |                        type |  null | key |        extras |                  watermark |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+| product |                 VARCHAR(32) |  TRUE |     |               |                            |
+|  amount |                         INT |  TRUE |     |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |     |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |     | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+4 rows in set
+!ok
+
+show columns in orders not like 'use_';
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+|    name |                        type |  null | key |        extras |                  watermark |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+| product |                 VARCHAR(32) |  TRUE |     |               |                            |
+|  amount |                         INT |  TRUE |     |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |     |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |     | AS PROCTIME() |                            |
++---------+-----------------------------+-------+-----+---------------+----------------------------+
+4 rows in set
+!ok
+
 # ==========================================================================
 # test alter table rename
 # ==========================================================================
@@ -145,6 +332,12 @@ CREATE TABLE `default_catalog`.`default_database`.`orders2` (
 
 !ok
 
+# test SHOW CREATE VIEW for tables
+show create view orders2;
+[ERROR] Could not execute SQL statement. Reason:
+org.apache.flink.table.api.TableException: SHOW CREATE VIEW is only supported for views, but `default_catalog`.`default_database`.`orders2` is a table. Please use SHOW CREATE TABLE instead.
+!error
+
 # test explain plan to verify the table source cannot be created
 explain plan for select * from orders2;
 [ERROR] Could not execute SQL statement. Reason:
@@ -163,6 +356,7 @@ fields.amount.min
 fields.product.kind
 fields.product.length
 fields.ts.kind
+fields.ts.max-past
 fields.user.kind
 fields.user.max
 fields.user.min
@@ -209,11 +403,11 @@ describe orders2;
 +---------+-----------------------------+-------+-----------+---------------+----------------------------+
 |    name |                        type |  null |       key |        extras |                  watermark |
 +---------+-----------------------------+-------+-----------+---------------+----------------------------+
-|    user |                      BIGINT | false | PRI(user) |               |                            |
-| product |                 VARCHAR(32) |  true |           |               |                            |
-|  amount |                         INT |  true |           |               |                            |
-|      ts |      TIMESTAMP(3) *ROWTIME* |  true |           |               | `ts` - INTERVAL '1' SECOND |
-|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | false |           | AS PROCTIME() |                            |
+|    user |                      BIGINT | FALSE | PRI(user) |               |                            |
+| product |                 VARCHAR(32) |  TRUE |           |               |                            |
+|  amount |                         INT |  TRUE |           |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |           |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |           | AS PROCTIME() |                            |
 +---------+-----------------------------+-------+-----------+---------------+----------------------------+
 5 rows in set
 !ok
@@ -223,11 +417,11 @@ desc orders2;
 +---------+-----------------------------+-------+-----------+---------------+----------------------------+
 |    name |                        type |  null |       key |        extras |                  watermark |
 +---------+-----------------------------+-------+-----------+---------------+----------------------------+
-|    user |                      BIGINT | false | PRI(user) |               |                            |
-| product |                 VARCHAR(32) |  true |           |               |                            |
-|  amount |                         INT |  true |           |               |                            |
-|      ts |      TIMESTAMP(3) *ROWTIME* |  true |           |               | `ts` - INTERVAL '1' SECOND |
-|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | false |           | AS PROCTIME() |                            |
+|    user |                      BIGINT | FALSE | PRI(user) |               |                            |
+| product |                 VARCHAR(32) |  TRUE |           |               |                            |
+|  amount |                         INT |  TRUE |           |               |                            |
+|      ts |      TIMESTAMP(3) *ROWTIME* |  TRUE |           |               | `ts` - INTERVAL '1' SECOND |
+|   ptime | TIMESTAMP_LTZ(3) *PROCTIME* | FALSE |           | AS PROCTIME() |                            |
 +---------+-----------------------------+-------+-----------+---------------+----------------------------+
 5 rows in set
 !ok
@@ -300,7 +494,7 @@ drop temporary table tbl1;
 # test playing with keyword identifiers
 # ==========================================================================
 
-create table `mod` (`table` string, `database` string);
+create table `mod` (`table` string, `database` string) with ('connector' = 'values');
 [INFO] Execute statement succeed.
 !info
 
@@ -308,8 +502,8 @@ describe `mod`;
 +----------+--------+------+-----+--------+-----------+
 |     name |   type | null | key | extras | watermark |
 +----------+--------+------+-----+--------+-----------+
-|    table | STRING | true |     |        |           |
-| database | STRING | true |     |        |           |
+|    table | STRING | TRUE |     |        |           |
+| database | STRING | TRUE |     |        |           |
 +----------+--------+------+-----+--------+-----------+
 2 rows in set
 !ok
@@ -318,8 +512,8 @@ desc `mod`;
 +----------+--------+------+-----+--------+-----------+
 |     name |   type | null | key | extras | watermark |
 +----------+--------+------+-----+--------+-----------+
-|    table | STRING | true |     |        |           |
-| database | STRING | true |     |        |           |
+|    table | STRING | TRUE |     |        |           |
+| database | STRING | TRUE |     |        |           |
 +----------+--------+------+-----+--------+-----------+
 2 rows in set
 !ok
@@ -358,6 +552,20 @@ CREATE TABLE IF NOT EXISTS orders2 (
  PRIMARY KEY(`user`) NOT ENFORCED
 ) with (
  'connector' = 'blackhole'
+);
+[INFO] Execute statement succeed.
+!info
+
+CREATE TABLE IF NOT EXISTS daily_orders (
+ `user` BIGINT NOT NULl,
+ product STRING,
+ amount INT,
+ dt STRING NOT NULL,
+ PRIMARY KEY(dt, `user`) NOT ENFORCED
+) PARTITIONED BY (dt) WITH (
+ 'connector' = 'filesystem',
+ 'path' = '$VAR_BATCH_PATH',
+ 'format' = 'csv'
 );
 [INFO] Execute statement succeed.
 !info
@@ -402,6 +610,45 @@ Sink(table=[default_catalog.default_database.orders2], fields=[user, product, am
 Sink(table=[default_catalog.default_database.orders2], fields=[user, product, amount, ts])
 +- WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])
    +- TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])
+
+!ok
+
+# test explain plan for insert into with static partition
+explain plan for insert into daily_orders partition (dt = '2022-06-12') values (123, 'toothpick', 1);
+== Abstract Syntax Tree ==
+LogicalSink(table=[default_catalog.default_database.daily_orders], fields=[user, product, amount, dt])
++- LogicalProject(user=[123:BIGINT], product=[_UTF-16LE'toothpick':VARCHAR(2147483647) CHARACTER SET "UTF-16LE"], amount=[1], dt=[_UTF-16LE'2022-06-12':VARCHAR(2147483647) CHARACTER SET "UTF-16LE"])
+   +- LogicalValues(tuples=[[{ 0 }]])
+
+== Optimized Physical Plan ==
+Sink(table=[default_catalog.default_database.daily_orders], fields=[user, product, amount, dt])
++- Calc(select=[123:BIGINT AS user, _UTF-16LE'toothpick':VARCHAR(2147483647) CHARACTER SET "UTF-16LE" AS product, 1 AS amount, _UTF-16LE'2022-06-12':VARCHAR(2147483647) CHARACTER SET "UTF-16LE" AS dt])
+   +- Values(type=[RecordType(INTEGER ZERO)], tuples=[[{ 0 }]])
+
+== Optimized Execution Plan ==
+Sink(table=[default_catalog.default_database.daily_orders], fields=[user, product, amount, dt])
++- Calc(select=[123 AS user, 'toothpick' AS product, 1 AS amount, '2022-06-12' AS dt])
+   +- Values(tuples=[[{ 0 }]])
+
+!ok
+
+# test explain plan for insert overwrite with static partition
+explain plan for insert into daily_orders partition (dt = '2022-06-12') select `user`, product, amount from daily_orders where dt = '2022-06-12';
+== Abstract Syntax Tree ==
+LogicalSink(table=[default_catalog.default_database.daily_orders], fields=[user, product, amount, EXPR$3])
++- LogicalProject(user=[$0], product=[$1], amount=[$2], EXPR$3=[_UTF-16LE'2022-06-12':VARCHAR(2147483647) CHARACTER SET "UTF-16LE"])
+   +- LogicalFilter(condition=[=($3, _UTF-16LE'2022-06-12')])
+      +- LogicalTableScan(table=[[default_catalog, default_database, daily_orders]])
+
+== Optimized Physical Plan ==
+Sink(table=[default_catalog.default_database.daily_orders], fields=[user, product, amount, EXPR$3])
++- Calc(select=[user, product, amount, _UTF-16LE'2022-06-12':VARCHAR(2147483647) CHARACTER SET "UTF-16LE" AS EXPR$3])
+   +- TableSourceScan(table=[[default_catalog, default_database, daily_orders, partitions=[], project=[user, product, amount], metadata=[]]], fields=[user, product, amount])
+
+== Optimized Execution Plan ==
+Sink(table=[default_catalog.default_database.daily_orders], fields=[user, product, amount, EXPR$3])
++- Calc(select=[user, product, amount, '2022-06-12' AS EXPR$3])
+   +- TableSourceScan(table=[[default_catalog, default_database, daily_orders, partitions=[], project=[user, product, amount], metadata=[]]], fields=[user, product, amount])
 
 !ok
 
@@ -471,15 +718,15 @@ Sink(table=[default_catalog.default_database.orders2], fields=[user, product, am
 {
   "nodes" : [ {
     "id" : ,
-    "type" : "Source: TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
+    "type" : "Source: orders[]",
     "pact" : "Data Source",
-    "contents" : "Source: TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
+    "contents" : "[]:TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
     "parallelism" : 1
   }, {
     "id" : ,
-    "type" : "WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
+    "type" : "WatermarkAssigner[]",
     "pact" : "Operator",
-    "contents" : "WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
+    "contents" : "[]:WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -488,9 +735,9 @@ Sink(table=[default_catalog.default_database.orders2], fields=[user, product, am
     } ]
   }, {
     "id" : ,
-    "type" : "NotNullEnforcer(fields=[user])",
+    "type" : "ConstraintEnforcer[]",
     "pact" : "Operator",
-    "contents" : "NotNullEnforcer(fields=[user])",
+    "contents" : "[]:ConstraintEnforcer[NotNullEnforcer(fields=[user])]",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -499,9 +746,9 @@ Sink(table=[default_catalog.default_database.orders2], fields=[user, product, am
     } ]
   }, {
     "id" : ,
-    "type" : "Sink: Sink(table=[default_catalog.default_database.orders2], fields=[user, product, amount, ts])",
+    "type" : "Sink: orders2[]",
     "pact" : "Data Sink",
-    "contents" : "Sink: Sink(table=[default_catalog.default_database.orders2], fields=[user, product, amount, ts])",
+    "contents" : "[]:Sink(table=[default_catalog.default_database.orders2], fields=[user, product, amount, ts])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -536,15 +783,15 @@ Calc(select=[user, product])
 {
   "nodes" : [ {
     "id" : ,
-    "type" : "Source: TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
+    "type" : "Source: orders[]",
     "pact" : "Data Source",
-    "contents" : "Source: TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
+    "contents" : "[]:TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
     "parallelism" : 1
   }, {
     "id" : ,
-    "type" : "Calc(select=[user, product, ts])",
+    "type" : "Calc[]",
     "pact" : "Operator",
-    "contents" : "Calc(select=[user, product, ts])",
+    "contents" : "[]:Calc(select=[user, product, ts])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -553,9 +800,9 @@ Calc(select=[user, product])
     } ]
   }, {
     "id" : ,
-    "type" : "WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
+    "type" : "WatermarkAssigner[]",
     "pact" : "Operator",
-    "contents" : "WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
+    "contents" : "[]:WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -564,9 +811,9 @@ Calc(select=[user, product])
     } ]
   }, {
     "id" : ,
-    "type" : "Calc(select=[user, product])",
+    "type" : "Calc[]",
     "pact" : "Operator",
-    "contents" : "Calc(select=[user, product])",
+    "contents" : "[]:Calc(select=[user, product])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -645,15 +892,15 @@ Calc(select=[user, product])
 {
   "nodes" : [ {
     "id" : ,
-    "type" : "Source: TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
+    "type" : "Source: orders[]",
     "pact" : "Data Source",
-    "contents" : "Source: TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
+    "contents" : "[]:TableSourceScan(table=[[default_catalog, default_database, orders]], fields=[user, product, amount, ts])",
     "parallelism" : 1
   }, {
     "id" : ,
-    "type" : "Calc(select=[user, product, ts])",
+    "type" : "Calc[]",
     "pact" : "Operator",
-    "contents" : "Calc(select=[user, product, ts])",
+    "contents" : "[]:Calc(select=[user, product, ts])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -662,9 +909,9 @@ Calc(select=[user, product])
     } ]
   }, {
     "id" : ,
-    "type" : "WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
+    "type" : "WatermarkAssigner[]",
     "pact" : "Operator",
-    "contents" : "WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
+    "contents" : "[]:WatermarkAssigner(rowtime=[ts], watermark=[(ts - 1000:INTERVAL SECOND)])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,
@@ -673,9 +920,9 @@ Calc(select=[user, product])
     } ]
   }, {
     "id" : ,
-    "type" : "Calc(select=[user, product])",
+    "type" : "Calc[]",
     "pact" : "Operator",
-    "contents" : "Calc(select=[user, product])",
+    "contents" : "[]:Calc(select=[user, product])",
     "parallelism" : 1,
     "predecessors" : [ {
       "id" : ,

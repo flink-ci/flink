@@ -61,6 +61,9 @@ public final class SpecificTypeStrategies {
     /** See {@link DecimalPlusTypeStrategy}. */
     public static final TypeStrategy DECIMAL_PLUS = new DecimalPlusTypeStrategy();
 
+    /** See {@link AggDecimalPlusTypeStrategy}. */
+    public static final TypeStrategy AGG_DECIMAL_PLUS = new AggDecimalPlusTypeStrategy();
+
     /** See {@link DecimalScale0TypeStrategy}. */
     public static final TypeStrategy DECIMAL_SCALE_0 = new DecimalScale0TypeStrategy();
 
@@ -72,6 +75,13 @@ public final class SpecificTypeStrategies {
 
     /** See {@link CurrentWatermarkTypeStrategy}. */
     public static final TypeStrategy CURRENT_WATERMARK = new CurrentWatermarkTypeStrategy();
+
+    /** See {@link InternalReplicateRowsTypeStrategy}. */
+    public static final TypeStrategy INTERNAL_REPLICATE_ROWS =
+            new InternalReplicateRowsTypeStrategy();
+
+    /** See {@link ToTimestampLtzTypeStrategy}. */
+    public static final TypeStrategy TO_TIMESTAMP_LTZ = new ToTimestampLtzTypeStrategy();
 
     private SpecificTypeStrategies() {
         // no instantiation

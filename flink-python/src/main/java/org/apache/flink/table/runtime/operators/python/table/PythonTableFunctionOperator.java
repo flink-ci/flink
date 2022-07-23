@@ -20,11 +20,10 @@ package org.apache.flink.table.runtime.operators.python.table;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.streaming.api.utils.ProtoUtils;
-import org.apache.flink.table.api.TableConfig;
 import org.apache.flink.table.data.GenericRowData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.binary.BinaryRowData;
@@ -32,8 +31,6 @@ import org.apache.flink.table.data.utils.JoinedRowData;
 import org.apache.flink.table.functions.TableFunction;
 import org.apache.flink.table.functions.python.PythonEnv;
 import org.apache.flink.table.functions.python.PythonFunctionInfo;
-import org.apache.flink.table.planner.codegen.CodeGeneratorContext;
-import org.apache.flink.table.planner.codegen.ProjectionCodeGenerator;
 import org.apache.flink.table.runtime.generated.GeneratedProjection;
 import org.apache.flink.table.runtime.generated.Projection;
 import org.apache.flink.table.runtime.operators.join.FlinkJoinType;
@@ -44,9 +41,8 @@ import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.util.Preconditions;
 
-import java.util.ArrayList;
-import java.util.List;
-
+import static org.apache.flink.python.PythonOptions.PYTHON_METRIC_ENABLED;
+import static org.apache.flink.python.PythonOptions.PYTHON_PROFILE_ENABLED;
 import static org.apache.flink.streaming.api.utils.ProtoUtils.createFlattenRowTypeCoderInfoDescriptorProto;
 import static org.apache.flink.streaming.api.utils.ProtoUtils.createRowTypeCoderInfoDescriptorProto;
 
@@ -63,7 +59,9 @@ public class PythonTableFunctionOperator
     private final PythonFunctionInfo tableFunction;
 
     /** The correlate join type. */
-    protected final FlinkJoinType joinType;
+    private final FlinkJoinType joinType;
+
+    private final GeneratedProjection udtfInputGeneratedProjection;
 
     /** The collector used to collect records. */
     private transient StreamRecordRowDataWrappingCollector rowDataWrapper;
@@ -83,19 +81,31 @@ public class PythonTableFunctionOperator
     /** The type serializer for the forwarded fields. */
     private transient RowDataSerializer forwardedInputSerializer;
 
+    /** The current input element which has not been received all python udtf results. */
+    private transient RowData input;
+
+    /** Whether the current input element has joined parts of python udtf results. */
+    private transient boolean hasJoined;
+
+    /** Whether the current received data is the finished result of the current input element. */
+    private transient boolean isFinishResult;
+
     public PythonTableFunctionOperator(
             Configuration config,
             PythonFunctionInfo tableFunction,
             RowType inputType,
-            RowType outputType,
-            int[] udtfInputOffsets,
-            FlinkJoinType joinType) {
-        super(config, inputType, outputType, udtfInputOffsets);
+            RowType udfInputType,
+            RowType udfOutputType,
+            FlinkJoinType joinType,
+            GeneratedProjection udtfInputGeneratedProjection) {
+        super(config, inputType, udfInputType, udfOutputType);
         this.tableFunction = Preconditions.checkNotNull(tableFunction);
         Preconditions.checkArgument(
                 joinType == FlinkJoinType.INNER || joinType == FlinkJoinType.LEFT,
                 "The join type should be inner join or left join");
         this.joinType = joinType;
+        this.udtfInputGeneratedProjection =
+                Preconditions.checkNotNull(udtfInputGeneratedProjection);
     }
 
     @Override
@@ -105,12 +115,15 @@ public class PythonTableFunctionOperator
         rowDataWrapper = new StreamRecordRowDataWrappingCollector(output);
         reuseJoinedRow = new JoinedRowData();
 
-        udtfInputProjection = createUdtfInputProjection();
+        udtfInputProjection =
+                udtfInputGeneratedProjection.newInstance(
+                        Thread.currentThread().getContextClassLoader());
         forwardedInputSerializer = new RowDataSerializer(inputType);
-        udtfInputTypeSerializer =
-                PythonTypeUtils.toInternalSerializer(userDefinedFunctionInputType);
-        udtfOutputTypeSerializer =
-                PythonTypeUtils.toInternalSerializer(userDefinedFunctionOutputType);
+        udtfInputTypeSerializer = PythonTypeUtils.toInternalSerializer(udfInputType);
+        udtfOutputTypeSerializer = PythonTypeUtils.toInternalSerializer(udfOutputType);
+        input = null;
+        hasJoined = false;
+        isFinishResult = true;
     }
 
     @Override
@@ -121,16 +134,6 @@ public class PythonTableFunctionOperator
     @Override
     public String getFunctionUrn() {
         return TABLE_FUNCTION_URN;
-    }
-
-    @Override
-    public RowType createUserDefinedFunctionOutputType() {
-        List<RowType.RowField> udtfOutputDataFields =
-                new ArrayList<>(
-                        outputType
-                                .getFields()
-                                .subList(inputType.getFieldCount(), outputType.getFieldCount()));
-        return new RowType(udtfOutputDataFields);
     }
 
     @Override
@@ -156,8 +159,8 @@ public class PythonTableFunctionOperator
         FlinkFnApi.UserDefinedFunctions.Builder builder =
                 FlinkFnApi.UserDefinedFunctions.newBuilder();
         builder.addUdfs(ProtoUtils.getUserDefinedFunctionProto(tableFunction));
-        builder.setMetricEnabled(getPythonConfig().isMetricEnabled());
-        builder.setProfileEnabled(getPythonConfig().isProfileEnabled());
+        builder.setMetricEnabled(config.get(PYTHON_METRIC_ENABLED));
+        builder.setProfileEnabled(config.get(PYTHON_PROFILE_ENABLED));
         return builder.build();
     }
 
@@ -183,15 +186,16 @@ public class PythonTableFunctionOperator
 
     @Override
     @SuppressWarnings("ConstantConditions")
-    public void emitResult(Tuple2<byte[], Integer> resultTuple) throws Exception {
-        RowData input = forwardedInputQueue.poll();
+    public void emitResult(Tuple3<String, byte[], Integer> resultTuple) throws Exception {
         byte[] rawUdtfResult;
         int length;
-        boolean isFinishResult;
-        boolean hasJoined = false;
+        if (isFinishResult) {
+            input = forwardedInputQueue.poll();
+            hasJoined = false;
+        }
         do {
-            rawUdtfResult = resultTuple.f0;
-            length = resultTuple.f1;
+            rawUdtfResult = resultTuple.f1;
+            length = resultTuple.f2;
             isFinishResult = isFinishResult(rawUdtfResult, length);
             if (!isFinishResult) {
                 reuseJoinedRow.setRowKind(input.getRowKind());
@@ -201,30 +205,17 @@ public class PythonTableFunctionOperator
                 resultTuple = pythonFunctionRunner.pollResult();
                 hasJoined = true;
             } else if (joinType == FlinkJoinType.LEFT && !hasJoined) {
-                GenericRowData udtfResult =
-                        new GenericRowData(userDefinedFunctionOutputType.getFieldCount());
+                GenericRowData udtfResult = new GenericRowData(udfOutputType.getFieldCount());
                 for (int i = 0; i < udtfResult.getArity(); i++) {
                     udtfResult.setField(i, null);
                 }
                 rowDataWrapper.collect(reuseJoinedRow.replace(input, udtfResult));
             }
-        } while (!isFinishResult);
+        } while (!isFinishResult && resultTuple != null);
     }
 
     /** The received udtf execution result is a finish message when it is a byte with value 0x00. */
     private boolean isFinishResult(byte[] rawUdtfResult, int length) {
         return length == 1 && rawUdtfResult[0] == 0x00;
-    }
-
-    private Projection<RowData, BinaryRowData> createUdtfInputProjection() {
-        final GeneratedProjection generatedProjection =
-                ProjectionCodeGenerator.generateProjection(
-                        CodeGeneratorContext.apply(new TableConfig()),
-                        "UdtfInputProjection",
-                        inputType,
-                        userDefinedFunctionInputType,
-                        userDefinedFunctionInputOffsets);
-        // noinspection unchecked
-        return generatedProjection.newInstance(Thread.currentThread().getContextClassLoader());
     }
 }

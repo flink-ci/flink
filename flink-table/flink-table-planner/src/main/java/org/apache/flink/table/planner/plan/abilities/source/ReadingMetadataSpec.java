@@ -31,6 +31,7 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonTyp
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -41,7 +42,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * SupportsReadingMetadata}.
  */
 @JsonTypeName("ReadingMetadata")
-public class ReadingMetadataSpec extends SourceAbilitySpecBase {
+public final class ReadingMetadataSpec extends SourceAbilitySpecBase {
     public static final String FIELD_NAME_METADATA_KEYS = "metadataKeys";
 
     @JsonProperty(FIELD_NAME_METADATA_KEYS)
@@ -53,6 +54,10 @@ public class ReadingMetadataSpec extends SourceAbilitySpecBase {
             @JsonProperty(FIELD_NAME_PRODUCED_TYPE) RowType producedType) {
         super(producedType);
         this.metadataKeys = new ArrayList<>(checkNotNull(metadataKeys));
+    }
+
+    public List<String> getMetadataKeys() {
+        return metadataKeys;
     }
 
     @Override
@@ -69,5 +74,30 @@ public class ReadingMetadataSpec extends SourceAbilitySpecBase {
                             "%s does not support SupportsReadingMetadata.",
                             tableSource.getClass().getName()));
         }
+    }
+
+    @Override
+    public String getDigests(SourceAbilityContext context) {
+        return String.format("metadata=[%s]", String.join(", ", this.metadataKeys));
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
+        ReadingMetadataSpec that = (ReadingMetadataSpec) o;
+        return Objects.equals(metadataKeys, that.metadataKeys);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), metadataKeys);
     }
 }

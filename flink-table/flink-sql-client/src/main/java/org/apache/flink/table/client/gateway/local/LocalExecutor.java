@@ -21,8 +21,8 @@ package org.apache.flink.table.client.gateway.local;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.TableEnvironment;
-import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.internal.TableEnvironmentInternal;
+import org.apache.flink.table.api.internal.TableResultInternal;
 import org.apache.flink.table.client.gateway.Executor;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
@@ -33,11 +33,11 @@ import org.apache.flink.table.client.gateway.context.SessionContext;
 import org.apache.flink.table.client.gateway.local.result.ChangelogResult;
 import org.apache.flink.table.client.gateway.local.result.DynamicResult;
 import org.apache.flink.table.client.gateway.local.result.MaterializedResult;
+import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.delegation.Parser;
 import org.apache.flink.table.operations.ModifyOperation;
 import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.QueryOperation;
-import org.apache.flink.types.Row;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -169,9 +169,9 @@ public class LocalExecutor implements Executor {
 
         List<Operation> operations;
         try {
-            operations = context.wrapClassLoader(() -> parser.parse(statement));
-        } catch (Exception e) {
-            throw new SqlExecutionException("Failed to parse statement: " + statement, e);
+            operations = parser.parse(statement);
+        } catch (Throwable t) {
+            throw new SqlExecutionException("Failed to parse statement: " + statement, t);
         }
         if (operations.isEmpty()) {
             throw new SqlExecutionException("Failed to parse statement: " + statement);
@@ -186,10 +186,7 @@ public class LocalExecutor implements Executor {
                 (TableEnvironmentInternal) context.getTableEnvironment();
 
         try {
-            return context.wrapClassLoader(
-                    () ->
-                            Arrays.asList(
-                                    tableEnv.getParser().getCompletionHints(statement, position)));
+            return Arrays.asList(tableEnv.getParser().getCompletionHints(statement, position));
         } catch (Throwable t) {
             // catch everything such that the query does not crash the executor
             if (LOG.isDebugEnabled()) {
@@ -200,35 +197,35 @@ public class LocalExecutor implements Executor {
     }
 
     @Override
-    public TableResult executeOperation(String sessionId, Operation operation)
+    public TableResultInternal executeOperation(String sessionId, Operation operation)
             throws SqlExecutionException {
         final ExecutionContext context = getExecutionContext(sessionId);
         final TableEnvironmentInternal tEnv =
                 (TableEnvironmentInternal) context.getTableEnvironment();
         try {
-            return context.wrapClassLoader(() -> tEnv.executeInternal(operation));
-        } catch (Exception e) {
-            throw new SqlExecutionException(MESSAGE_SQL_EXECUTION_ERROR, e);
+            return tEnv.executeInternal(operation);
+        } catch (Throwable t) {
+            throw new SqlExecutionException(MESSAGE_SQL_EXECUTION_ERROR, t);
         }
     }
 
     @Override
-    public TableResult executeModifyOperations(String sessionId, List<ModifyOperation> operations)
-            throws SqlExecutionException {
+    public TableResultInternal executeModifyOperations(
+            String sessionId, List<ModifyOperation> operations) throws SqlExecutionException {
         final ExecutionContext context = getExecutionContext(sessionId);
         final TableEnvironmentInternal tEnv =
                 (TableEnvironmentInternal) context.getTableEnvironment();
         try {
-            return context.wrapClassLoader(() -> tEnv.executeInternal(operations));
-        } catch (Exception e) {
-            throw new SqlExecutionException(MESSAGE_SQL_EXECUTION_ERROR, e);
+            return tEnv.executeInternal(operations);
+        } catch (Throwable t) {
+            throw new SqlExecutionException(MESSAGE_SQL_EXECUTION_ERROR, t);
         }
     }
 
     @Override
     public ResultDescriptor executeQuery(String sessionId, QueryOperation query)
             throws SqlExecutionException {
-        final TableResult tableResult = executeOperation(sessionId, query);
+        final TableResultInternal tableResult = executeOperation(sessionId, query);
         final SessionContext context = getSessionContext(sessionId);
         final ReadableConfig config = context.getReadableConfig();
         final DynamicResult result = resultStore.createResult(config, tableResult);
@@ -237,11 +234,15 @@ public class LocalExecutor implements Executor {
         // store the result under the JobID
         resultStore.storeResult(jobId, result);
         return new ResultDescriptor(
-                jobId, tableResult.getResolvedSchema(), result.isMaterialized(), config);
+                jobId,
+                tableResult.getResolvedSchema(),
+                result.isMaterialized(),
+                config,
+                tableResult.getRowDataToStringConverter());
     }
 
     @Override
-    public TypedResult<List<Row>> retrieveResultChanges(String sessionId, String resultId)
+    public TypedResult<List<RowData>> retrieveResultChanges(String sessionId, String resultId)
             throws SqlExecutionException {
         final DynamicResult result = resultStore.getResult(resultId);
         if (result == null) {
@@ -269,7 +270,8 @@ public class LocalExecutor implements Executor {
     }
 
     @Override
-    public List<Row> retrieveResultPage(String resultId, int page) throws SqlExecutionException {
+    public List<RowData> retrieveResultPage(String resultId, int page)
+            throws SqlExecutionException {
         final DynamicResult result = resultStore.getResult(resultId);
         if (result == null) {
             throw new SqlExecutionException(
@@ -294,8 +296,8 @@ public class LocalExecutor implements Executor {
         try {
             // this operator will also stop flink job
             result.close();
-        } catch (Exception e) {
-            throw new SqlExecutionException("Could not cancel the query execution", e);
+        } catch (Throwable t) {
+            throw new SqlExecutionException("Could not cancel the query execution", t);
         }
         resultStore.removeResult(resultId);
     }

@@ -16,6 +16,139 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 <Root>
+  <TestCase name="testFallbackToRegularJoin">
+    <Resource name="sql">
+      <![CDATA[
+SELECT t1.a FROM MyTable t1 WHERE t1.a IN (
+ SELECT t2.a FROM MyTable2 t2
+   WHERE t1.b = t2.b AND t1.rowtime between t2.rowtime and t2.rowtime + INTERVAL '5' MINUTE
+   GROUP BY t2.a
+)
+    ]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(a=[$0])
++- LogicalFilter(condition=[IN($0, {
+LogicalAggregate(group=[{0}])
+  LogicalProject(a=[$0])
+    LogicalFilter(condition=[AND(=($cor0.b, $1), >=($cor0.rowtime, $4), <=($cor0.rowtime, +($4, 300000:INTERVAL MINUTE)))])
+      LogicalTableScan(table=[[default_catalog, default_database, MyTable2]])
+})], variablesSet=[[$cor0]])
+   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[a])
++- Join(joinType=[InnerJoin], where=[((b = b0) AND (rowtime = rowtime0) AND (a = a0))], select=[a, b, rowtime, a0, b0, rowtime0], leftInputSpec=[NoUniqueKey], rightInputSpec=[JoinKeyContainsUniqueKey])
+   :- Exchange(distribution=[hash[b, rowtime, a]])
+   :  +- Calc(select=[a, b, CAST(rowtime AS TIMESTAMP(3)) AS rowtime])
+   :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])(reuse_id=[1])
+   +- Exchange(distribution=[hash[b0, rowtime0, a]])
+      +- GroupAggregate(groupBy=[a, b0, rowtime0], select=[a, b0, rowtime0])
+         +- Exchange(distribution=[hash[a, b0, rowtime0]])
+            +- Calc(select=[a, b0, rowtime0])
+               +- Join(joinType=[InnerJoin], where=[((b0 = b) AND (rowtime0 >= rowtime) AND (rowtime0 <= (rowtime + 300000:INTERVAL MINUTE)))], select=[a, b, rowtime, b0, rowtime0], leftInputSpec=[NoUniqueKey], rightInputSpec=[HasUniqueKey])
+                  :- Exchange(distribution=[hash[b]])
+                  :  +- Calc(select=[a, b, CAST(rowtime AS TIMESTAMP(3)) AS rowtime])
+                  :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
+                  +- Exchange(distribution=[hash[b]])
+                     +- GroupAggregate(groupBy=[b, rowtime], select=[b, rowtime])
+                        +- Exchange(distribution=[hash[b, rowtime]])
+                           +- Calc(select=[b, CAST(rowtime AS TIMESTAMP(3)) AS rowtime])
+                              +- Reused(reference_id=[1])
+]]>
+    </Resource>
+  </TestCase>
+  <TestCase name="testInteravalDiffTimeIndicator">
+    <Resource name="sql">
+      <![CDATA[
+SELECT t2.a FROM MyTable t1 JOIN MyTable2 t2 ON
+  t1.a = t2.a AND
+  t1.proctime > t2.proctime - INTERVAL '5' SECOND AND
+  t1.proctime < t2.rowtime + INTERVAL '5' SECOND
+      ]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(a=[$5])
++- LogicalJoin(condition=[AND(=($0, $5), >($3, -($8, 5000:INTERVAL SECOND)), <($3, +($9, 5000:INTERVAL SECOND)))], joinType=[inner])
+   :- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable2]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[a0 AS a])
++- Join(joinType=[InnerJoin], where=[((a = a0) AND (proctime > (proctime0 - 5000:INTERVAL SECOND)) AND (proctime < (rowtime + 5000:INTERVAL SECOND)))], select=[a, proctime, a0, proctime0, rowtime], leftInputSpec=[NoUniqueKey], rightInputSpec=[NoUniqueKey])
+   :- Exchange(distribution=[hash[a]])
+   :  +- Calc(select=[a, PROCTIME_MATERIALIZE(proctime) AS proctime])
+   :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+   +- Exchange(distribution=[hash[a]])
+      +- Calc(select=[a, PROCTIME_MATERIALIZE(proctime) AS proctime, CAST(rowtime AS TIMESTAMP(3)) AS rowtime])
+         +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
+]]>
+    </Resource>
+  </TestCase>
+  <TestCase name="testInteravalNotCnfCondition">
+    <Resource name="sql">
+      <![CDATA[
+SELECT t2.a FROM MyTable t1 JOIN MyTable2 t2 ON
+  t1.a = t2.a AND
+  (t1.proctime > t2.proctime - INTERVAL '5' SECOND OR
+   t1.proctime < t2.rowtime + INTERVAL '5' SECOND)
+      ]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(a=[$5])
++- LogicalJoin(condition=[AND(=($0, $5), OR(>($3, -($8, 5000:INTERVAL SECOND)), <($3, +($9, 5000:INTERVAL SECOND))))], joinType=[inner])
+   :- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable2]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[a0 AS a])
++- Join(joinType=[InnerJoin], where=[((a = a0) AND ((proctime > (proctime0 - 5000:INTERVAL SECOND)) OR (proctime < (rowtime + 5000:INTERVAL SECOND))))], select=[a, proctime, a0, proctime0, rowtime], leftInputSpec=[NoUniqueKey], rightInputSpec=[NoUniqueKey])
+   :- Exchange(distribution=[hash[a]])
+   :  +- Calc(select=[a, PROCTIME_MATERIALIZE(proctime) AS proctime])
+   :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+   +- Exchange(distribution=[hash[a]])
+      +- Calc(select=[a, PROCTIME_MATERIALIZE(proctime) AS proctime, CAST(rowtime AS TIMESTAMP(3)) AS rowtime])
+         +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
+]]>
+    </Resource>
+  </TestCase>
+  <TestCase name="testInteravlJoinSingleTimeCondition">
+    <Resource name="sql">
+      <![CDATA[
+SELECT t2.a FROM MyTable t1 JOIN MyTable2 t2 ON
+  t1.a = t2.a AND t1.proctime > t2.proctime - INTERVAL '5' SECOND
+      ]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(a=[$5])
++- LogicalJoin(condition=[AND(=($0, $5), >($3, -($8, 5000:INTERVAL SECOND)))], joinType=[inner])
+   :- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable2]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[a0 AS a])
++- Join(joinType=[InnerJoin], where=[((a = a0) AND (proctime > (proctime0 - 5000:INTERVAL SECOND)))], select=[a, proctime, a0, proctime0], leftInputSpec=[NoUniqueKey], rightInputSpec=[NoUniqueKey])
+   :- Exchange(distribution=[hash[a]])
+   :  +- Calc(select=[a, PROCTIME_MATERIALIZE(proctime) AS proctime])
+   :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+   +- Exchange(distribution=[hash[a]])
+      +- Calc(select=[a, PROCTIME_MATERIALIZE(proctime) AS proctime])
+         +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
+]]>
+    </Resource>
+  </TestCase>
   <TestCase name="testRowTimeInnerJoinAndWindowAggregationOnFirst">
     <Resource name="sql">
       <![CDATA[
@@ -42,7 +175,7 @@ LogicalProject(b=[$1], aSum=[$2], bCnt=[$3])
 GroupWindowAggregate(groupBy=[b], window=[TumblingGroupWindow('w$, rowtime, 21600000)], select=[b, SUM(a0) AS aSum, COUNT(b0) AS bCnt])
 +- Exchange(distribution=[hash[b]])
    +- Calc(select=[rowtime, b, a0, b0])
-      +- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=true, leftLowerBound=-600000, leftUpperBound=3600000, leftTimeIndex=2, rightTimeIndex=2], where=[((a = a0) AND (CAST(rowtime) >= (CAST(rowtime0) - 600000:INTERVAL MINUTE)) AND (CAST(rowtime) <= (CAST(rowtime0) + 3600000:INTERVAL HOUR)))], select=[a, b, rowtime, a0, b0, rowtime0])
+      +- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=true, leftLowerBound=-600000, leftUpperBound=3600000, leftTimeIndex=2, rightTimeIndex=2], where=[((a = a0) AND (rowtime >= (rowtime0 - 600000:INTERVAL MINUTE)) AND (rowtime <= (rowtime0 + 3600000:INTERVAL HOUR)))], select=[a, b, rowtime, a0, b0, rowtime0])
          :- Exchange(distribution=[hash[a]])
          :  +- Calc(select=[a, b, rowtime])
          :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
@@ -80,11 +213,11 @@ Calc(select=[a0 AS a])
    :- Exchange(distribution=[hash[a]])
    :  +- WatermarkAssigner(rowtime=[rowtime], watermark=[rowtime])
    :     +- Calc(select=[a, TO_TIMESTAMP_LTZ(b, 3) AS rowtime])
-   :        +- TableSourceScan(table=[[default_catalog, default_database, MyTable3, project=[a, b]]], fields=[a, b])
+   :        +- TableSourceScan(table=[[default_catalog, default_database, MyTable3, project=[a, b], metadata=[]]], fields=[a, b])
    +- Exchange(distribution=[hash[a]])
       +- WatermarkAssigner(rowtime=[rowtime], watermark=[rowtime])
          +- Calc(select=[a, TO_TIMESTAMP_LTZ(b, 3) AS rowtime])
-            +- TableSourceScan(table=[[default_catalog, default_database, MyTable4, project=[a, b]]], fields=[a, b])
+            +- TableSourceScan(table=[[default_catalog, default_database, MyTable4, project=[a, b], metadata=[]]], fields=[a, b])
 ]]>
     </Resource>
   </TestCase>
@@ -107,12 +240,12 @@ LogicalProject(a=[$0], b=[$6])
     <Resource name="optimized exec plan">
       <![CDATA[
 Calc(select=[a, b])
-+- Join(joinType=[InnerJoin], where=[((a = a0) AND (rowtime0 = rowtime00))], select=[a, rowtime0, a0, b, rowtime00], leftInputSpec=[NoUniqueKey], rightInputSpec=[NoUniqueKey])
-   :- Exchange(distribution=[hash[a, rowtime0]])
-   :  +- Calc(select=[a, CAST(rowtime) AS rowtime0])
++- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=true, leftLowerBound=0, leftUpperBound=0, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (rowtime = rowtime0))], select=[a, rowtime, a0, b, rowtime0])
+   :- Exchange(distribution=[hash[a]])
+   :  +- Calc(select=[a, rowtime])
    :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
-   +- Exchange(distribution=[hash[a, rowtime0]])
-      +- Calc(select=[a, b, CAST(rowtime) AS rowtime0])
+   +- Exchange(distribution=[hash[a]])
+      +- Calc(select=[a, b, rowtime])
          +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
@@ -255,7 +388,7 @@ LogicalProject(a=[$0], b=[$6])
     <Resource name="optimized exec plan">
       <![CDATA[
 Calc(select=[a, b])
-+- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=false, leftLowerBound=-3600000, leftUpperBound=3600000, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (PROCTIME_MATERIALIZE(proctime) >= (PROCTIME_MATERIALIZE(proctime0) - 3600000:INTERVAL HOUR)) AND (PROCTIME_MATERIALIZE(proctime) <= (PROCTIME_MATERIALIZE(proctime0) + 3600000:INTERVAL HOUR)))], select=[a, proctime, a0, b, proctime0])
++- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=false, leftLowerBound=-3600000, leftUpperBound=3600000, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (proctime >= (proctime0 - 3600000:INTERVAL HOUR)) AND (proctime <= (proctime0 + 3600000:INTERVAL HOUR)))], select=[a, proctime, a0, b, proctime0])
    :- Exchange(distribution=[hash[a]])
    :  +- Calc(select=[a, proctime])
    :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
@@ -314,12 +447,12 @@ LogicalProject(a=[$0], b=[$6])
     <Resource name="optimized exec plan">
       <![CDATA[
 Calc(select=[a, b])
-+- Join(joinType=[InnerJoin], where=[((a = a0) AND ($f5 = $f50))], select=[a, $f5, a0, b, $f50], leftInputSpec=[NoUniqueKey], rightInputSpec=[NoUniqueKey])
-   :- Exchange(distribution=[hash[a, $f5]])
-   :  +- Calc(select=[a, PROCTIME_MATERIALIZE(proctime) AS $f5])
++- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=false, leftLowerBound=0, leftUpperBound=0, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (proctime = proctime0))], select=[a, proctime, a0, b, proctime0])
+   :- Exchange(distribution=[hash[a]])
+   :  +- Calc(select=[a, proctime])
    :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
-   +- Exchange(distribution=[hash[a, $f5]])
-      +- Calc(select=[a, b, PROCTIME_MATERIALIZE(proctime) AS $f5])
+   +- Exchange(distribution=[hash[a]])
+      +- Calc(select=[a, b, proctime])
          +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
 ]]>
     </Resource>
@@ -440,7 +573,7 @@ LogicalProject(b=[$1], aSum=[$2], bCnt=[$3])
 GroupWindowAggregate(groupBy=[b0], window=[TumblingGroupWindow('w$, rowtime0, 21600000)], select=[b0, SUM(a) AS aSum, COUNT(b) AS bCnt])
 +- Exchange(distribution=[hash[b0]])
    +- Calc(select=[rowtime0, b0, a, b])
-      +- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=true, leftLowerBound=-600000, leftUpperBound=3600000, leftTimeIndex=2, rightTimeIndex=2], where=[((a = a0) AND (CAST(rowtime) >= (CAST(rowtime0) - 600000:INTERVAL MINUTE)) AND (CAST(rowtime) <= (CAST(rowtime0) + 3600000:INTERVAL HOUR)))], select=[a, b, rowtime, a0, b0, rowtime0])
+      +- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=true, leftLowerBound=-600000, leftUpperBound=3600000, leftTimeIndex=2, rightTimeIndex=2], where=[((a = a0) AND (rowtime >= (rowtime0 - 600000:INTERVAL MINUTE)) AND (rowtime <= (rowtime0 + 3600000:INTERVAL HOUR)))], select=[a, b, rowtime, a0, b0, rowtime0])
          :- Exchange(distribution=[hash[a]])
          :  +- Calc(select=[a, b, rowtime])
          :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
@@ -507,36 +640,6 @@ Calc(select=[a, b])
 ]]>
     </Resource>
   </TestCase>
-  <TestCase name="testRowTimeRightOuterJoin">
-    <Resource name="sql">
-      <![CDATA[
-SELECT t1.a, t2.b
-FROM MyTable t1 RIGHT OUTER JOIN MyTable2 t2 ON
-  t1.a = t2.a AND
-  t1.rowtime BETWEEN t2.rowtime - INTERVAL '10' SECOND AND t2.rowtime + INTERVAL '1' HOUR
-      ]]>
-    </Resource>
-    <Resource name="ast">
-      <![CDATA[
-LogicalProject(a=[$0], b=[$6])
-+- LogicalJoin(condition=[AND(=($0, $5), >=($4, -($9, 10000:INTERVAL SECOND)), <=($4, +($9, 3600000:INTERVAL HOUR)))], joinType=[right])
-   :- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
-   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable2]])
-]]>
-    </Resource>
-    <Resource name="optimized exec plan">
-      <![CDATA[
-Calc(select=[a, b])
-+- IntervalJoin(joinType=[RightOuterJoin], windowBounds=[isRowTime=true, leftLowerBound=-10000, leftUpperBound=3600000, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (rowtime >= (rowtime0 - 10000:INTERVAL SECOND)) AND (rowtime <= (rowtime0 + 3600000:INTERVAL HOUR)))], select=[a, rowtime, a0, b, rowtime0])
-   :- Exchange(distribution=[hash[a]])
-   :  +- Calc(select=[a, rowtime])
-   :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
-   +- Exchange(distribution=[hash[a]])
-      +- Calc(select=[a, b, rowtime])
-         +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
-]]>
-    </Resource>
-  </TestCase>
   <TestCase name="testRowTimeInnerJoinWithWhereClause">
     <Resource name="sql">
       <![CDATA[
@@ -557,7 +660,7 @@ LogicalProject(a=[$0], b=[$6])
     <Resource name="optimized exec plan">
       <![CDATA[
 Calc(select=[a, b])
-+- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=true, leftLowerBound=-600000, leftUpperBound=3600000, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (CAST(rowtime) >= (CAST(rowtime0) - 600000:INTERVAL MINUTE)) AND (CAST(rowtime) <= (CAST(rowtime0) + 3600000:INTERVAL HOUR)))], select=[a, rowtime, a0, b, rowtime0])
++- IntervalJoin(joinType=[InnerJoin], windowBounds=[isRowTime=true, leftLowerBound=-600000, leftUpperBound=3600000, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (rowtime >= (rowtime0 - 600000:INTERVAL MINUTE)) AND (rowtime <= (rowtime0 + 3600000:INTERVAL HOUR)))], select=[a, rowtime, a0, b, rowtime0])
    :- Exchange(distribution=[hash[a]])
    :  +- Calc(select=[a, rowtime])
    :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
@@ -594,6 +697,81 @@ Calc(select=[a, b])
    +- Exchange(distribution=[hash[a]])
       +- Calc(select=[a, b, rowtime])
          +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
+]]>
+    </Resource>
+  </TestCase>
+  <TestCase name="testRowTimeRightOuterJoin">
+    <Resource name="sql">
+      <![CDATA[
+SELECT t1.a, t2.b
+FROM MyTable t1 RIGHT OUTER JOIN MyTable2 t2 ON
+  t1.a = t2.a AND
+  t1.rowtime BETWEEN t2.rowtime - INTERVAL '10' SECOND AND t2.rowtime + INTERVAL '1' HOUR
+      ]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(a=[$0], b=[$6])
++- LogicalJoin(condition=[AND(=($0, $5), >=($4, -($9, 10000:INTERVAL SECOND)), <=($4, +($9, 3600000:INTERVAL HOUR)))], joinType=[right])
+   :- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable2]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[a, b])
++- IntervalJoin(joinType=[RightOuterJoin], windowBounds=[isRowTime=true, leftLowerBound=-10000, leftUpperBound=3600000, leftTimeIndex=1, rightTimeIndex=2], where=[((a = a0) AND (rowtime >= (rowtime0 - 10000:INTERVAL SECOND)) AND (rowtime <= (rowtime0 + 3600000:INTERVAL HOUR)))], select=[a, rowtime, a0, b, rowtime0])
+   :- Exchange(distribution=[hash[a]])
+   :  +- Calc(select=[a, rowtime])
+   :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])
+   +- Exchange(distribution=[hash[a]])
+      +- Calc(select=[a, b, rowtime])
+         +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
+]]>
+    </Resource>
+  </TestCase>
+  <TestCase name="testSemiIntervalJoinWithSimpleConditionAndGroup">
+    <Resource name="sql">
+      <![CDATA[
+SELECT t1.a FROM MyTable t1 WHERE t1.a IN (
+ SELECT t2.a FROM MyTable2 t2
+   WHERE t1.b = t2.b AND t1.rowtime between t2.rowtime and t2.rowtime + INTERVAL '5' MINUTE
+   GROUP BY t2.a
+)
+    ]]>
+    </Resource>
+    <Resource name="ast">
+      <![CDATA[
+LogicalProject(a=[$0])
++- LogicalFilter(condition=[IN($0, {
+LogicalAggregate(group=[{0}])
+  LogicalProject(a=[$0])
+    LogicalFilter(condition=[AND(=($cor0.b, $1), >=($cor0.rowtime, $4), <=($cor0.rowtime, +($4, 300000:INTERVAL MINUTE)))])
+      LogicalTableScan(table=[[default_catalog, default_database, MyTable2]])
+})], variablesSet=[[$cor0]])
+   +- LogicalTableScan(table=[[default_catalog, default_database, MyTable]])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[a])
++- Join(joinType=[InnerJoin], where=[((b = b0) AND (rowtime = rowtime0) AND (a = a0))], select=[a, b, rowtime, a0, b0, rowtime0], leftInputSpec=[NoUniqueKey], rightInputSpec=[JoinKeyContainsUniqueKey])
+   :- Exchange(distribution=[hash[b, rowtime, a]])
+   :  +- Calc(select=[a, b, CAST(rowtime) AS rowtime])
+   :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable]], fields=[a, b, c, proctime, rowtime])(reuse_id=[1])
+   +- Exchange(distribution=[hash[b0, rowtime0, a]])
+      +- GroupAggregate(groupBy=[a, b0, rowtime0], select=[a, b0, rowtime0])
+         +- Exchange(distribution=[hash[a, b0, rowtime0]])
+            +- Calc(select=[a, b0, rowtime0])
+               +- Join(joinType=[InnerJoin], where=[((b0 = b) AND (rowtime0 >= rowtime) AND (rowtime0 <= (rowtime + 300000:INTERVAL MINUTE)))], select=[a, b, rowtime, b0, rowtime0], leftInputSpec=[NoUniqueKey], rightInputSpec=[HasUniqueKey])
+                  :- Exchange(distribution=[hash[b]])
+                  :  +- Calc(select=[a, b, CAST(rowtime) AS rowtime])
+                  :     +- DataStreamScan(table=[[default_catalog, default_database, MyTable2]], fields=[a, b, c, proctime, rowtime])
+                  +- Exchange(distribution=[hash[b]])
+                     +- GroupAggregate(groupBy=[b, rowtime], select=[b, rowtime])
+                        +- Exchange(distribution=[hash[b, rowtime]])
+                           +- Calc(select=[b, CAST(rowtime) AS rowtime])
+                              +- Reused(reference_id=[1])
 ]]>
     </Resource>
   </TestCase>

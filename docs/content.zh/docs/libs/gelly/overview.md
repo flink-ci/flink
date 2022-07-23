@@ -45,14 +45,14 @@ Add the following dependency to your `pom.xml` to use Gelly.
 
 {{< tabs "96de5128-3c66-4942-9498-e9a8ae439314" >}}
 {{< tab "Java" >}}
-{{< artifact flink-gelly withScalaVersion >}}
+{{< artifact flink-gelly >}}
 {{< /tab >}}
 {{< tab "Scala" >}}
 {{< artifact flink-gelly-scala withScalaVersion >}}
 {{< /tab >}}
 {{< /tabs >}}
 
-Note that Gelly is not part of the binary distribution. See [linking]({{< ref "docs/dev/datastream/project-configuration" >}}) for
+Note that Gelly is not part of the binary distribution. See [linking]({{< ref "docs/dev/configuration/overview" >}}) for
 instructions on packaging Gelly libraries into Flink user programs.
 
 The remaining sections provide a description of available methods and present several examples of how to use Gelly and how to mix it with the Flink DataSet API.
@@ -60,7 +60,7 @@ The remaining sections provide a description of available methods and present se
 Running Gelly Examples
 ----------------------
 
-The Gelly library jars are provided in the [Flink distribution](https://flink.apache.org/downloads.html "Apache Flink: Downloads")
+The Gelly library jars are provided in the [Flink distribution]({{< downloads >}} "Apache Flink: Downloads")
 in the **opt** directory (for versions older than Flink 1.2 these can be manually downloaded from
 [Maven Central](http://search.maven.org/#search|ga|1|flink%20gelly)). To run the Gelly examples the **flink-gelly** (for
 Java) or **flink-gelly-scala** (for Scala) jar must be copied to Flink's **lib** directory.

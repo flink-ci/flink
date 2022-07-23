@@ -20,12 +20,13 @@ package org.apache.flink.table.runtime.operators.python.scalar;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
-import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.functions.ScalarFunction;
 import org.apache.flink.table.functions.python.PythonFunctionInfo;
+import org.apache.flink.table.runtime.generated.GeneratedProjection;
 import org.apache.flink.table.runtime.typeutils.PythonTypeUtils;
 import org.apache.flink.table.types.logical.RowType;
 
@@ -50,19 +51,26 @@ public class PythonScalarFunctionOperator extends AbstractPythonScalarFunctionOp
             Configuration config,
             PythonFunctionInfo[] scalarFunctions,
             RowType inputType,
-            RowType outputType,
-            int[] udfInputOffsets,
-            int[] forwardedFields) {
-        super(config, scalarFunctions, inputType, outputType, udfInputOffsets, forwardedFields);
+            RowType udfInputType,
+            RowType udfOutputType,
+            GeneratedProjection udfInputGeneratedProjection,
+            GeneratedProjection forwardedFieldGeneratedProjection) {
+        super(
+                config,
+                scalarFunctions,
+                inputType,
+                udfInputType,
+                udfOutputType,
+                udfInputGeneratedProjection,
+                forwardedFieldGeneratedProjection);
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public void open() throws Exception {
         super.open();
-        udfInputTypeSerializer = PythonTypeUtils.toInternalSerializer(userDefinedFunctionInputType);
-        udfOutputTypeSerializer =
-                PythonTypeUtils.toInternalSerializer(userDefinedFunctionOutputType);
+        udfInputTypeSerializer = PythonTypeUtils.toInternalSerializer(udfInputType);
+        udfOutputTypeSerializer = PythonTypeUtils.toInternalSerializer(udfOutputType);
     }
 
     @Override
@@ -92,9 +100,9 @@ public class PythonScalarFunctionOperator extends AbstractPythonScalarFunctionOp
 
     @Override
     @SuppressWarnings("ConstantConditions")
-    public void emitResult(Tuple2<byte[], Integer> resultTuple) throws IOException {
-        byte[] rawUdfResult = resultTuple.f0;
-        int length = resultTuple.f1;
+    public void emitResult(Tuple3<String, byte[], Integer> resultTuple) throws IOException {
+        byte[] rawUdfResult = resultTuple.f1;
+        int length = resultTuple.f2;
         RowData input = forwardedInputQueue.poll();
         reuseJoinedRow.setRowKind(input.getRowKind());
         bais.setBuffer(rawUdfResult, 0, length);

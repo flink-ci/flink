@@ -92,13 +92,13 @@ project.
 ```xml
 <dependency>
   <groupId>org.apache.flink</groupId>
-  <artifactId>flink-cep{{< scala_version >}}</artifactId>
+  <artifactId>flink-cep</artifactId>
   <version>{{< version >}}</version>
 </dependency>
 ```
 
 Alternatively, you can also add the dependency to the cluster classpath (see the
-[dependency section]({{< ref "docs/dev/datastream/project-configuration" >}}) for more information).
+[dependency section]({{< ref "docs/dev/configuration/overview" >}}) for more information).
 
 If you want to use the `MATCH_RECOGNIZE` clause in the
 [SQL Client]({{< ref "docs/dev/table/sqlClient" >}}), you don't have to do anything as all the
@@ -267,8 +267,8 @@ look at the [event stream navigation](#pattern-navigation) section.
 ### Aggregations
 
 Aggregations can be used in `DEFINE` and `MEASURES` clauses. Both
-[built-in]({{{{< ref "docs/dev/table/functions/systemFunctions" >}}) and custom
-[user defined]({{{{< ref "docs/dev/table/functions/udfs" >}}) functions are supported.
+[built-in]({{< ref "docs/dev/table/functions/systemfunctions" >}}) and custom
+[user defined]({{< ref "docs/dev/table/functions/udfs" >}}) functions are supported.
 
 Aggregate functions are applied to each subset of rows mapped to a match. In order to understand
 how those subsets are evaluated have a look at the [event stream navigation](#pattern-navigation)
@@ -481,7 +481,7 @@ FROM Ticker
         AFTER MATCH SKIP PAST LAST ROW
         PATTERN (A B* C) WITHIN INTERVAL '1' HOUR
         DEFINE
-            B AS B.price > A.price - 10
+            B AS B.price > A.price - 10,
             C AS C.price < A.price - 10
     )
 ```
@@ -723,9 +723,7 @@ variable. This can be expressed with two corresponding functions:
   <tbody>
   <tr>
     <td>
-```text
-LAST(variable.field, n)
-```
+        <code>LAST(variable.field, n)</code>
     </td>
     <td>
       <p>Returns the value of the field from the event that was mapped to the <i>n</i>-th
@@ -734,9 +732,7 @@ LAST(variable.field, n)
   </tr>
   <tr>
     <td>
-```text
-FIRST(variable.field, n)
-```
+        <code>FIRST(variable.field, n)</code>
     </td>
     <td>
       <p>Returns the value of the field from the event that was mapped to the <i>n</i>-th element
@@ -1039,9 +1035,10 @@ use [time attributes]({{< ref "docs/dev/table/concepts/time_attributes" >}}). To
   <tbody>
     <tr>
       <td>
-        <code>MATCH_ROWTIME()</code><br/>
+        <code>MATCH_ROWTIME([rowtime_field])</code><br/>
       </td>
       <td><p>Returns the timestamp of the last row that was mapped to the given pattern.</p>
+      <p>The function accepts zero or one operand which is a field reference with rowtime attribute. If there is no operand, the function will return rowtime attribute with TIMESTAMP type. Otherwise, the return type will be same with the operand type.</p>
       <p>The resulting attribute is a <a href="{{< ref "docs/dev/table/concepts/time_attributes" >}}">rowtime attribute</a>
          that can be used in subsequent time-based operations such as
          <a href="{{< ref "docs/dev/table/sql/queries/joins" >}}#interval-joins">interval joins</a> and <a href="#aggregations">group window or over

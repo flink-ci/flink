@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.planner.plan.abilities.source;
 
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushDown;
@@ -27,6 +28,9 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCre
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonTypeName;
 
+import java.util.Arrays;
+import java.util.List;
+
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
@@ -34,7 +38,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * to/from JSON, but also can push the projection into a {@link SupportsProjectionPushDown}.
  */
 @JsonTypeName("ProjectPushDown")
-public class ProjectPushDownSpec extends SourceAbilitySpecBase {
+public final class ProjectPushDownSpec extends SourceAbilitySpecBase {
     public static final String FIELD_NAME_PROJECTED_FIELDS = "projectedFields";
 
     @JsonProperty(FIELD_NAME_PROJECTED_FIELDS)
@@ -51,12 +55,45 @@ public class ProjectPushDownSpec extends SourceAbilitySpecBase {
     @Override
     public void apply(DynamicTableSource tableSource, SourceAbilityContext context) {
         if (tableSource instanceof SupportsProjectionPushDown) {
-            ((SupportsProjectionPushDown) tableSource).applyProjection(projectedFields);
+            ((SupportsProjectionPushDown) tableSource)
+                    .applyProjection(projectedFields, DataTypes.of(getProducedType().get()));
         } else {
             throw new TableException(
                     String.format(
                             "%s does not support SupportsProjectionPushDown.",
                             tableSource.getClass().getName()));
         }
+    }
+
+    @Override
+    public String getDigests(SourceAbilityContext context) {
+        final List<String> fieldNames =
+                this.getProducedType()
+                        .orElseThrow(() -> new TableException("Produced data type is not present."))
+                        .getFieldNames();
+
+        return String.format("project=[%s]", String.join(", ", fieldNames));
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        if (!super.equals(o)) {
+            return false;
+        }
+        ProjectPushDownSpec that = (ProjectPushDownSpec) o;
+        return Arrays.deepEquals(projectedFields, that.projectedFields);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = super.hashCode();
+        result = 31 * result + Arrays.deepHashCode(projectedFields);
+        return result;
     }
 }

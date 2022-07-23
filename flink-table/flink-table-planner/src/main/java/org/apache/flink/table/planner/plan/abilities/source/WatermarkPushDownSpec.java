@@ -18,18 +18,17 @@
 
 package org.apache.flink.table.planner.plan.abilities.source;
 
-import org.apache.flink.api.common.eventtime.Watermark;
-import org.apache.flink.api.common.eventtime.WatermarkGenerator;
 import org.apache.flink.api.common.eventtime.WatermarkGeneratorSupplier;
-import org.apache.flink.api.common.eventtime.WatermarkOutput;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.connector.source.abilities.SupportsWatermarkPushDown;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.planner.codegen.WatermarkGeneratorCodeGenerator;
+import org.apache.flink.table.planner.plan.utils.FlinkRexUtil;
+import org.apache.flink.table.planner.utils.JavaScalaConversionUtil;
 import org.apache.flink.table.runtime.generated.GeneratedWatermarkGenerator;
+import org.apache.flink.table.runtime.generated.GeneratedWatermarkGeneratorSupplier;
 import org.apache.flink.table.types.logical.RowType;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
@@ -39,9 +38,7 @@ import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonTyp
 import org.apache.calcite.rex.RexNode;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Objects;
 
 import scala.Option;
 
@@ -52,7 +49,7 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * to/from JSON, but also can push the watermark into a {@link SupportsWatermarkPushDown}.
  */
 @JsonTypeName("WatermarkPushDown")
-public class WatermarkPushDownSpec extends SourceAbilitySpecBase {
+public final class WatermarkPushDownSpec extends SourceAbilitySpecBase {
     public static final String FIELD_NAME_WATERMARK_EXPR = "watermarkExpr";
     public static final String FIELD_NAME_IDLE_TIMEOUT_MILLIS = "idleTimeoutMillis";
 
@@ -78,14 +75,13 @@ public class WatermarkPushDownSpec extends SourceAbilitySpecBase {
             GeneratedWatermarkGenerator generatedWatermarkGenerator =
                     WatermarkGeneratorCodeGenerator.generateWatermarkGenerator(
                             context.getTableConfig(),
+                            context.getClassLoader(),
                             context.getSourceRowType(),
                             watermarkExpr,
                             Option.apply("context"));
-            Configuration configuration = context.getTableConfig().getConfiguration();
 
             WatermarkGeneratorSupplier<RowData> supplier =
-                    new DefaultWatermarkGeneratorSupplier(
-                            configuration, generatedWatermarkGenerator);
+                    new GeneratedWatermarkGeneratorSupplier(generatedWatermarkGenerator);
 
             WatermarkStrategy<RowData> watermarkStrategy = WatermarkStrategy.forGenerator(supplier);
             if (idleTimeoutMillis > 0) {
@@ -101,86 +97,38 @@ public class WatermarkPushDownSpec extends SourceAbilitySpecBase {
         }
     }
 
-    /**
-     * Wrapper of the {@link GeneratedWatermarkGenerator} that is used to create {@link
-     * WatermarkGenerator}. The {@link DefaultWatermarkGeneratorSupplier} uses the {@link
-     * WatermarkGeneratorSupplier.Context} to init the generated watermark generator.
-     */
-    public static class DefaultWatermarkGeneratorSupplier
-            implements WatermarkGeneratorSupplier<RowData> {
-        private static final long serialVersionUID = 1L;
-
-        private final Configuration configuration;
-        private final GeneratedWatermarkGenerator generatedWatermarkGenerator;
-
-        public DefaultWatermarkGeneratorSupplier(
-                Configuration configuration,
-                GeneratedWatermarkGenerator generatedWatermarkGenerator) {
-            this.configuration = configuration;
-            this.generatedWatermarkGenerator = generatedWatermarkGenerator;
+    @Override
+    public String getDigests(SourceAbilityContext context) {
+        final String expressionStr =
+                FlinkRexUtil.getExpressionString(
+                        watermarkExpr,
+                        JavaScalaConversionUtil.toScala(
+                                context.getSourceRowType().getFieldNames()));
+        if (idleTimeoutMillis > 0) {
+            return String.format(
+                    "watermark=[%s], idletimeout=[%d]", expressionStr, idleTimeoutMillis);
         }
+        return String.format("watermark=[%s]", expressionStr);
+    }
 
-        @Override
-        public WatermarkGenerator<RowData> createWatermarkGenerator(Context context) {
-
-            List<Object> references =
-                    new ArrayList<>(Arrays.asList(generatedWatermarkGenerator.getReferences()));
-            references.add(context);
-
-            org.apache.flink.table.runtime.generated.WatermarkGenerator innerWatermarkGenerator =
-                    new GeneratedWatermarkGenerator(
-                                    generatedWatermarkGenerator.getClassName(),
-                                    generatedWatermarkGenerator.getCode(),
-                                    references.toArray(),
-                                    configuration)
-                            .newInstance(Thread.currentThread().getContextClassLoader());
-
-            try {
-                innerWatermarkGenerator.open(configuration);
-            } catch (Exception e) {
-                throw new RuntimeException("Fail to instantiate generated watermark generator.", e);
-            }
-            return new DefaultWatermarkGeneratorSupplier.DefaultWatermarkGenerator(
-                    innerWatermarkGenerator);
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
         }
-
-        /**
-         * Wrapper of the code-generated {@link
-         * org.apache.flink.table.runtime.generated.WatermarkGenerator}.
-         */
-        public static class DefaultWatermarkGenerator implements WatermarkGenerator<RowData> {
-            private static final long serialVersionUID = 1L;
-
-            private final org.apache.flink.table.runtime.generated.WatermarkGenerator
-                    innerWatermarkGenerator;
-            private Long currentWatermark = Long.MIN_VALUE;
-
-            public DefaultWatermarkGenerator(
-                    org.apache.flink.table.runtime.generated.WatermarkGenerator
-                            watermarkGenerator) {
-                this.innerWatermarkGenerator = watermarkGenerator;
-            }
-
-            @Override
-            public void onEvent(RowData event, long eventTimestamp, WatermarkOutput output) {
-                try {
-                    Long watermark = innerWatermarkGenerator.currentWatermark(event);
-                    if (watermark != null) {
-                        currentWatermark = watermark;
-                    }
-                } catch (Exception e) {
-                    throw new RuntimeException(
-                            String.format(
-                                    "Generated WatermarkGenerator fails to generate for row: %s.",
-                                    event),
-                            e);
-                }
-            }
-
-            @Override
-            public void onPeriodicEmit(WatermarkOutput output) {
-                output.emitWatermark(new Watermark(currentWatermark));
-            }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
         }
+        if (!super.equals(o)) {
+            return false;
+        }
+        WatermarkPushDownSpec that = (WatermarkPushDownSpec) o;
+        return idleTimeoutMillis == that.idleTimeoutMillis
+                && Objects.equals(watermarkExpr, that.watermarkExpr);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), watermarkExpr, idleTimeoutMillis);
     }
 }

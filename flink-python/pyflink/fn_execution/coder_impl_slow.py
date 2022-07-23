@@ -22,11 +22,14 @@ from abc import ABC, abstractmethod
 from typing import List
 
 import cloudpickle
-import pyarrow as pa
+import avro.schema as avro_schema
 
 from pyflink.common import Row, RowKind
+from pyflink.common.time import Instant
 from pyflink.datastream.window import TimeWindow, CountWindow
 from pyflink.fn_execution.ResettableIO import ResettableIO
+from pyflink.fn_execution.formats.avro import FlinkAvroDecoder, FlinkAvroDatumReader, \
+    FlinkAvroBufferWrapper
 from pyflink.fn_execution.stream_slow import InputStream, OutputStream
 from pyflink.table.utils import pandas_to_arrow, arrow_to_pandas
 
@@ -92,9 +95,10 @@ class IterableCoderImpl(LengthPrefixBaseCoderImpl):
         self._separated_with_end_message = separated_with_end_message
 
     def encode_to_stream(self, value: List, out_stream: OutputStream):
-        for item in value:
-            self._field_coder.encode_to_stream(item, self._data_out_stream)
-            self._write_data_to_output_stream(out_stream)
+        if value:
+            for item in value:
+                self._field_coder.encode_to_stream(item, self._data_out_stream)
+                self._write_data_to_output_stream(out_stream)
 
         # write end message
         if self._separated_with_end_message:
@@ -237,11 +241,12 @@ class RowCoderImpl(FieldCoderImpl):
 
     def encode_to_stream(self, value: Row, out_stream: OutputStream):
         # encode mask value
-        self._mask_utils.write_mask(value._values, value.get_row_kind().value, out_stream)
+        values = value.get_fields_by_names(self._field_names)
+        self._mask_utils.write_mask(values, value.get_row_kind().value, out_stream)
 
         # encode every field value
         for i in range(self._field_count):
-            item = value[i]
+            item = values[i]
             if item is not None:
                 self._field_coders[i].encode_to_stream(item, out_stream)
 
@@ -279,6 +284,8 @@ class ArrowCoderImpl(FieldCoderImpl):
         self._batch_reader = ArrowCoderImpl._load_from_stream(self._resettable_io)
 
     def encode_to_stream(self, cols, out_stream: OutputStream):
+        import pyarrow as pa
+
         self._resettable_io.set_output_stream(out_stream)
         batch_writer = pa.RecordBatchStreamWriter(self._resettable_io, self._schema)
         batch_writer.write_batch(
@@ -287,16 +294,18 @@ class ArrowCoderImpl(FieldCoderImpl):
     def decode_from_stream(self, in_stream: InputStream, length=0):
         return self.decode_one_batch_from_stream(in_stream, length)
 
-    @staticmethod
-    def _load_from_stream(stream):
-        while stream.readable():
-            reader = pa.ipc.open_stream(stream)
-            yield reader.read_next_batch()
-
     def decode_one_batch_from_stream(self, in_stream: InputStream, size: int) -> List:
         self._resettable_io.set_input_bytes(in_stream.read(size))
         # there is only one arrow batch in the underlying input stream
         return arrow_to_pandas(self._timezone, self._field_types, [next(self._batch_reader)])
+
+    @staticmethod
+    def _load_from_stream(stream):
+        import pyarrow as pa
+
+        while stream.readable():
+            reader = pa.ipc.open_stream(stream)
+            yield reader.read_next_batch()
 
     def __repr__(self):
         return 'ArrowCoderImpl[%s]' % self._schema
@@ -588,6 +597,31 @@ class LocalZonedTimestampCoderImpl(TimestampCoderImpl):
                 milliseconds, nanoseconds))
 
 
+class InstantCoderImpl(FieldCoderImpl):
+    """
+    A coder for Instant.
+    """
+    def __init__(self):
+        self._null_seconds = -9223372036854775808
+        self._null_nanos = -2147483648
+
+    def encode_to_stream(self, value: Instant, out_stream: OutputStream):
+        if value is None:
+            out_stream.write_int64(self._null_seconds)
+            out_stream.write_int32(self._null_nanos)
+        else:
+            out_stream.write_int64(value.seconds)
+            out_stream.write_int32(value.nanos)
+
+    def decode_from_stream(self, in_stream: InputStream, length: int = 0):
+        seconds = in_stream.read_int64()
+        nanos = in_stream.read_int32()
+        if seconds == self._null_seconds and nanos == self._null_nanos:
+            return None
+        else:
+            return Instant(seconds, nanos)
+
+
 class CloudPickleCoderImpl(FieldCoderImpl):
     """
     A coder used with cloudpickle for all kinds of python object.
@@ -769,6 +803,19 @@ class CountWindowCoderImpl(FieldCoderImpl):
         return CountWindow(in_stream.read_int64())
 
 
+class GlobalWindowCoderImpl(FieldCoderImpl):
+    """
+    A coder for CountWindow.
+    """
+
+    def encode_to_stream(self, value, out_stream: OutputStream):
+        out_stream.write_byte(0)
+
+    def decode_from_stream(self, in_stream: InputStream, length=0):
+        in_stream.read_byte()
+        return GlobalWindowCoderImpl()
+
+
 class DataViewFilterCoderImpl(FieldCoderImpl):
     """
     A coder for data view filter.
@@ -790,3 +837,20 @@ class DataViewFilterCoderImpl(FieldCoderImpl):
                 row[i][spec.field_index] = None
             i += 1
         return row
+
+
+class AvroCoderImpl(FieldCoderImpl):
+
+    def __init__(self, schema_string: str):
+        self._buffer_wrapper = FlinkAvroBufferWrapper()
+        self._decoder = FlinkAvroDecoder(self._buffer_wrapper)
+        self._schema = avro_schema.parse(schema_string)
+        self._reader = FlinkAvroDatumReader(writer_schema=self._schema, reader_schema=self._schema)
+
+    def encode_to_stream(self, value, out_stream: OutputStream):
+        raise NotImplementedError()
+
+    def decode_from_stream(self, in_stream: InputStream, length: int = 0):
+        # Since writer_schema equals reader_schema, in_stream does not need to support seek and tell
+        self._buffer_wrapper.switch_stream(in_stream)
+        return self._reader.read(self._decoder)

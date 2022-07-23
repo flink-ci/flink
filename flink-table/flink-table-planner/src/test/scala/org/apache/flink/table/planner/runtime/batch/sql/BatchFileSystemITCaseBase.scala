@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.runtime.batch.sql
 
 import org.apache.flink.table.api.TableEnvironment
@@ -27,11 +26,8 @@ import org.junit.Before
 
 import scala.collection.Seq
 
-/**
-  * Batch [[FileSystemITCaseBase]].
-  */
+/** Batch [[FileSystemITCaseBase]]. */
 abstract class BatchFileSystemITCaseBase extends BatchTestBase with FileSystemITCaseBase {
-
   @Before
   override def before(): Unit = {
     super.before()
@@ -44,5 +40,22 @@ abstract class BatchFileSystemITCaseBase extends BatchTestBase with FileSystemIT
 
   override def check(sqlQuery: String, expectedResult: Seq[Row]): Unit = {
     checkResult(sqlQuery, expectedResult)
+  }
+
+  override def checkPredicate(sqlQuery: String, checkFunc: Row => Unit): Unit = {
+    val table = parseQuery(sqlQuery)
+    val result = executeQuery(table)
+
+    try {
+      result.foreach(checkFunc)
+    } catch {
+      case e: AssertionError =>
+        throw new AssertionError(
+          s"""
+             |Results do not match for query:
+             |  $sqlQuery
+     """.stripMargin,
+          e)
+    }
   }
 }

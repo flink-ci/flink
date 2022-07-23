@@ -21,7 +21,8 @@ package org.apache.flink.table.planner.functions.aggfunctions;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.functions.AggregateFunction;
-import org.apache.flink.table.planner.functions.aggfunctions.ListAggWsWithRetractAggFunction.ListAggWsWithRetractAccumulator;
+import org.apache.flink.table.runtime.functions.aggregate.ListAggWsWithRetractAggFunction;
+import org.apache.flink.table.runtime.functions.aggregate.ListAggWsWithRetractAggFunction.ListAggWsWithRetractAccumulator;
 import org.apache.flink.util.Preconditions;
 
 import java.lang.reflect.InvocationTargetException;
@@ -31,7 +32,7 @@ import java.util.List;
 
 /** Test case for built-in ListAggWs with retraction aggregate function. */
 public final class ListAggWsWithRetractAggFunctionTest
-        extends AggFunctionTestBase<StringData, ListAggWsWithRetractAccumulator> {
+        extends AggFunctionTestBase<StringData, StringData, ListAggWsWithRetractAccumulator> {
 
     @Override
     protected List<List<StringData>> getInputValueSets() {
@@ -126,10 +127,11 @@ public final class ListAggWsWithRetractAggFunctionTest
     }
 
     @Override
-    protected ListAggWsWithRetractAccumulator accumulateValues(List<StringData> values)
+    protected void accumulateValues(
+            AggregateFunction<StringData, ListAggWsWithRetractAccumulator> aggregator,
+            ListAggWsWithRetractAccumulator accumulator,
+            List<StringData> values)
             throws NoSuchMethodException, InvocationTargetException, IllegalAccessException {
-        AggregateFunction<StringData, ListAggWsWithRetractAccumulator> aggregator = getAggregator();
-        ListAggWsWithRetractAccumulator accumulator = getAggregator().createAccumulator();
         Method accumulateFunc = getAccumulateFunc();
         Preconditions.checkArgument(
                 values.size() % 2 == 0, "number of values must be an integer multiple of 2.");
@@ -138,7 +140,6 @@ public final class ListAggWsWithRetractAggFunctionTest
             StringData delimiter = values.get(i);
             accumulateFunc.invoke(aggregator, accumulator, delimiter, value);
         }
-        return accumulator;
     }
 
     @Override

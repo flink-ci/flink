@@ -91,9 +91,7 @@ public class DefaultCheckpointPlanCalculator implements CheckpointPlanCalculator
                     try {
                         if (context.hasFinishedTasks() && !allowCheckpointsAfterTasksFinished) {
                             throw new CheckpointException(
-                                    String.format(
-                                            "some tasks of job %s has been finished, abort the checkpoint",
-                                            jobId),
+                                    "Some tasks of the job have already finished and checkpointing with finished tasks is not enabled.",
                                     CheckpointFailureReason.NOT_ALL_REQUIRED_TASKS_RUNNING);
                         }
 
@@ -165,12 +163,13 @@ public class DefaultCheckpointPlanCalculator implements CheckpointPlanCalculator
 
         List<Execution> tasksToWaitFor = createTaskToWaitFor(allTasks);
 
-        return new CheckpointPlan(
+        return new DefaultCheckpointPlan(
                 Collections.unmodifiableList(executionsToTrigger),
                 Collections.unmodifiableList(tasksToWaitFor),
                 Collections.unmodifiableList(allTasks),
                 Collections.emptyList(),
-                Collections.emptyList());
+                Collections.emptyList(),
+                allowCheckpointsAfterTasksFinished);
     }
 
     /**
@@ -232,12 +231,13 @@ public class DefaultCheckpointPlanCalculator implements CheckpointPlanCalculator
             }
         }
 
-        return new CheckpointPlan(
+        return new DefaultCheckpointPlan(
                 Collections.unmodifiableList(tasksToTrigger),
                 Collections.unmodifiableList(tasksToWaitFor),
                 Collections.unmodifiableList(tasksToCommitTo),
                 Collections.unmodifiableList(finishedTasks),
-                Collections.unmodifiableList(fullyFinishedJobVertex));
+                Collections.unmodifiableList(fullyFinishedJobVertex),
+                allowCheckpointsAfterTasksFinished);
     }
 
     private boolean someTasksMustBeTriggered(

@@ -20,11 +20,14 @@ package org.apache.flink.contrib.streaming.state;
 
 import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.state.CheckpointListener;
+import org.apache.flink.api.common.state.MapState;
+import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.StringSerializer;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.checkpoint.CheckpointOptions;
 import org.apache.flink.runtime.state.CheckpointStorage;
@@ -33,6 +36,7 @@ import org.apache.flink.runtime.state.ConfigurableStateBackend;
 import org.apache.flink.runtime.state.IncrementalRemoteKeyedStateHandle;
 import org.apache.flink.runtime.state.KeyedStateHandle;
 import org.apache.flink.runtime.state.SharedStateRegistry;
+import org.apache.flink.runtime.state.SharedStateRegistryImpl;
 import org.apache.flink.runtime.state.SnapshotResult;
 import org.apache.flink.runtime.state.StateBackendTestBase;
 import org.apache.flink.runtime.state.StateHandleID;
@@ -43,6 +47,7 @@ import org.apache.flink.runtime.state.storage.FileSystemCheckpointStorage;
 import org.apache.flink.runtime.state.storage.JobManagerCheckpointStorage;
 import org.apache.flink.runtime.util.BlockerCheckpointStreamFactory;
 import org.apache.flink.runtime.util.BlockingCheckpointOutputStream;
+import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.IOUtils;
 import org.apache.flink.util.function.SupplierWithException;
 
@@ -62,6 +67,7 @@ import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.ColumnFamilyOptions;
 import org.rocksdb.ReadOptions;
 import org.rocksdb.RocksDB;
+import org.rocksdb.RocksDBException;
 import org.rocksdb.RocksIterator;
 import org.rocksdb.RocksObject;
 import org.rocksdb.Snapshot;
@@ -121,7 +127,8 @@ public class EmbeddedRocksDBStateBackendTest
                                 () -> {
                                     String checkpointPath =
                                             TEMP_FOLDER.newFolder().toURI().toString();
-                                    return new FileSystemCheckpointStorage(checkpointPath);
+                                    return new FileSystemCheckpointStorage(
+                                            new Path(checkpointPath), 0, -1);
                                 }
                     }
                 });
@@ -181,6 +188,11 @@ public class EmbeddedRocksDBStateBackendTest
 
     @Override
     protected boolean supportsAsynchronousSnapshots() {
+        return true;
+    }
+
+    @Override
+    protected boolean isSafeToReuseKVState() {
         return true;
     }
 
@@ -551,7 +563,7 @@ public class EmbeddedRocksDBStateBackendTest
                                 VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 
                 Queue<IncrementalRemoteKeyedStateHandle> previousStateHandles = new LinkedList<>();
-                SharedStateRegistry sharedStateRegistry = spy(new SharedStateRegistry());
+                SharedStateRegistry sharedStateRegistry = spy(new SharedStateRegistryImpl());
                 for (int checkpointId = 0; checkpointId < 3; ++checkpointId) {
 
                     reset(sharedStateRegistry);
@@ -577,14 +589,15 @@ public class EmbeddedRocksDBStateBackendTest
                     Map<StateHandleID, StreamStateHandle> sharedState =
                             new HashMap<>(stateHandle.getSharedState());
 
-                    stateHandle.registerSharedStates(sharedStateRegistry);
+                    stateHandle.registerSharedStates(sharedStateRegistry, checkpointId);
 
                     for (Map.Entry<StateHandleID, StreamStateHandle> e : sharedState.entrySet()) {
                         verify(sharedStateRegistry)
                                 .registerReference(
                                         stateHandle.createSharedStateRegistryKeyFromFileName(
                                                 e.getKey()),
-                                        e.getValue());
+                                        e.getValue(),
+                                        checkpointId);
                     }
 
                     previousStateHandles.add(stateHandle);
@@ -593,7 +606,7 @@ public class EmbeddedRocksDBStateBackendTest
                     // -----------------------------------------------------------------
 
                     if (previousStateHandles.size() > 1) {
-                        checkRemove(previousStateHandles.remove(), sharedStateRegistry);
+                        previousStateHandles.remove().discardState();
                     }
                 }
 
@@ -601,7 +614,7 @@ public class EmbeddedRocksDBStateBackendTest
 
                     reset(sharedStateRegistry);
 
-                    checkRemove(previousStateHandles.remove(), sharedStateRegistry);
+                    previousStateHandles.remove().discardState();
                 }
             } finally {
                 IOUtils.closeQuietly(backend);
@@ -610,19 +623,23 @@ public class EmbeddedRocksDBStateBackendTest
         }
     }
 
-    private void checkRemove(IncrementalRemoteKeyedStateHandle remove, SharedStateRegistry registry)
-            throws Exception {
-        for (StateHandleID id : remove.getSharedState().keySet()) {
-            verify(registry, times(0))
-                    .unregisterReference(remove.createSharedStateRegistryKeyFromFileName(id));
-        }
+    @Test(expected = FlinkRuntimeException.class)
+    public void testMapStateClear() throws Exception {
+        setupRocksKeyedStateBackend();
+        MapStateDescriptor<Integer, String> kvId =
+                new MapStateDescriptor<>("id", Integer.class, String.class);
+        MapState<Integer, String> state =
+                keyedStateBackend.getPartitionedState(
+                        VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, kvId);
 
-        remove.discardState();
+        doAnswer(
+                        invocationOnMock -> {
+                            throw new RocksDBException("Artificial failure");
+                        })
+                .when(keyedStateBackend.db)
+                .newIterator(any(ColumnFamilyHandle.class), any(ReadOptions.class));
 
-        for (StateHandleID id : remove.getSharedState().keySet()) {
-            verify(registry)
-                    .unregisterReference(remove.createSharedStateRegistryKeyFromFileName(id));
-        }
+        state.clear();
     }
 
     private void runStateUpdates() throws Exception {

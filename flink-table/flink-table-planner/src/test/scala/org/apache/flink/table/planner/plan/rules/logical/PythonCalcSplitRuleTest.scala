@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.rules.logical
 
 import org.apache.flink.api.scala._
@@ -29,9 +28,7 @@ import org.apache.flink.table.planner.utils.TableTestBase
 import org.apache.calcite.plan.hep.HepMatchOrder
 import org.junit.{Before, Test}
 
-/**
-  * Test for [[PythonCalcSplitRule]].
-  */
+/** Test for [[PythonCalcSplitRule]]. */
 class PythonCalcSplitRuleTest extends TableTestBase {
 
   private val util = batchTestUtil()
@@ -44,27 +41,29 @@ class PythonCalcSplitRuleTest extends TableTestBase {
       FlinkVolcanoProgramBuilder.newBuilder
         .add(FlinkBatchRuleSets.LOGICAL_OPT_RULES)
         .setRequiredOutputTraits(Array(FlinkConventions.LOGICAL))
-        .build())
+        .build()
+    )
     programs.addLast(
       "logical_rewrite",
       FlinkHepRuleSetProgramBuilder.newBuilder
         .setHepRulesExecutionType(HEP_RULES_EXECUTION_TYPE.RULE_SEQUENCE)
         .setHepMatchOrder(HepMatchOrder.BOTTOM_UP)
         .add(FlinkStreamRuleSets.LOGICAL_REWRITE)
-        .build())
+        .build()
+    )
     util.replaceBatchProgram(programs)
 
     util.addTableSource[(Int, Int, Int, (Int, Int))]("MyTable", 'a, 'b, 'c, 'd)
-    util.addFunction("pyFunc1", new PythonScalarFunction("pyFunc1"))
-    util.addFunction("pyFunc2", new PythonScalarFunction("pyFunc2"))
-    util.addFunction("pyFunc3", new PythonScalarFunction("pyFunc3"))
-    util.addFunction("pyFunc4", new BooleanPythonScalarFunction("pyFunc4"))
-    util.addFunction("pyFunc5", new RowPythonScalarFunction("pyFunc5"))
-    util.addFunction("RowJavaFunc", new RowJavaScalarFunction("RowJavaFunc"))
-    util.addFunction("pandasFunc1", new PandasScalarFunction("pandasFunc1"))
-    util.addFunction("pandasFunc2", new PandasScalarFunction("pandasFunc2"))
-    util.addFunction("pandasFunc3", new PandasScalarFunction("pandasFunc3"))
-    util.addFunction("pandasFunc4", new BooleanPandasScalarFunction("pandasFunc4"))
+    util.addTemporarySystemFunction("pyFunc1", new PythonScalarFunction("pyFunc1"))
+    util.addTemporarySystemFunction("pyFunc2", new PythonScalarFunction("pyFunc2"))
+    util.addTemporarySystemFunction("pyFunc3", new PythonScalarFunction("pyFunc3"))
+    util.addTemporarySystemFunction("pyFunc4", new BooleanPythonScalarFunction("pyFunc4"))
+    util.addTemporarySystemFunction("pyFunc5", new RowPythonScalarFunction("pyFunc5"))
+    util.addTemporarySystemFunction("RowJavaFunc", new RowJavaScalarFunction("RowJavaFunc"))
+    util.addTemporarySystemFunction("pandasFunc1", new PandasScalarFunction("pandasFunc1"))
+    util.addTemporarySystemFunction("pandasFunc2", new PandasScalarFunction("pandasFunc2"))
+    util.addTemporarySystemFunction("pandasFunc3", new PandasScalarFunction("pandasFunc3"))
+    util.addTemporarySystemFunction("pandasFunc4", new BooleanPandasScalarFunction("pandasFunc4"))
   }
 
   @Test

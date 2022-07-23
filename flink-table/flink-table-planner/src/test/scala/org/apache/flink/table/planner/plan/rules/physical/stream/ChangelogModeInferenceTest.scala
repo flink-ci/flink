@@ -15,62 +15,57 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.rules.physical.stream
 
 import org.apache.flink.api.common.time.Time
-import org.apache.flink.table.api.{ExplainDetail, _}
+import org.apache.flink.table.api.ExplainDetail
 import org.apache.flink.table.api.config.OptimizerConfigOptions
+import org.apache.flink.table.planner.plan.optimize.RelNodeBlockPlanBuilder
 import org.apache.flink.table.planner.plan.optimize.program.FlinkChangelogModeInferenceProgram
 import org.apache.flink.table.planner.utils.{AggregatePhaseStrategy, TableTestBase}
 
 import org.junit.{Before, Test}
 
-/**
- * Tests for [[FlinkChangelogModeInferenceProgram]].
- */
+/** Tests for [[FlinkChangelogModeInferenceProgram]]. */
 class ChangelogModeInferenceTest extends TableTestBase {
 
   private val util = streamTestUtil()
 
   @Before
   def before(): Unit = {
-    util.addTable(
-      """
-        |CREATE TABLE MyTable (
-        | word STRING,
-        | number INT
-        |) WITH (
-        | 'connector' = 'COLLECTION',
-        | 'is-bounded' = 'false'
-        |)
+    util.addTable("""
+                    |CREATE TABLE MyTable (
+                    | word STRING,
+                    | number INT
+                    |) WITH (
+                    | 'connector' = 'COLLECTION',
+                    | 'is-bounded' = 'false'
+                    |)
       """.stripMargin)
 
-    util.addTable(
-      """
-        |CREATE TABLE Orders (
-        | amount INT,
-        | currency STRING,
-        | rowtime TIMESTAMP(3),
-        | proctime AS PROCTIME(),
-        | WATERMARK FOR rowtime AS rowtime
-        |) WITH (
-        | 'connector' = 'COLLECTION',
-        | 'is-bounded' = 'false'
-        |)
+    util.addTable("""
+                    |CREATE TABLE Orders (
+                    | amount INT,
+                    | currency STRING,
+                    | rowtime TIMESTAMP(3),
+                    | proctime AS PROCTIME(),
+                    | WATERMARK FOR rowtime AS rowtime
+                    |) WITH (
+                    | 'connector' = 'COLLECTION',
+                    | 'is-bounded' = 'false'
+                    |)
       """.stripMargin)
-    util.addTable(
-      """
-        |CREATE TABLE ratesHistory (
-        | currency STRING,
-        | rate INT,
-        | rowtime TIMESTAMP(3),
-        | WATERMARK FOR rowtime AS rowtime
-        |) WITH (
-        |  'connector' = 'COLLECTION',
-        |  'is-bounded' = 'false',
-        |  'changelog-mode' = 'I'
-        |)
+    util.addTable("""
+                    |CREATE TABLE ratesHistory (
+                    | currency STRING,
+                    | rate INT,
+                    | rowtime TIMESTAMP(3),
+                    | WATERMARK FOR rowtime AS rowtime
+                    |) WITH (
+                    |  'connector' = 'COLLECTION',
+                    |  'is-bounded' = 'false',
+                    |  'changelog-mode' = 'I'
+                    |)
       """.stripMargin)
     util.addTable(
       " CREATE VIEW DeduplicatedView AS SELECT currency, rate, rowtime FROM " +
@@ -80,18 +75,52 @@ class ChangelogModeInferenceTest extends TableTestBase {
         "  ) T " +
         "  WHERE rowNum = 1")
 
-    util.addTable(
-      """
-        |CREATE TABLE ratesChangelogStream (
-        | currency STRING,
-        | rate INT,
-        | rowtime TIMESTAMP(3),
-        | WATERMARK FOR rowtime as rowtime,
-        | PRIMARY KEY(currency) NOT ENFORCED
-        |) WITH (
-        |  'connector' = 'values',
-        |  'changelog-mode' = 'I,UA,UB,D'
-        |)
+    util.addTable("""
+                    |CREATE TABLE ratesChangelogStream (
+                    | currency STRING,
+                    | rate INT,
+                    | rowtime TIMESTAMP(3),
+                    | WATERMARK FOR rowtime as rowtime,
+                    | PRIMARY KEY(currency) NOT ENFORCED
+                    |) WITH (
+                    |  'connector' = 'values',
+                    |  'changelog-mode' = 'I,UA,UB,D'
+                    |)
+      """.stripMargin)
+
+    util.addTable("""
+                    |CREATE TABLE upsert_managed_table (
+                    | id INT,
+                    | col1 INT,
+                    | col2 STRING,
+                    | PRIMARY KEY(id) NOT ENFORCED
+                    |) WITH (
+                    |  'changelog-mode' = 'I,UA,D'
+                    |)
+      """.stripMargin)
+
+    util.addTable("""
+                    |CREATE TABLE upsert_sink_table (
+                    | id INT,
+                    | col1 INT,
+                    | col2 STRING,
+                    | PRIMARY KEY(id) NOT ENFORCED
+                    |) WITH (
+                    |  'connector' = 'values',
+                    |  'sink-changelog-mode-enforced' = 'I,UA,D'
+                    |)
+      """.stripMargin)
+
+    util.addTable("""
+                    |CREATE TABLE all_change_sink_table (
+                    | id INT,
+                    | col1 INT,
+                    | col2 STRING,
+                    | PRIMARY KEY(id) NOT ENFORCED
+                    |) WITH (
+                    |  'connector' = 'values',
+                    |  'sink-changelog-mode-enforced' = 'I,UA,UB,D'
+                    |)
       """.stripMargin)
   }
 
@@ -104,7 +133,8 @@ class ChangelogModeInferenceTest extends TableTestBase {
   def testOneLevelGroupBy(): Unit = {
     // one level unbounded groupBy
     util.verifyRelPlan(
-      "SELECT COUNT(number) FROM MyTable GROUP BY word", ExplainDetail.CHANGELOG_MODE)
+      "SELECT COUNT(number) FROM MyTable GROUP BY word",
+      ExplainDetail.CHANGELOG_MODE)
   }
 
   @Test
@@ -121,11 +151,11 @@ class ChangelogModeInferenceTest extends TableTestBase {
 
   @Test
   def testTwoLevelGroupByLocalGlobalOn(): Unit = {
-      util.enableMiniBatch()
-      util.tableEnv.getConfig.setIdleStateRetentionTime(Time.hours(1), Time.hours(2))
-      util.tableEnv.getConfig.getConfiguration.setString(
-        OptimizerConfigOptions.TABLE_OPTIMIZER_AGG_PHASE_STRATEGY,
-        AggregatePhaseStrategy.TWO_PHASE.toString)
+    util.enableMiniBatch()
+    util.tableEnv.getConfig.setIdleStateRetentionTime(Time.hours(1), Time.hours(2))
+    util.tableEnv.getConfig.set(
+      OptimizerConfigOptions.TABLE_OPTIMIZER_AGG_PHASE_STRATEGY,
+      AggregatePhaseStrategy.TWO_PHASE.toString)
     // two level unbounded groupBy
     val sql =
       """
@@ -160,15 +190,14 @@ class ChangelogModeInferenceTest extends TableTestBase {
 
   @Test
   def testGroupByWithUnion(): Unit = {
-    util.addTable(
-      """
-        |CREATE TABLE MyTable2 (
-        | word STRING,
-        | cnt INT
-        |) WITH (
-        | 'connector' = 'COLLECTION',
-        | 'is-bounded' = 'false'
-        |)
+    util.addTable("""
+                    |CREATE TABLE MyTable2 (
+                    | word STRING,
+                    | cnt INT
+                    |) WITH (
+                    | 'connector' = 'COLLECTION',
+                    | 'is-bounded' = 'false'
+                    |)
       """.stripMargin)
 
     val sql =
@@ -180,5 +209,104 @@ class ChangelogModeInferenceTest extends TableTestBase {
         |) GROUP BY cnt
       """.stripMargin
     util.verifyRelPlan(sql, ExplainDetail.CHANGELOG_MODE)
+  }
+
+  @Test
+  def testPropagateUpdateKindAmongRelNodeBlocks(): Unit = {
+    util.tableEnv.getConfig.set(
+      RelNodeBlockPlanBuilder.TABLE_OPTIMIZER_REUSE_OPTIMIZE_BLOCK_WITH_DIGEST_ENABLED,
+      Boolean.box(true))
+    util.addTable("""
+                    |create table sink1 (
+                    |  a INT,
+                    |  b VARCHAR
+                    |) with (
+                    |  'connector' = 'values',
+                    |  'sink-insert-only' = 'false'
+                    |)
+                    |""".stripMargin)
+    util.addTable("""
+                    |create table sink2 (
+                    |  a INT,
+                    |  b VARCHAR,
+                    |  primary key (b) not enforced
+                    |) with (
+                    |  'connector' = 'values',
+                    |  'sink-insert-only' = 'false'
+                    |)
+                    |""".stripMargin)
+
+    util.tableEnv.executeSql("""
+                               |CREATE VIEW v1 AS
+                               |SELECT
+                               |  SUM(number) AS number, word
+                               |FROM MyTable
+                               |GROUP BY word
+                               |""".stripMargin)
+
+    util.tableEnv.executeSql("""
+                               |CREATE VIEW v2 AS
+                               |SELECT number + 1 AS number, word FROM v1
+                               |UNION ALL
+                               |SELECT number - 1 AS number, word FROM v1
+                               |""".stripMargin)
+
+    val statementSet = util.tableEnv.createStatementSet()
+    // sink1 requires UB
+    statementSet.addInsertSql("""
+                                |INSERT INTO sink1 SELECT number, word FROM v2 WHERE word > 'a'
+                                |""".stripMargin)
+    // sink2 requires UB
+    statementSet.addInsertSql("""
+                                |INSERT INTO sink1 SELECT number, word FROM v2 WHERE word < 'a'
+                                |""".stripMargin)
+    // sink3 does not require UB
+    statementSet.addInsertSql("""
+                                |INSERT INTO sink2 SELECT * FROM v1
+                                |""".stripMargin)
+    util.verifyRelPlan(statementSet, ExplainDetail.CHANGELOG_MODE)
+  }
+
+  @Test
+  def testEliminateChangelogNormalizedOnUpsertSink: Unit = {
+    upsertManagedTableWithChangelogNormalizeTestOnSink(isUpsert = true)
+  }
+
+  @Test
+  def testKeepChangelogNormalizedOnNonUpsertSink: Unit = {
+    upsertManagedTableWithChangelogNormalizeTestOnSink(isUpsert = false)
+  }
+
+  @Test
+  def testEliminateChangelogNormalizedOnUpsertJoin(): Unit = {
+    upsertManagedTableWithChangelogNormalizeTestOnJoin(isUpsert = true)
+  }
+
+  @Test
+  def testKeepChangelogNormalizedOnNonUpsertJoin(): Unit = {
+    upsertManagedTableWithChangelogNormalizeTestOnJoin(isUpsert = false)
+  }
+
+  private def upsertManagedTableWithChangelogNormalizeTestOnSink(isUpsert: Boolean): Unit = {
+    val sinkTableName = if (isUpsert) {
+      "upsert_sink_table"
+    } else {
+      "all_change_sink_table"
+    }
+    val sql = s"INSERT INTO $sinkTableName SELECT * FROM upsert_managed_table"
+    util.verifyRelPlanInsert(sql, ExplainDetail.CHANGELOG_MODE)
+  }
+
+  private def upsertManagedTableWithChangelogNormalizeTestOnJoin(isUpsert: Boolean): Unit = {
+    val sinkTableName = if (isUpsert) {
+      "upsert_sink_table"
+    } else {
+      "all_change_sink_table"
+    }
+    val sql = s"""
+                 |INSERT INTO $sinkTableName SELECT a.* FROM upsert_managed_table a
+                 |join upsert_managed_table b on a.id = b.id
+                 |""".stripMargin
+    util.verifyRelPlanInsert(sql, ExplainDetail.CHANGELOG_MODE)
   }
 }

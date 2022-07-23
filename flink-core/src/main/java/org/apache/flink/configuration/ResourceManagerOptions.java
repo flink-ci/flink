@@ -35,6 +35,7 @@ public class ResourceManagerOptions {
     /** Timeout for jobs which don't have a job manager as leader assigned. */
     public static final ConfigOption<String> JOB_TIMEOUT =
             ConfigOptions.key("resourcemanager.job.timeout")
+                    .stringType()
                     .defaultValue("5 minutes")
                     .withDescription(
                             "Timeout for jobs which don't have a job manager as leader assigned.");
@@ -43,6 +44,7 @@ public class ResourceManagerOptions {
     @Deprecated
     public static final ConfigOption<Integer> LOCAL_NUMBER_RESOURCE_MANAGER =
             ConfigOptions.key("local.number-resourcemanager")
+                    .intType()
                     .defaultValue(1)
                     .withDescription("The number of resource managers start.");
 
@@ -53,6 +55,7 @@ public class ResourceManagerOptions {
      */
     public static final ConfigOption<Integer> IPC_PORT =
             ConfigOptions.key("resourcemanager.rpc.port")
+                    .intType()
                     .defaultValue(0)
                     .withDescription(
                             "Defines the network port to connect to for communication with the resource manager. By"
@@ -70,8 +73,7 @@ public class ResourceManagerOptions {
                                     + "for streaming workloads, which may fail if there are not enough slots. Note that this configuration option does not take "
                                     + "effect for standalone clusters, where how many slots are allocated is not controlled by Flink.");
 
-    @Documentation.ExcludeFromDocumentation(
-            "This is only needed by FinGrainedSlotManager, which it still in development.")
+    @Documentation.Section(Documentation.Sections.EXPERT_SCHEDULING)
     public static final ConfigOption<Double> MAX_TOTAL_CPU =
             ConfigOptions.key("slotmanager.max-total-resource.cpu")
                     .doubleType()
@@ -83,8 +85,7 @@ public class ResourceManagerOptions {
                                     + MAX_SLOT_NUM.key()
                                     + "'.");
 
-    @Documentation.ExcludeFromDocumentation(
-            "This is only needed by FinGrainedSlotManager, which it still in development.")
+    @Documentation.Section(Documentation.Sections.EXPERT_SCHEDULING)
     public static final ConfigOption<MemorySize> MAX_TOTAL_MEM =
             ConfigOptions.key("slotmanager.max-total-resource.memory")
                     .memoryType()
@@ -141,6 +142,14 @@ public class ResourceManagerOptions {
                                     + START_WORKER_MAX_FAILURE_RATE.key()
                                     + "') is reached.");
 
+    @Documentation.ExcludeFromDocumentation(
+            "This is an expert option, that we do not want to expose in the documentation")
+    public static final ConfigOption<Duration> REQUIREMENTS_CHECK_DELAY =
+            ConfigOptions.key("slotmanager.requirement-check.delay")
+                    .durationType()
+                    .defaultValue(Duration.ofMillis(50))
+                    .withDescription("The delay of the resource requirements check.");
+
     /**
      * The timeout for a slot request to be discarded, in milliseconds.
      *
@@ -149,6 +158,7 @@ public class ResourceManagerOptions {
     @Deprecated
     public static final ConfigOption<Long> SLOT_REQUEST_TIMEOUT =
             ConfigOptions.key("slotmanager.request-timeout")
+                    .longType()
                     .defaultValue(-1L)
                     .withDescription("The timeout for a slot request to be discarded.");
 
@@ -183,12 +193,14 @@ public class ResourceManagerOptions {
     @Deprecated
     public static final ConfigOption<Long> SLOT_MANAGER_TASK_MANAGER_TIMEOUT =
             ConfigOptions.key("slotmanager.taskmanager-timeout")
+                    .longType()
                     .defaultValue(30000L)
                     .withDescription("The timeout for an idle task manager to be released.");
 
     /** The timeout for an idle task manager to be released, in milliseconds. */
     public static final ConfigOption<Long> TASK_MANAGER_TIMEOUT =
             ConfigOptions.key("resourcemanager.taskmanager-timeout")
+                    .longType()
                     .defaultValue(30000L)
                     .withDeprecatedKeys(SLOT_MANAGER_TASK_MANAGER_TIMEOUT.key())
                     .withDescription(
@@ -208,6 +220,7 @@ public class ResourceManagerOptions {
     @Deprecated
     public static final ConfigOption<Boolean> TASK_MANAGER_RELEASE_WHEN_RESULT_CONSUMED =
             ConfigOptions.key("resourcemanager.taskmanager-release.wait.result.consumed")
+                    .booleanType()
                     .defaultValue(true)
                     .withDescription(
                             Description.builder()

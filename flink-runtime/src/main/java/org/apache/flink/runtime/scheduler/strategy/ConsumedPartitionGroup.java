@@ -19,12 +19,17 @@
 package org.apache.flink.runtime.scheduler.strategy;
 
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.runtime.io.network.partition.ResultPartitionType;
+import org.apache.flink.runtime.jobgraph.IntermediateDataSetID;
 import org.apache.flink.runtime.jobgraph.IntermediateResultPartitionID;
+import org.apache.flink.util.Preconditions;
 
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.apache.flink.util.Preconditions.checkArgument;
 
 /** Group of consumed {@link IntermediateResultPartitionID}s. */
 public class ConsumedPartitionGroup implements Iterable<IntermediateResultPartitionID> {
@@ -33,19 +38,41 @@ public class ConsumedPartitionGroup implements Iterable<IntermediateResultPartit
 
     private final AtomicInteger unfinishedPartitions;
 
-    private ConsumedPartitionGroup(List<IntermediateResultPartitionID> resultPartitions) {
+    private final IntermediateDataSetID intermediateDataSetID;
+
+    private final ResultPartitionType resultPartitionType;
+
+    private ConsumedPartitionGroup(
+            List<IntermediateResultPartitionID> resultPartitions,
+            ResultPartitionType resultPartitionType) {
+        checkArgument(
+                resultPartitions.size() > 0,
+                "The size of result partitions in the ConsumedPartitionGroup should be larger than 0.");
+        this.intermediateDataSetID = resultPartitions.get(0).getIntermediateDataSetID();
+        this.resultPartitionType = Preconditions.checkNotNull(resultPartitionType);
+
+        // Sanity check: all the partitions in one ConsumedPartitionGroup should have the same
+        // IntermediateDataSetID
+        for (IntermediateResultPartitionID resultPartition : resultPartitions) {
+            checkArgument(
+                    resultPartition.getIntermediateDataSetID().equals(this.intermediateDataSetID));
+        }
         this.resultPartitions = resultPartitions;
+
         this.unfinishedPartitions = new AtomicInteger(resultPartitions.size());
     }
 
     public static ConsumedPartitionGroup fromMultiplePartitions(
-            List<IntermediateResultPartitionID> resultPartitions) {
-        return new ConsumedPartitionGroup(resultPartitions);
+            List<IntermediateResultPartitionID> resultPartitions,
+            ResultPartitionType resultPartitionType) {
+        return new ConsumedPartitionGroup(resultPartitions, resultPartitionType);
     }
 
     public static ConsumedPartitionGroup fromSinglePartition(
-            IntermediateResultPartitionID resultPartition) {
-        return new ConsumedPartitionGroup(Collections.singletonList(resultPartition));
+            IntermediateResultPartitionID resultPartition,
+            ResultPartitionType resultPartitionType) {
+        return new ConsumedPartitionGroup(
+                Collections.singletonList(resultPartition), resultPartitionType);
     }
 
     @Override
@@ -65,6 +92,11 @@ public class ConsumedPartitionGroup implements Iterable<IntermediateResultPartit
         return iterator().next();
     }
 
+    /** Get the ID of IntermediateDataSet this ConsumedPartitionGroup belongs to. */
+    public IntermediateDataSetID getIntermediateDataSetID() {
+        return intermediateDataSetID;
+    }
+
     public int partitionUnfinished() {
         return unfinishedPartitions.incrementAndGet();
     }
@@ -80,5 +112,9 @@ public class ConsumedPartitionGroup implements Iterable<IntermediateResultPartit
 
     public boolean areAllPartitionsFinished() {
         return unfinishedPartitions.get() == 0;
+    }
+
+    public ResultPartitionType getResultPartitionType() {
+        return resultPartitionType;
     }
 }

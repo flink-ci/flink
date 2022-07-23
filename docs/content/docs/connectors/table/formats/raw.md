@@ -1,6 +1,6 @@
 ---
 title: Raw
-weight: 10
+weight: 11
 type: docs
 aliases:
   - /dev/table/connectors/formats/raw.html
@@ -136,7 +136,7 @@ The table below details the SQL types the format supports, including details of 
     </tr>
     <tr>
       <td><code>TINYINT</code></td>
-      <td>A single byte of the singed number value.</td>
+      <td>A single byte of the signed number value.</td>
     </tr>
     <tr>
       <td><code>SMALLINT</code></td>

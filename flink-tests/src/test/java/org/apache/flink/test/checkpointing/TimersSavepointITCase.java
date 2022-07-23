@@ -29,6 +29,7 @@ import org.apache.flink.configuration.StateBackendOptions;
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend;
 import org.apache.flink.contrib.streaming.state.EmbeddedRocksDBStateBackend.PriorityQueueStateType;
 import org.apache.flink.contrib.streaming.state.RocksDBOptions;
+import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.core.testutils.OneShotLatch;
 import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
@@ -120,9 +121,9 @@ public class TimersSavepointITCase {
     private void takeSavepoint(String savepointPath, ClusterClient<?> client) throws Exception {
         JobGraph jobGraph = getJobGraph(EmbeddedRocksDBStateBackend.PriorityQueueStateType.ROCKSDB);
         client.submitJob(jobGraph).get();
-        waitForAllTaskRunning(miniClusterResource.getMiniCluster(), jobGraph.getJobID());
+        waitForAllTaskRunning(miniClusterResource.getMiniCluster(), jobGraph.getJobID(), false);
         CompletableFuture<String> savepointPathFuture =
-                client.triggerSavepoint(jobGraph.getJobID(), null);
+                client.triggerSavepoint(jobGraph.getJobID(), null, SavepointFormatType.CANONICAL);
 
         String jobmanagerSavepointPath = savepointPathFuture.get(2, TimeUnit.SECONDS);
 
@@ -152,7 +153,7 @@ public class TimersSavepointITCase {
                 TMP_FOLDER.newFolder().toURI().toString());
         config.set(RocksDBOptions.TIMER_SERVICE_FACTORY, priorityQueueStateType);
         env.configure(config, this.getClass().getClassLoader());
-        return env.getStreamGraph("Test", false).getJobGraph();
+        return env.getStreamGraph(false).getJobGraph();
     }
 
     private static String getResourceFilename(String filename) {

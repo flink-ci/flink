@@ -15,10 +15,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.runtime.batch.sql
 
-import org.apache.flink.api.common.ShuffleMode
+import org.apache.flink.api.common.BatchShuffleMode
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo.{INT_TYPE_INFO, LONG_TYPE_INFO, STRING_TYPE_INFO}
 import org.apache.flink.api.java.typeutils.RowTypeInfo
 import org.apache.flink.configuration.ExecutionOptions
@@ -27,10 +26,10 @@ import org.apache.flink.table.api.config.OptimizerConfigOptions
 import org.apache.flink.table.planner.runtime.utils.BatchTestBase
 import org.apache.flink.types.Row
 
+import org.junit.{Before, Test}
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
-import org.junit.{Before, Test}
 
 import scala.collection.JavaConversions._
 import scala.util.Random
@@ -38,12 +37,12 @@ import scala.util.Random
 /**
  * IT cases for multiple input.
  *
- * <p>This test class works by comparing the results with and without multiple input.
- * The following IT cases are picked from
+ * <p>This test class works by comparing the results with and without multiple input. The following
+ * IT cases are picked from
  * [[org.apache.flink.table.planner.plan.batch.sql.MultipleInputCreationTest]].
  */
 @RunWith(classOf[Parameterized])
-class MultipleInputITCase(shuffleMode: ShuffleMode) extends BatchTestBase {
+class MultipleInputITCase(shuffleMode: BatchShuffleMode) extends BatchTestBase {
 
   @Before
   override def before(): Unit = {
@@ -74,19 +73,18 @@ class MultipleInputITCase(shuffleMode: ShuffleMode) extends BatchTestBase {
       "a, b, c, nt",
       MultipleInputITCase.nullables)
 
-    tEnv.getConfig.getConfiguration.set(ExecutionOptions.SHUFFLE_MODE, shuffleMode)
+    tEnv.getConfig.set(ExecutionOptions.BATCH_SHUFFLE_MODE, shuffleMode)
   }
 
   @Test
   def testBasicMultipleInput(): Unit = {
-    checkMultipleInputResult(
-      """
-        |SELECT * FROM
-        |  (SELECT a FROM x INNER JOIN y ON x.a = y.d) T1
-        |  INNER JOIN
-        |  (SELECT d FROM y INNER JOIN t ON y.d = t.a) T2
-        |  ON T1.a = T2.d
-        |""".stripMargin)
+    checkMultipleInputResult("""
+                               |SELECT * FROM
+                               |  (SELECT a FROM x INNER JOIN y ON x.a = y.d) T1
+                               |  INNER JOIN
+                               |  (SELECT d FROM y INNER JOIN t ON y.d = t.a) T2
+                               |  ON T1.a = T2.d
+                               |""".stripMargin)
   }
 
   @Test
@@ -206,11 +204,11 @@ class MultipleInputITCase(shuffleMode: ShuffleMode) extends BatchTestBase {
   }
 
   def checkMultipleInputResult(sql: String): Unit = {
-    tEnv.getConfig.getConfiguration.setBoolean(
-      OptimizerConfigOptions.TABLE_OPTIMIZER_MULTIPLE_INPUT_ENABLED, false)
+    tEnv.getConfig
+      .set(OptimizerConfigOptions.TABLE_OPTIMIZER_MULTIPLE_INPUT_ENABLED, Boolean.box(false))
     val expected = executeQuery(sql)
-    tEnv.getConfig.getConfiguration.setBoolean(
-      OptimizerConfigOptions.TABLE_OPTIMIZER_MULTIPLE_INPUT_ENABLED, true)
+    tEnv.getConfig
+      .set(OptimizerConfigOptions.TABLE_OPTIMIZER_MULTIPLE_INPUT_ENABLED, Boolean.box(true))
     checkResult(sql, expected)
   }
 }
@@ -218,19 +216,20 @@ class MultipleInputITCase(shuffleMode: ShuffleMode) extends BatchTestBase {
 object MultipleInputITCase {
 
   @Parameters(name = "shuffleMode: {0}")
-  def parameters: Array[ShuffleMode] =
-    Array(ShuffleMode.ALL_EXCHANGES_BLOCKING, ShuffleMode.ALL_EXCHANGES_PIPELINED)
+  def parameters: Array[BatchShuffleMode] =
+    Array(BatchShuffleMode.ALL_EXCHANGES_BLOCKING, BatchShuffleMode.ALL_EXCHANGES_PIPELINED)
 
   def generateRandomData(): Seq[Row] = {
     val data = new java.util.ArrayList[Row]()
     val numRows = Random.nextInt(30)
     lazy val strs = Seq("multiple", "input", "itcase")
     for (_ <- 0 until numRows) {
-      data.add(BatchTestBase.row(
-        Random.nextInt(3),
-        Random.nextInt(3).longValue(),
-        strs(Random.nextInt(3)),
-        Random.nextInt(3)))
+      data.add(
+        BatchTestBase.row(
+          Random.nextInt(3),
+          Random.nextInt(3).longValue(),
+          strs(Random.nextInt(3)),
+          Random.nextInt(3)))
     }
     data
   }

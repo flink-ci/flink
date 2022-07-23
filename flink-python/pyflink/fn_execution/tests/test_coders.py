@@ -25,7 +25,7 @@ from pyflink.fn_execution.coders import BigIntCoder, TinyIntCoder, BooleanCoder,
     SmallIntCoder, IntCoder, FloatCoder, DoubleCoder, BinaryCoder, CharCoder, DateCoder, \
     TimeCoder, TimestampCoder, GenericArrayCoder, MapCoder, DecimalCoder, FlattenRowCoder,\
     RowCoder, LocalZonedTimestampCoder, BigDecimalCoder, TupleCoder, PrimitiveArrayCoder,\
-    TimeWindowCoder, CountWindowCoder
+    TimeWindowCoder, CountWindowCoder, InstantCoder
 from pyflink.datastream.window import TimeWindow, CountWindow
 from pyflink.testing.test_case_utils import PyFlinkTestCase
 
@@ -110,6 +110,12 @@ class CodersTest(PyFlinkTestCase):
         self.check_coder(coder,
                          timezone.localize(datetime.datetime(2019, 9, 10, 18, 30, 20, 123456)))
 
+    def test_instant_coder(self):
+        from pyflink.common.time import Instant
+
+        coder = InstantCoder()
+        self.check_coder(coder, Instant(100, 2000), None, Instant(-9223372036854775808, 0))
+
     def test_array_coder(self):
         element_coder = BigIntCoder()
         coder = GenericArrayCoder(element_coder)
@@ -160,6 +166,10 @@ class CodersTest(PyFlinkTestCase):
         v.set_row_kind(RowKind.UPDATE_AFTER)
         self.check_coder(coder, v)
         v.set_row_kind(RowKind.DELETE)
+        self.check_coder(coder, v)
+
+        coder = RowCoder([BigIntCoder(), CharCoder()], ['f1', 'f0'])
+        v = Row(f0="flink", f1=11)
         self.check_coder(coder, v)
 
     def test_basic_decimal_coder(self):

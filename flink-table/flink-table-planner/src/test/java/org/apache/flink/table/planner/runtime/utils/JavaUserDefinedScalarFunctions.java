@@ -18,10 +18,8 @@
 
 package org.apache.flink.table.planner.runtime.utils;
 
-import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
-import org.apache.flink.api.common.typeinfo.TypeInformation;
-import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.table.annotation.DataTypeHint;
+import org.apache.flink.table.annotation.InputGroup;
 import org.apache.flink.table.data.TimestampData;
 import org.apache.flink.table.functions.FunctionContext;
 import org.apache.flink.table.functions.ScalarFunction;
@@ -31,11 +29,11 @@ import org.apache.flink.table.functions.python.PythonFunctionKind;
 import org.apache.flink.types.Row;
 
 import java.sql.Timestamp;
-import java.util.Arrays;
+import java.time.LocalDateTime;
 import java.util.Random;
 import java.util.TimeZone;
 
-import static org.junit.Assert.fail;
+import static org.assertj.core.api.Assertions.fail;
 
 /** Test scalar functions. */
 public class JavaUserDefinedScalarFunctions {
@@ -63,24 +61,6 @@ public class JavaUserDefinedScalarFunctions {
                 m *= n;
             }
             return s + m;
-        }
-    }
-
-    /** Test overloading. */
-    public static class JavaFunc3 extends ScalarFunction {
-        public int eval(String a, int... b) {
-            return b.length;
-        }
-
-        public String eval(String c) {
-            return c;
-        }
-    }
-
-    /** Concatenate arrays as strings. */
-    public static class JavaFunc4 extends ScalarFunction {
-        public String eval(Integer[] a, String[] b) {
-            return Arrays.toString(a) + " and " + Arrays.toString(b);
         }
     }
 
@@ -122,7 +102,8 @@ public class JavaUserDefinedScalarFunctions {
     /** Testing open method is called. */
     public static class UdfWithOpen extends ScalarFunction {
 
-        private boolean isOpened = false;
+        // transient make this class serializable by class name
+        private transient boolean isOpened = false;
 
         @Override
         public void open(FunctionContext context) throws Exception {
@@ -164,7 +145,7 @@ public class JavaUserDefinedScalarFunctions {
             this.name = name;
         }
 
-        public int eval(int i, int j) {
+        public int eval(Integer i, Integer j) {
             return i + j;
         }
 
@@ -197,13 +178,8 @@ public class JavaUserDefinedScalarFunctions {
             this.name = name;
         }
 
-        public boolean eval(int i, int j) {
+        public boolean eval(Integer i, Integer j) {
             return i + j > 1;
-        }
-
-        @Override
-        public TypeInformation<?> getResultType(Class<?>[] signature) {
-            return BasicTypeInfo.BOOLEAN_TYPE_INFO;
         }
 
         @Override
@@ -231,17 +207,14 @@ public class JavaUserDefinedScalarFunctions {
             this.name = name;
         }
 
+        @DataTypeHint("ROW<f0 INT, f1 ROW<f0 INT>>")
         public Row eval(int a) {
             return Row.of(a + 1, Row.of(a * a));
         }
 
-        public Row eval(Object... args) {
+        @DataTypeHint("ROW<f0 INT, f1 ROW<f0 INT>>")
+        public Row eval(@DataTypeHint(inputGroup = InputGroup.ANY) Object... args) {
             return Row.of(1, Row.of(2));
-        }
-
-        @Override
-        public TypeInformation<?> getResultType(Class<?>[] signature) {
-            return Types.ROW(BasicTypeInfo.INT_TYPE_INFO, Types.ROW(BasicTypeInfo.INT_TYPE_INFO));
         }
 
         @Override
@@ -274,13 +247,9 @@ public class JavaUserDefinedScalarFunctions {
             this.name = name;
         }
 
-        public Row eval(Object... a) {
+        @DataTypeHint("ROW<f0 INT, f1 ROW<f0 INT>>")
+        public Row eval(@DataTypeHint(inputGroup = InputGroup.ANY) Object... a) {
             return Row.of(1, 2);
-        }
-
-        @Override
-        public TypeInformation<?> getResultType(Class<?>[] signature) {
-            return Types.ROW(BasicTypeInfo.INT_TYPE_INFO, BasicTypeInfo.INT_TYPE_INFO);
         }
 
         @Override
@@ -323,6 +292,26 @@ public class JavaUserDefinedScalarFunctions {
         @Override
         public PythonFunctionKind getPythonFunctionKind() {
             return PythonFunctionKind.PANDAS;
+        }
+    }
+
+    /** A Python UDF that returns current timestamp with any input. */
+    public static class PythonTimestampScalarFunction extends ScalarFunction
+            implements PythonFunction {
+
+        @DataTypeHint("TIMESTAMP(3)")
+        public LocalDateTime eval(@DataTypeHint(inputGroup = InputGroup.ANY) Object... o) {
+            return LocalDateTime.now();
+        }
+
+        @Override
+        public byte[] getSerializedPythonFunction() {
+            return new byte[0];
+        }
+
+        @Override
+        public PythonEnv getPythonEnv() {
+            return null;
         }
     }
 }

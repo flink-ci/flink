@@ -23,6 +23,7 @@ import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.connector.base.DeliveryGuarantee;
 import org.apache.flink.streaming.connectors.kafka.config.StartupMode;
 import org.apache.flink.streaming.connectors.kafka.internals.KafkaTopicPartition;
 import org.apache.flink.streaming.connectors.kafka.partitioner.FlinkFixedPartitioner;
@@ -51,6 +52,7 @@ import java.util.Properties;
 import java.util.regex.Pattern;
 import java.util.stream.IntStream;
 
+import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.DELIVERY_GUARANTEE;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.KEY_FIELDS;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.KEY_FIELDS_PREFIX;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.KEY_FORMAT;
@@ -60,10 +62,10 @@ import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOp
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.SINK_PARTITIONER;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.TOPIC;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.TOPIC_PATTERN;
+import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.TRANSACTIONAL_ID_PREFIX;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.VALUE_FIELDS_INCLUDE;
 import static org.apache.flink.streaming.connectors.kafka.table.KafkaConnectorOptions.VALUE_FORMAT;
 import static org.apache.flink.table.factories.FactoryUtil.FORMAT;
-import static org.apache.flink.table.types.logical.utils.LogicalTypeChecks.hasRoot;
 
 /** Utilities for {@link KafkaConnectorOptions}. */
 @Internal
@@ -221,7 +223,7 @@ class KafkaConnectorOptionsUtil {
         final StartupMode startupMode =
                 tableOptions
                         .getOptional(SCAN_STARTUP_MODE)
-                        .map(StartupMode::fromOption)
+                        .map(KafkaConnectorOptionsUtil::fromOption)
                         .orElse(StartupMode.GROUP_OFFSETS);
         if (startupMode == StartupMode.SPECIFIC_OFFSETS) {
             // It will be refactored after support specific offset for multiple topics in
@@ -252,6 +254,29 @@ class KafkaConnectorOptionsUtil {
                             new KafkaTopicPartition(topic, partition);
                     specificOffsets.put(topicPartition, offset);
                 });
+    }
+
+    /**
+     * Returns the {@link StartupMode} of Kafka Consumer by passed-in table-specific {@link
+     * ScanStartupMode}.
+     */
+    private static StartupMode fromOption(ScanStartupMode scanStartupMode) {
+        switch (scanStartupMode) {
+            case EARLIEST_OFFSET:
+                return StartupMode.EARLIEST;
+            case LATEST_OFFSET:
+                return StartupMode.LATEST;
+            case GROUP_OFFSETS:
+                return StartupMode.GROUP_OFFSETS;
+            case SPECIFIC_OFFSETS:
+                return StartupMode.SPECIFIC_OFFSETS;
+            case TIMESTAMP:
+                return StartupMode.TIMESTAMP;
+
+            default:
+                throw new TableException(
+                        "Unsupported startup mode. Validator should have checked that.");
+        }
     }
 
     public static Properties getKafkaProperties(Map<String, String> tableOptions) {
@@ -386,7 +411,7 @@ class KafkaConnectorOptionsUtil {
             ReadableConfig options, DataType physicalDataType) {
         final LogicalType physicalType = physicalDataType.getLogicalType();
         Preconditions.checkArgument(
-                hasRoot(physicalType, LogicalTypeRoot.ROW), "Row data type expected.");
+                physicalType.is(LogicalTypeRoot.ROW), "Row data type expected.");
         final Optional<String> optionalKeyFormat = options.getOptional(KEY_FORMAT);
         final Optional<List<String>> optionalKeyFields = options.getOptional(KEY_FIELDS);
 
@@ -453,7 +478,7 @@ class KafkaConnectorOptionsUtil {
             ReadableConfig options, DataType physicalDataType) {
         final LogicalType physicalType = physicalDataType.getLogicalType();
         Preconditions.checkArgument(
-                hasRoot(physicalType, LogicalTypeRoot.ROW), "Row data type expected.");
+                physicalType.is(LogicalTypeRoot.ROW), "Row data type expected.");
         final int physicalFieldCount = LogicalTypeChecks.getFieldCount(physicalType);
         final IntStream physicalFields = IntStream.range(0, physicalFieldCount);
 
@@ -494,6 +519,7 @@ class KafkaConnectorOptionsUtil {
             return new FactoryUtil.DefaultDynamicTableContext(
                     context.getObjectIdentifier(),
                     context.getCatalogTable().copy(newOptions),
+                    context.getEnrichmentOptions(),
                     context.getConfiguration(),
                     context.getClassLoader(),
                     context.isTemporary());
@@ -532,6 +558,15 @@ class KafkaConnectorOptionsUtil {
                         .noDefaultValue();
         if (!configuration.getOptional(subjectOption).isPresent()) {
             configuration.setString(subjectOption, subject);
+        }
+    }
+
+    static void validateDeliveryGuarantee(ReadableConfig tableOptions) {
+        if (tableOptions.get(DELIVERY_GUARANTEE) == DeliveryGuarantee.EXACTLY_ONCE
+                && !tableOptions.getOptional(TRANSACTIONAL_ID_PREFIX).isPresent()) {
+            throw new ValidationException(
+                    TRANSACTIONAL_ID_PREFIX.key()
+                            + " must be specified when using DeliveryGuarantee.EXACTLY_ONCE.");
         }
     }
 

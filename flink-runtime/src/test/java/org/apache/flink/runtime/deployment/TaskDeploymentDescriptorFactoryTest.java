@@ -39,10 +39,14 @@ import org.apache.flink.runtime.jobgraph.JobGraph;
 import org.apache.flink.runtime.jobgraph.JobGraphBuilder;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
+import org.apache.flink.runtime.scheduler.CachedIntermediateDataSetCorruptedException;
 import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
+import org.apache.flink.testutils.TestingUtils;
+import org.apache.flink.testutils.executor.TestExecutorResource;
 import org.apache.flink.util.CompressedSerializedValue;
 import org.apache.flink.util.TestLogger;
 
+import org.junit.ClassRule;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -50,11 +54,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
 
+import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 
 /** Tests for {@link TaskDeploymentDescriptorFactory}. */
 public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
+    @ClassRule
+    public static final TestExecutorResource<ScheduledExecutorService> EXECUTOR_RESOURCE =
+            TestingUtils.defaultExecutorResource();
 
     private static final int PARALLELISM = 4;
 
@@ -148,13 +158,13 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
         return TestingDefaultExecutionGraphBuilder.newBuilder()
                 .setJobGraph(jobGraph)
                 .setBlobWriter(blobWriter)
-                .build();
+                .build(EXECUTOR_RESOURCE.getExecutor());
     }
 
     private static TaskDeploymentDescriptor createTaskDeploymentDescriptor(ExecutionVertex ev)
-            throws IOException {
+            throws IOException, CachedIntermediateDataSetCorruptedException {
 
-        return TaskDeploymentDescriptorFactory.fromExecutionVertex(ev, 0)
+        return TaskDeploymentDescriptorFactory.fromExecution(ev.getCurrentExecutionAttempt())
                 .createDeploymentDescriptor(new AllocationID(), null, Collections.emptyList());
     }
 
@@ -176,5 +186,91 @@ public class TaskDeploymentDescriptorFactoryTest extends TestLogger {
                                             .serializedValueKey));
             return compressedSerializedValue.deserializeValue(ClassLoader.getSystemClassLoader());
         }
+    }
+
+    @Test
+    public void testComputeConsumedSubpartitionRange3to1() {
+        final SubpartitionIndexRange range = computeConsumedSubpartitionRange(0, 1, 3);
+        assertThat(range.getStartIndex(), is(0));
+        assertThat(range.getEndIndex(), is(2));
+    }
+
+    @Test
+    public void testComputeConsumedSubpartitionRange3to2() {
+        final SubpartitionIndexRange range1 = computeConsumedSubpartitionRange(0, 2, 3);
+        assertThat(range1.getStartIndex(), is(0));
+        assertThat(range1.getEndIndex(), is(0));
+
+        final SubpartitionIndexRange range2 = computeConsumedSubpartitionRange(1, 2, 3);
+        assertThat(range2.getStartIndex(), is(1));
+        assertThat(range2.getEndIndex(), is(2));
+    }
+
+    @Test
+    public void testComputeConsumedSubpartitionRange6to4() {
+        final SubpartitionIndexRange range1 = computeConsumedSubpartitionRange(0, 4, 6);
+        assertThat(range1.getStartIndex(), is(0));
+        assertThat(range1.getEndIndex(), is(0));
+
+        final SubpartitionIndexRange range2 = computeConsumedSubpartitionRange(1, 4, 6);
+        assertThat(range2.getStartIndex(), is(1));
+        assertThat(range2.getEndIndex(), is(2));
+
+        final SubpartitionIndexRange range3 = computeConsumedSubpartitionRange(2, 4, 6);
+        assertThat(range3.getStartIndex(), is(3));
+        assertThat(range3.getEndIndex(), is(3));
+
+        final SubpartitionIndexRange range4 = computeConsumedSubpartitionRange(3, 4, 6);
+        assertThat(range4.getStartIndex(), is(4));
+        assertThat(range4.getEndIndex(), is(5));
+    }
+
+    @Test
+    public void testComputeBroadcastConsumedSubpartitionRange() {
+        final SubpartitionIndexRange range1 = computeConsumedSubpartitionRange(0, 3, 1, true, true);
+        assertThat(range1.getStartIndex(), is(0));
+        assertThat(range1.getEndIndex(), is(0));
+
+        final SubpartitionIndexRange range2 = computeConsumedSubpartitionRange(1, 3, 1, true, true);
+        assertThat(range2.getStartIndex(), is(0));
+        assertThat(range2.getEndIndex(), is(0));
+
+        final SubpartitionIndexRange range3 = computeConsumedSubpartitionRange(2, 3, 1, true, true);
+        assertThat(range3.getStartIndex(), is(0));
+        assertThat(range3.getEndIndex(), is(0));
+    }
+
+    @Test
+    public void testComputeConsumedSubpartitionRangeForNonDynamicGraph() {
+        final SubpartitionIndexRange range1 =
+                computeConsumedSubpartitionRange(0, 3, 3, false, false);
+        assertThat(range1.getStartIndex(), is(0));
+        assertThat(range1.getEndIndex(), is(0));
+
+        final SubpartitionIndexRange range2 =
+                computeConsumedSubpartitionRange(1, 3, 3, false, false);
+        assertThat(range2.getStartIndex(), is(1));
+        assertThat(range2.getEndIndex(), is(1));
+
+        final SubpartitionIndexRange range3 =
+                computeConsumedSubpartitionRange(2, 3, 3, false, false);
+        assertThat(range3.getStartIndex(), is(2));
+        assertThat(range3.getEndIndex(), is(2));
+    }
+
+    private static SubpartitionIndexRange computeConsumedSubpartitionRange(
+            int consumerIndex, int numConsumers, int numSubpartitions) {
+        return computeConsumedSubpartitionRange(
+                consumerIndex, numConsumers, numSubpartitions, true, false);
+    }
+
+    private static SubpartitionIndexRange computeConsumedSubpartitionRange(
+            int consumerIndex,
+            int numConsumers,
+            int numSubpartitions,
+            boolean isDynamicGraph,
+            boolean isBroadcast) {
+        return TaskDeploymentDescriptorFactory.computeConsumedSubpartitionRange(
+                consumerIndex, numConsumers, numSubpartitions, isDynamicGraph, isBroadcast);
     }
 }

@@ -47,7 +47,6 @@ import static org.hamcrest.Matchers.containsInAnyOrder;
  * Integration test for {@link org.apache.flink.api.connector.sink.Sink} run time implementation.
  */
 public class SinkITCase extends AbstractTestBase {
-
     static final List<Integer> SOURCE_DATA =
             Arrays.asList(
                     895, 127, 148, 161, 148, 662, 822, 491, 275, 122, 850, 630, 682, 765, 434, 970,
@@ -82,12 +81,11 @@ public class SinkITCase extends AbstractTestBase {
                     .collect(Collectors.toList());
 
     static final List<String> EXPECTED_GLOBAL_COMMITTED_DATA_IN_BATCH_MODE =
-            Arrays.asList(
+            Collections.singletonList(
                     SOURCE_DATA.stream()
                             .map(x -> Tuple3.of(x, null, Long.MIN_VALUE).toString())
                             .sorted()
-                            .collect(joining("+")),
-                    END_OF_INPUT_STR);
+                            .collect(joining("+")));
 
     static final Queue<String> COMMIT_QUEUE = new ConcurrentLinkedQueue<>();
 

@@ -20,6 +20,7 @@ package org.apache.flink.table.planner.functions.aggfunctions;
 
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.functions.AggregateFunction;
+import org.apache.flink.table.runtime.functions.aggregate.LagAggFunction;
 import org.apache.flink.table.types.logical.CharType;
 import org.apache.flink.table.types.logical.IntType;
 import org.apache.flink.table.types.logical.LogicalType;
@@ -33,7 +34,7 @@ import static org.apache.flink.table.data.StringData.fromString;
 
 /** Test for {@link LagAggFunction}. */
 public class LagAggFunctionTest
-        extends AggFunctionTestBase<StringData, LagAggFunction.LagAcc<StringData>> {
+        extends AggFunctionTestBase<StringData, StringData, LagAggFunction.LagAcc<StringData>> {
 
     @Override
     protected List<List<StringData>> getInputValueSets() {

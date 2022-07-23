@@ -33,12 +33,15 @@ import org.apache.flink.table.connector.format.EncodingFormat;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.types.DataType;
+import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.util.TestLogger;
 
 import org.apache.http.HttpHost;
 import org.elasticsearch.action.ActionRequest;
 import org.junit.Test;
 import org.mockito.Mockito;
 
+import java.time.ZoneId;
 import java.util.List;
 
 import static org.mockito.Mockito.doAnswer;
@@ -46,7 +49,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 /** Tests for {@link Elasticsearch7DynamicSink} parameters. */
-public class Elasticsearch7DynamicSinkTest {
+public class Elasticsearch7DynamicSinkTest extends TestLogger {
 
     private static final String FIELD_KEY = "key";
     private static final String FIELD_FRUIT_NAME = "fruit_name";
@@ -72,6 +75,7 @@ public class Elasticsearch7DynamicSinkTest {
                         new Elasticsearch7Configuration(
                                 getConfig(), this.getClass().getClassLoader()),
                         schema,
+                        ZoneId.systemDefault(),
                         provider);
 
         testSink.getSinkRuntimeProvider(new MockSinkContext()).createSinkFunction();
@@ -108,6 +112,7 @@ public class Elasticsearch7DynamicSinkTest {
                         new Elasticsearch7Configuration(
                                 configuration, this.getClass().getClassLoader()),
                         schema,
+                        ZoneId.systemDefault(),
                         provider);
 
         testSink.getSinkRuntimeProvider(new MockSinkContext()).createSinkFunction();
@@ -141,6 +146,7 @@ public class Elasticsearch7DynamicSinkTest {
                         new Elasticsearch7Configuration(
                                 configuration, this.getClass().getClassLoader()),
                         schema,
+                        ZoneId.systemDefault(),
                         provider);
 
         testSink.getSinkRuntimeProvider(new MockSinkContext()).createSinkFunction();
@@ -252,6 +258,11 @@ public class Elasticsearch7DynamicSinkTest {
 
         @Override
         public TypeInformation<?> createTypeInformation(DataType consumedDataType) {
+            return null;
+        }
+
+        @Override
+        public TypeInformation<?> createTypeInformation(LogicalType consumedLogicalType) {
             return null;
         }
 

@@ -20,7 +20,7 @@ package org.apache.flink.table.runtime.operators.python.aggregate.arrow.batch;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
-import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.memory.ByteArrayOutputStreamWithPos;
 import org.apache.flink.core.memory.DataOutputViewStreamWrapper;
@@ -29,6 +29,7 @@ import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.binary.BinaryRowData;
 import org.apache.flink.table.functions.AggregateFunction;
 import org.apache.flink.table.functions.python.PythonFunctionInfo;
+import org.apache.flink.table.runtime.generated.GeneratedProjection;
 import org.apache.flink.table.runtime.typeutils.RowDataSerializer;
 import org.apache.flink.table.types.logical.RowType;
 
@@ -36,6 +37,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.ListIterator;
 
+import static org.apache.flink.python.PythonOptions.PYTHON_METRIC_ENABLED;
+import static org.apache.flink.python.PythonOptions.PYTHON_PROFILE_ENABLED;
 import static org.apache.flink.streaming.api.utils.ProtoUtils.createOverWindowArrowTypeCoderInfoDescriptorProto;
 import static org.apache.flink.streaming.api.utils.ProtoUtils.getUserDefinedFunctionProto;
 
@@ -92,24 +95,26 @@ public class BatchArrowPythonOverWindowAggregateFunctionOperator
             Configuration config,
             PythonFunctionInfo[] pandasAggFunctions,
             RowType inputType,
-            RowType outputType,
+            RowType udfInputType,
+            RowType udfOutputType,
             long[] lowerBoundary,
             long[] upperBoundary,
             boolean[] isRangeWindows,
             int[] aggWindowIndex,
-            int[] groupKey,
-            int[] groupingSet,
-            int[] udafInputOffsets,
             int inputTimeFieldIndex,
-            boolean asc) {
+            boolean asc,
+            GeneratedProjection inputGeneratedProjection,
+            GeneratedProjection groupKeyGeneratedProjection,
+            GeneratedProjection groupSetGeneratedProjection) {
         super(
                 config,
                 pandasAggFunctions,
                 inputType,
-                outputType,
-                groupKey,
-                groupingSet,
-                udafInputOffsets);
+                udfInputType,
+                udfOutputType,
+                inputGeneratedProjection,
+                groupKeyGeneratedProjection,
+                groupSetGeneratedProjection);
         this.lowerBoundary = lowerBoundary;
         this.upperBoundary = upperBoundary;
         this.isRangeWindows = isRangeWindows;
@@ -231,9 +236,9 @@ public class BatchArrowPythonOverWindowAggregateFunctionOperator
 
     @Override
     @SuppressWarnings("ConstantConditions")
-    public void emitResult(Tuple2<byte[], Integer> resultTuple) throws Exception {
-        byte[] udafResult = resultTuple.f0;
-        int length = resultTuple.f1;
+    public void emitResult(Tuple3<String, byte[], Integer> resultTuple) throws Exception {
+        byte[] udafResult = resultTuple.f1;
+        int length = resultTuple.f2;
         bais.setBuffer(udafResult, 0, length);
         int rowCount = arrowSerializer.load();
         for (int i = 0; i < rowCount; i++) {
@@ -256,8 +261,8 @@ public class BatchArrowPythonOverWindowAggregateFunctionOperator
             functionBuilder.setWindowIndex(aggWindowIndex[i]);
             builder.addUdfs(functionBuilder);
         }
-        builder.setMetricEnabled(getPythonConfig().isMetricEnabled());
-        builder.setProfileEnabled(getPythonConfig().isProfileEnabled());
+        builder.setMetricEnabled(config.get(PYTHON_METRIC_ENABLED));
+        builder.setProfileEnabled(config.get(PYTHON_PROFILE_ENABLED));
         // add windows
         for (int i = 0; i < lowerBoundary.length; i++) {
             FlinkFnApi.OverWindow.Builder windowBuilder = FlinkFnApi.OverWindow.newBuilder();
@@ -316,14 +321,6 @@ public class BatchArrowPythonOverWindowAggregateFunctionOperator
     @Override
     public String getFunctionUrn() {
         return PANDAS_BATCH_OVER_WINDOW_AGG_FUNCTION_URN;
-    }
-
-    @Override
-    public RowType createUserDefinedFunctionOutputType() {
-        return new RowType(
-                outputType
-                        .getFields()
-                        .subList(inputType.getFieldCount(), outputType.getFieldCount()));
     }
 
     @Override

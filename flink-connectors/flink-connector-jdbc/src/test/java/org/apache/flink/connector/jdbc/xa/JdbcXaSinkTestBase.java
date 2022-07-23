@@ -46,7 +46,7 @@ import org.apache.flink.connector.jdbc.JdbcTestFixture.TestEntry;
 import org.apache.flink.connector.jdbc.internal.JdbcOutputFormat;
 import org.apache.flink.connector.jdbc.internal.executor.JdbcBatchStatementExecutor;
 import org.apache.flink.core.fs.CloseableRegistry;
-import org.apache.flink.metrics.MetricGroup;
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.runtime.state.DefaultOperatorStateBackend;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.StateInitializationContextImpl;
@@ -151,7 +151,10 @@ public abstract class JdbcXaSinkTestBase extends JdbcTestBase {
         JdbcOutputFormat<TestEntry, TestEntry, JdbcBatchStatementExecutor<TestEntry>> format =
                 new JdbcOutputFormat<>(
                         xaFacade,
-                        JdbcExecutionOptions.builder().withBatchIntervalMs(batchInterval).build(),
+                        JdbcExecutionOptions.builder()
+                                .withBatchIntervalMs(batchInterval)
+                                .withMaxRetries(0)
+                                .build(),
                         ctx ->
                                 JdbcBatchStatementExecutor.simple(
                                         String.format(INSERT_TEMPLATE, INPUT_TABLE),
@@ -186,7 +189,7 @@ public abstract class JdbcXaSinkTestBase extends JdbcTestBase {
             }
 
             @Override
-            public MetricGroup getMetricGroup() {
+            public OperatorMetricGroup getMetricGroup() {
                 return null;
             }
 
@@ -369,7 +372,7 @@ public abstract class JdbcXaSinkTestBase extends JdbcTestBase {
 
     static StateInitializationContextImpl buildInitCtx(boolean restored) {
         return new StateInitializationContextImpl(
-                restored,
+                restored ? 1L : null,
                 new DefaultOperatorStateBackend(
                         new ExecutionConfig(),
                         new CloseableRegistry(),

@@ -51,7 +51,8 @@ import org.apache.flink.api.java.typeutils.MissingTypeInfo;
 import org.apache.flink.api.java.typeutils.PojoTypeInfo;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
-import org.apache.flink.configuration.CheckpointingOptions;
+import org.apache.flink.configuration.ConfigOption;
+import org.apache.flink.configuration.ConfigUtils;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.DeploymentOptions;
@@ -60,6 +61,8 @@ import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.configuration.RestOptions;
+import org.apache.flink.configuration.StateChangelogOptions;
+import org.apache.flink.configuration.UnmodifiableConfiguration;
 import org.apache.flink.core.execution.DefaultExecutorServiceLoader;
 import org.apache.flink.core.execution.DetachedJobExecutionResult;
 import org.apache.flink.core.execution.JobClient;
@@ -93,7 +96,6 @@ import org.apache.flink.streaming.api.functions.source.StatefulSequenceSource;
 import org.apache.flink.streaming.api.functions.source.TimestampedFileInputSplit;
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.StreamGraphGenerator;
-import org.apache.flink.streaming.api.graph.StreamingJobGraphGenerator;
 import org.apache.flink.streaming.api.operators.StreamSource;
 import org.apache.flink.util.DynamicCodeLoadingException;
 import org.apache.flink.util.ExceptionUtils;
@@ -115,6 +117,7 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -140,8 +143,13 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
 @Public
 public class StreamExecutionEnvironment {
 
-    /** The default name to use for a streaming job if no other name has been specified. */
-    public static final String DEFAULT_JOB_NAME = "Flink Streaming Job";
+    /**
+     * The default name to use for a streaming job if no other name has been specified.
+     *
+     * @deprecated This constant does not fit well to batch runtime mode.
+     */
+    @Deprecated
+    public static final String DEFAULT_JOB_NAME = StreamGraphGenerator.DEFAULT_STREAMING_JOB_NAME;
 
     /** The time characteristic that is used if none other is set. */
     private static final TimeCharacteristic DEFAULT_TIME_CHARACTERISTIC =
@@ -162,14 +170,14 @@ public class StreamExecutionEnvironment {
     // ------------------------------------------------------------------------
 
     /** The execution configuration for this environment. */
-    private final ExecutionConfig config = new ExecutionConfig();
+    protected final ExecutionConfig config = new ExecutionConfig();
 
     /** Settings that control the checkpointing behavior. */
-    private final CheckpointConfig checkpointCfg = new CheckpointConfig();
+    protected final CheckpointConfig checkpointCfg = new CheckpointConfig();
 
     protected final List<Transformation<?>> transformations = new ArrayList<>();
 
-    private long bufferTimeout = StreamingJobGraphGenerator.UNDEFINED_NETWORK_BUFFER_TIMEOUT;
+    private long bufferTimeout = ExecutionOptions.BUFFER_TIMEOUT.defaultValue().toMillis();
 
     protected boolean isChainingEnabled = true;
 
@@ -190,7 +198,16 @@ public class StreamExecutionEnvironment {
 
     private final PipelineExecutorServiceLoader executorServiceLoader;
 
-    private final Configuration configuration;
+    /**
+     * Currently, configuration is split across multiple member variables and classes such as {@link
+     * ExecutionConfig} or {@link CheckpointConfig}. This architecture makes it quite difficult to
+     * handle/merge/enrich configuration or restrict access in other APIs.
+     *
+     * <p>In the long-term, this {@link Configuration} object should be the source of truth for
+     * newly added {@link ConfigOption}s that are relevant for DataStream API. Make sure to also
+     * update {@link #configure(ReadableConfig, ClassLoader)}.
+     */
+    protected final Configuration configuration;
 
     private final ClassLoader userClassloader;
 
@@ -249,7 +266,7 @@ public class StreamExecutionEnvironment {
                 userClassloader == null ? getClass().getClassLoader() : userClassloader;
 
         // the configuration of a job or an operator can be specified at the following places:
-        //     i) at the operator level using e.g. parallelism using the
+        //     i) at the operator level via e.g. parallelism by using the
         // SingleOutputStreamOperator.setParallelism().
         //     ii) programmatically by using e.g. the env.setRestartStrategy() method
         //     iii) in the configuration passed here
@@ -260,10 +277,6 @@ public class StreamExecutionEnvironment {
         // other ways assume
         // that the env is already instantiated so they will overwrite the value passed here.
         this.configure(this.configuration, this.userClassloader);
-    }
-
-    protected Configuration getConfiguration() {
-        return this.configuration;
     }
 
     protected ClassLoader getUserClassloader() {
@@ -406,7 +419,7 @@ public class StreamExecutionEnvironment {
      * @param timeoutMillis The maximum time between two output flushes.
      */
     public StreamExecutionEnvironment setBufferTimeout(long timeoutMillis) {
-        if (timeoutMillis < -1) {
+        if (timeoutMillis < ExecutionOptions.DISABLED_NETWORK_BUFFER_TIMEOUT) {
             throw new IllegalArgumentException("Timeout of buffer must be non-negative or -1");
         }
 
@@ -470,7 +483,7 @@ public class StreamExecutionEnvironment {
      * <p>The job draws checkpoints periodically, in the given interval. The state will be stored in
      * the configured state backend.
      *
-     * <p>NOTE: Checkpointing iterative streaming dataflows in not properly supported at the moment.
+     * <p>NOTE: Checkpointing iterative streaming dataflows is not properly supported at the moment.
      * For that reason, iterative jobs will not be started if used with enabled checkpointing. To
      * override this mechanism, use the {@link #enableCheckpointing(long, CheckpointingMode,
      * boolean)} method.
@@ -491,7 +504,7 @@ public class StreamExecutionEnvironment {
      * {@link CheckpointingMode} for the checkpointing ("exactly once" vs "at least once"). The
      * state will be stored in the configured state backend.
      *
-     * <p>NOTE: Checkpointing iterative streaming dataflows in not properly supported at the moment.
+     * <p>NOTE: Checkpointing iterative streaming dataflows is not properly supported at the moment.
      * For that reason, iterative jobs will not be started if used with enabled checkpointing. To
      * override this mechanism, use the {@link #enableCheckpointing(long, CheckpointingMode,
      * boolean)} method.
@@ -514,7 +527,7 @@ public class StreamExecutionEnvironment {
      * <p>The job draws checkpoints periodically, in the given interval. The state will be stored in
      * the configured state backend.
      *
-     * <p>NOTE: Checkpointing iterative streaming dataflows in not properly supported at the moment.
+     * <p>NOTE: Checkpointing iterative streaming dataflows is not properly supported at the moment.
      * If the "force" parameter is set to true, the system will execute the job nonetheless.
      *
      * @param interval Time interval between state checkpoints in millis.
@@ -544,7 +557,7 @@ public class StreamExecutionEnvironment {
      * <p>The job draws checkpoints periodically, in the default interval. The state will be stored
      * in the configured state backend.
      *
-     * <p>NOTE: Checkpointing iterative streaming dataflows in not properly supported at the moment.
+     * <p>NOTE: Checkpointing iterative streaming dataflows is not properly supported at the moment.
      * For that reason, iterative jobs will not be started if used with enabled checkpointing. To
      * override this mechanism, use the {@link #enableCheckpointing(long, CheckpointingMode,
      * boolean)} method.
@@ -932,6 +945,21 @@ public class StreamExecutionEnvironment {
      * configuration}. If a key is not present, the current value of a field will remain untouched.
      *
      * @param configuration a configuration to read the values from
+     */
+    @PublicEvolving
+    public void configure(ReadableConfig configuration) {
+        configure(configuration, userClassloader);
+    }
+
+    /**
+     * Sets all relevant options contained in the {@link ReadableConfig} such as e.g. {@link
+     * StreamPipelineOptions#TIME_CHARACTERISTIC}. It will reconfigure {@link
+     * StreamExecutionEnvironment}, {@link ExecutionConfig} and {@link CheckpointConfig}.
+     *
+     * <p>It will change the value of a setting only if a corresponding option was set in the {@code
+     * configuration}. If a key is not present, the current value of a field will remain untouched.
+     *
+     * @param configuration a configuration to read the values from
      * @param classLoader a class loader to use when loading classes
      */
     @PublicEvolving
@@ -940,7 +968,7 @@ public class StreamExecutionEnvironment {
                 .getOptional(StreamPipelineOptions.TIME_CHARACTERISTIC)
                 .ifPresent(this::setStreamTimeCharacteristic);
         configuration
-                .getOptional(CheckpointingOptions.ENABLE_STATE_CHANGE_LOG)
+                .getOptional(StateChangelogOptions.ENABLE_STATE_CHANGE_LOG)
                 .ifPresent(this::enableChangelogStateBackend);
         Optional.ofNullable(loadStateBackend(configuration, classLoader))
                 .ifPresent(this::setStateBackend);
@@ -967,35 +995,48 @@ public class StreamExecutionEnvironment {
                                 this.configuration.set(ExecutionOptions.RUNTIME_MODE, runtimeMode));
 
         configuration
-                .getOptional(ExecutionOptions.SHUFFLE_MODE)
+                .getOptional(ExecutionOptions.BATCH_SHUFFLE_MODE)
                 .ifPresent(
                         shuffleMode ->
-                                this.configuration.set(ExecutionOptions.SHUFFLE_MODE, shuffleMode));
+                                this.configuration.set(
+                                        ExecutionOptions.BATCH_SHUFFLE_MODE, shuffleMode));
 
         configuration
                 .getOptional(ExecutionOptions.SORT_INPUTS)
                 .ifPresent(
                         sortInputs ->
-                                this.getConfiguration()
-                                        .set(ExecutionOptions.SORT_INPUTS, sortInputs));
+                                this.configuration.set(ExecutionOptions.SORT_INPUTS, sortInputs));
         configuration
                 .getOptional(ExecutionOptions.USE_BATCH_STATE_BACKEND)
                 .ifPresent(
                         sortInputs ->
-                                this.getConfiguration()
-                                        .set(ExecutionOptions.USE_BATCH_STATE_BACKEND, sortInputs));
+                                this.configuration.set(
+                                        ExecutionOptions.USE_BATCH_STATE_BACKEND, sortInputs));
         configuration
                 .getOptional(PipelineOptions.NAME)
-                .ifPresent(jobName -> this.getConfiguration().set(PipelineOptions.NAME, jobName));
+                .ifPresent(jobName -> this.configuration.set(PipelineOptions.NAME, jobName));
+
         configuration
                 .getOptional(ExecutionCheckpointingOptions.ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH)
                 .ifPresent(
                         flag ->
-                                this.getConfiguration()
-                                        .set(
-                                                ExecutionCheckpointingOptions
-                                                        .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
-                                                flag));
+                                this.configuration.set(
+                                        ExecutionCheckpointingOptions
+                                                .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
+                                        flag));
+
+        // merge PipelineOptions.JARS, user maybe set this option in high level such as table
+        // module, so here need to merge the jars from both configuration object
+        configuration
+                .getOptional(PipelineOptions.JARS)
+                .ifPresent(
+                        jars ->
+                                ConfigUtils.mergeCollectionsToConfig(
+                                        this.configuration,
+                                        PipelineOptions.JARS,
+                                        Collections.unmodifiableCollection(jars),
+                                        String::toString,
+                                        String::toString));
 
         config.configure(configuration, classLoader);
         checkpointCfg.configure(configuration);
@@ -1114,7 +1155,7 @@ public class StreamExecutionEnvironment {
     }
 
     /**
-     * Creates a new data set that contains the given elements. The framework will determine the
+     * Creates a new data stream that contains the given elements. The framework will determine the
      * type according to the based type user supplied. The elements should be the same or be the
      * subclass to the based type. The sequence of elements must not be empty. Note that this
      * operation will result in a non-parallel data stream source, i.e. a data stream source with a
@@ -1319,7 +1360,17 @@ public class StreamExecutionEnvironment {
      * @param filePath The path of the file, as a URI (e.g., "file:///some/local/file" or
      *     "hdfs://host:port/file/path").
      * @return The data stream that represents the data read from the given file as text lines
+     * @deprecated Use {@code
+     *     FileSource#forRecordStreamFormat()/forBulkFileFormat()/forRecordFileFormat() instead}. An
+     *     example of reading a file using a simple {@code TextLineInputFormat}:
+     *     <pre>{@code
+     * FileSource<String> source =
+     *        FileSource.forRecordStreamFormat(
+     *           new TextLineInputFormat(), new Path("/foo/bar"))
+     *        .build();
+     * }</pre>
      */
+    @Deprecated
     public DataStreamSource<String> readTextFile(String filePath) {
         return readTextFile(filePath, "UTF-8");
     }
@@ -1339,7 +1390,17 @@ public class StreamExecutionEnvironment {
      *     "hdfs://host:port/file/path")
      * @param charsetName The name of the character set used to read the file
      * @return The data stream that represents the data read from the given file as text lines
+     * @deprecated Use {@code
+     *     FileSource#forRecordStreamFormat()/forBulkFileFormat()/forRecordFileFormat() instead}. An
+     *     example of reading a file using a simple {@code TextLineInputFormat}:
+     *     <pre>{@code
+     * FileSource<String> source =
+     *        FileSource.forRecordStreamFormat(
+     *         new TextLineInputFormat("UTF-8"), new Path("/foo/bar"))
+     *        .build();
+     * }</pre>
      */
+    @Deprecated
     public DataStreamSource<String> readTextFile(String filePath, String charsetName) {
         Preconditions.checkArgument(
                 !StringUtils.isNullOrWhitespaceOnly(filePath),
@@ -1376,7 +1437,17 @@ public class StreamExecutionEnvironment {
      * @param inputFormat The input format used to create the data stream
      * @param <OUT> The type of the returned data stream
      * @return The data stream that represents the data read from the given file
+     * @deprecated Use {@code
+     *     FileSource#forRecordStreamFormat()/forBulkFileFormat()/forRecordFileFormat() instead}. An
+     *     example of reading a file using a simple {@code TextLineInputFormat}:
+     *     <pre>{@code
+     * FileSource<String> source =
+     *        FileSource.forRecordStreamFormat(
+     *           new TextLineInputFormat(), new Path("/foo/bar"))
+     *        .build();
+     * }</pre>
      */
+    @Deprecated
     public <OUT> DataStreamSource<OUT> readFile(FileInputFormat<OUT> inputFormat, String filePath) {
         return readFile(inputFormat, filePath, FileProcessingMode.PROCESS_ONCE, -1);
     }
@@ -1456,7 +1527,18 @@ public class StreamExecutionEnvironment {
      *     millis) between consecutive path scans
      * @param <OUT> The type of the returned data stream
      * @return The data stream that represents the data read from the given file
+     * @deprecated Use {@code
+     *     FileSource#forRecordStreamFormat()/forBulkFileFormat()/forRecordFileFormat() instead}. An
+     *     example of reading a file using a simple {@code TextLineInputFormat}:
+     *     <pre>{@code
+     * FileSource<String> source =
+     *        FileSource.forRecordStreamFormat(
+     *           new TextLineInputFormat(), new Path("/foo/bar"))
+     *        .monitorContinuously(Duration.of(10, SECONDS))
+     *        .build();
+     * }</pre>
      */
+    @Deprecated
     @PublicEvolving
     public <OUT> DataStreamSource<OUT> readFile(
             FileInputFormat<OUT> inputFormat,
@@ -1531,7 +1613,18 @@ public class StreamExecutionEnvironment {
      *     millis) between consecutive path scans
      * @param <OUT> The type of the returned data stream
      * @return The data stream that represents the data read from the given file
+     * @deprecated Use {@code
+     *     FileSource#forRecordStreamFormat()/forBulkFileFormat()/forRecordFileFormat() instead}. An
+     *     example of reading a file using a simple {@code TextLineInputFormat}:
+     *     <pre>{@code
+     * FileSource<String> source =
+     *        FileSource.forRecordStreamFormat(
+     *           new TextLineInputFormat(), new Path("/foo/bar"))
+     *        .monitorContinuously(Duration.of(10, SECONDS))
+     *        .build();
+     * }</pre>
      */
+    @Deprecated
     @PublicEvolving
     public <OUT> DataStreamSource<OUT> readFile(
             FileInputFormat<OUT> inputFormat,
@@ -1760,6 +1853,10 @@ public class StreamExecutionEnvironment {
 
         SingleOutputStreamOperator<OUT> source =
                 addSource(monitoringFunction, sourceName, null, boundedness)
+                        // Set the parallelism and maximum parallelism of
+                        // ContinuousFileMonitoringFunction to 1 in
+                        // case reactive mode changes it. See FLINK-28274 for more information.
+                        .forceNonParallel()
                         .transform("Split Reader: " + sourceName, typeInfo, factory);
 
         return new DataStreamSource<>(source);
@@ -1867,7 +1964,7 @@ public class StreamExecutionEnvironment {
      * @param <OUT> type of the returned stream
      * @return the data stream constructed
      */
-    @Experimental
+    @PublicEvolving
     public <OUT> DataStreamSource<OUT> fromSource(
             Source<OUT, ?, ?> source,
             WatermarkStrategy<OUT> timestampsAndWatermarks,
@@ -1922,7 +2019,7 @@ public class StreamExecutionEnvironment {
      * @throws Exception which occurs during job execution.
      */
     public JobExecutionResult execute() throws Exception {
-        return execute(getJobName());
+        return execute(getStreamGraph());
     }
 
     /**
@@ -1938,8 +2035,9 @@ public class StreamExecutionEnvironment {
      */
     public JobExecutionResult execute(String jobName) throws Exception {
         Preconditions.checkNotNull(jobName, "Streaming Job name should not be null.");
-
-        return execute(getStreamGraph(jobName));
+        final StreamGraph streamGraph = getStreamGraph();
+        streamGraph.setJobName(jobName);
+        return execute(streamGraph);
     }
 
     /**
@@ -2014,7 +2112,7 @@ public class StreamExecutionEnvironment {
      */
     @PublicEvolving
     public final JobClient executeAsync() throws Exception {
-        return executeAsync(getJobName());
+        return executeAsync(getStreamGraph());
     }
 
     /**
@@ -2031,7 +2129,10 @@ public class StreamExecutionEnvironment {
      */
     @PublicEvolving
     public JobClient executeAsync(String jobName) throws Exception {
-        return executeAsync(getStreamGraph(checkNotNull(jobName)));
+        Preconditions.checkNotNull(jobName, "Streaming Job name should not be null.");
+        final StreamGraph streamGraph = getStreamGraph();
+        streamGraph.setJobName(jobName);
+        return executeAsync(streamGraph);
     }
 
     /**
@@ -2081,57 +2182,58 @@ public class StreamExecutionEnvironment {
     }
 
     /**
-     * Getter of the {@link org.apache.flink.streaming.api.graph.StreamGraph} of the streaming job.
-     * This call clears previously registered {@link Transformation transformations}.
+     * Getter of the {@link StreamGraph} of the streaming job. This call clears previously
+     * registered {@link Transformation transformations}.
      *
-     * @return The streamgraph representing the transformations
+     * @return The stream graph representing the transformations
      */
     @Internal
     public StreamGraph getStreamGraph() {
-        return getStreamGraph(getJobName());
+        return getStreamGraph(true);
     }
 
     /**
-     * Getter of the {@link org.apache.flink.streaming.api.graph.StreamGraph} of the streaming job.
-     * This call clears previously registered {@link Transformation transformations}.
+     * Getter of the {@link StreamGraph} of the streaming job with the option to clear previously
+     * registered {@link Transformation transformations}. Clearing the transformations allows, for
+     * example, to not re-execute the same operations when calling {@link #execute()} multiple
+     * times.
      *
-     * @param jobName Desired name of the job
-     * @return The streamgraph representing the transformations
-     */
-    @Internal
-    public StreamGraph getStreamGraph(String jobName) {
-        return getStreamGraph(jobName, true);
-    }
-
-    /**
-     * Getter of the {@link org.apache.flink.streaming.api.graph.StreamGraph StreamGraph} of the
-     * streaming job with the option to clear previously registered {@link Transformation
-     * transformations}. Clearing the transformations allows, for example, to not re-execute the
-     * same operations when calling {@link #execute()} multiple times.
-     *
-     * @param jobName Desired name of the job
      * @param clearTransformations Whether or not to clear previously registered transformations
-     * @return The streamgraph representing the transformations
+     * @return The stream graph representing the transformations
      */
     @Internal
-    public StreamGraph getStreamGraph(String jobName, boolean clearTransformations) {
-        StreamGraph streamGraph = getStreamGraphGenerator().setJobName(jobName).generate();
+    public StreamGraph getStreamGraph(boolean clearTransformations) {
+        final StreamGraph streamGraph = getStreamGraphGenerator(transformations).generate();
         if (clearTransformations) {
-            this.transformations.clear();
+            transformations.clear();
         }
         return streamGraph;
     }
 
-    private StreamGraphGenerator getStreamGraphGenerator() {
+    /**
+     * Generates a {@link StreamGraph} that consists of the given {@link Transformation
+     * transformations} and is configured with the configuration of this environment.
+     *
+     * <p>This method does not access or clear the previously registered transformations.
+     *
+     * @param transformations list of transformations that the graph should contain
+     * @return The stream graph representing the transformations
+     */
+    @Internal
+    public StreamGraph generateStreamGraph(List<Transformation<?>> transformations) {
+        return getStreamGraphGenerator(transformations).generate();
+    }
+
+    private StreamGraphGenerator getStreamGraphGenerator(List<Transformation<?>> transformations) {
         if (transformations.size() <= 0) {
             throw new IllegalStateException(
                     "No operators defined in streaming topology. Cannot execute.");
         }
 
-        final RuntimeExecutionMode executionMode = configuration.get(ExecutionOptions.RUNTIME_MODE);
-
-        return new StreamGraphGenerator(transformations, config, checkpointCfg, getConfiguration())
-                .setRuntimeExecutionMode(executionMode)
+        // We copy the transformation so that newly added transformations cannot intervene with the
+        // stream graph generation.
+        return new StreamGraphGenerator(
+                        new ArrayList<>(transformations), config, checkpointCfg, configuration)
                 .setStateBackend(defaultStateBackend)
                 .setChangelogStateBackendEnabled(changelogStateBackendEnabled)
                 .setSavepointDir(defaultSavepointDirectory)
@@ -2150,7 +2252,7 @@ public class StreamExecutionEnvironment {
      * @return The execution plan of the program, as a JSON String.
      */
     public String getExecutionPlan() {
-        return getStreamGraph(getJobName(), false).getStreamingPlanAsJSON();
+        return getStreamGraph(false).getStreamingPlanAsJSON();
     }
 
     /**
@@ -2180,6 +2282,22 @@ public class StreamExecutionEnvironment {
     public void addOperator(Transformation<?> transformation) {
         Preconditions.checkNotNull(transformation, "transformation must not be null.");
         this.transformations.add(transformation);
+    }
+
+    /**
+     * Gives read-only access to the underlying configuration of this environment.
+     *
+     * <p>Note that the returned configuration might not be complete. It only contains options that
+     * have initialized the environment via {@link #StreamExecutionEnvironment(Configuration)} or
+     * options that are not represented in dedicated configuration classes such as {@link
+     * ExecutionConfig} or {@link CheckpointConfig}.
+     *
+     * <p>Use {@link #configure(ReadableConfig, ClassLoader)} to set options that are specific to
+     * this environment.
+     */
+    @Internal
+    public ReadableConfig getConfiguration() {
+        return new UnmodifiableConfiguration(configuration);
     }
 
     // --------------------------------------------------------------------------------------------
@@ -2433,6 +2551,19 @@ public class StreamExecutionEnvironment {
                         name, new DistributedCache.DistributedCacheEntry(filePath, executable)));
     }
 
+    /**
+     * Checks whether it is currently permitted to explicitly instantiate a LocalEnvironment or a
+     * RemoteEnvironment.
+     *
+     * @return True, if it is possible to explicitly instantiate a LocalEnvironment or a
+     *     RemoteEnvironment, false otherwise.
+     */
+    @Internal
+    public static boolean areExplicitEnvironmentsAllowed() {
+        return contextEnvironmentFactory == null
+                && threadLocalContextEnvironmentFactory.get() == null;
+    }
+
     // Private helpers.
     @SuppressWarnings("unchecked")
     private <OUT, T extends TypeInformation<OUT>> T getTypeInfo(
@@ -2456,7 +2587,8 @@ public class StreamExecutionEnvironment {
         return (T) resolvedTypeInfo;
     }
 
-    private String getJobName() {
-        return configuration.getString(PipelineOptions.NAME, DEFAULT_JOB_NAME);
+    @Internal
+    public List<Transformation<?>> getTransformations() {
+        return transformations;
     }
 }

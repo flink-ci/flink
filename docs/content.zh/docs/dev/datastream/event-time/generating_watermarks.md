@@ -77,15 +77,28 @@ WatermarkStrategy
   })
 ```
 {{< /tab >}}
+{{< tab "Python" >}}
+```python
+class FirstElementTimestampAssigner(TimestampAssigner):
+   
+    def extract_timestamp(self, value, record_timestamp):
+       return value[0]
+
+
+WatermarkStrategy \
+    .for_bounded_out_of_orderness(Duration.of_seconds(20)) \
+    .with_timestamp_assigner(FirstElementTimestampAssigner())
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 其中 `TimestampAssigner` 的设置与否是可选的，大多数情况下，可以不用去特别指定。例如，当使用 Kafka 或 Kinesis 数据源时，你可以直接从 Kafka/Kinesis 数据源记录中获取到时间戳。
 
 稍后我们将在[自定义 WatermarkGenerator](#writing-watermarkgenerators) 小节学习 WatermarkGenerator 接口。
 
-<div class="alert alert-warning">
-<strong>注意</strong>：时间戳和 watermark 都是从 1970-01-01T00:00:00Z 起的 Java 纪元开始，并以毫秒为单位。
-</div>
+{{< hint warning >}}
+**注意：** 时间戳和 watermark 都是从 1970-01-01T00:00:00Z 起的 Java 纪元开始，并以毫秒为单位。
+{{< /hint >}}
 
 <a name="using-watermark-strategies"></a>
 
@@ -136,6 +149,26 @@ withTimestampsAndWatermarks
         .addSink(...)
 ```
 {{< /tab >}}
+{{< tab "Python" >}}
+```python
+env = StreamExecutionEnvironment.get_execution_environment()
+
+# currently read_file is not supported in PyFlink
+stream = env \
+    .read_text_file(my_file_path, charset) \
+    .map(lambda s: MyEvent.from_string(s))
+
+with_timestamp_and_watermarks = stream \
+    .filter(lambda e: e.severity() == WARNING) \
+    .assign_timestamp_and_watermarks(<watermark strategy>)
+
+with_timestamp_and_watermarks \
+    .key_by(lambda e: e.get_group()) \
+    .window(TumblingEventTimeWindows.of(Time.seconds(10))) \
+    .reduce(lambda a, b: a.add(b)) \
+    .add_sink(...)
+```
+{{< /tab >}}
 {{< /tabs >}}
 
 使用 `WatermarkStrategy` 去获取流并生成带有时间戳的元素和 watermark 的新流时，如果原始流已经具有时间戳或 watermark，则新指定的时间戳分配器将覆盖原有的时间戳和 watermark。
@@ -163,8 +196,92 @@ WatermarkStrategy
   .withIdleness(Duration.ofMinutes(1))
 ```
 {{< /tab >}}
+{{< tab "Python" >}}
+```python
+WatermarkStrategy \
+    .for_bounded_out_of_orderness(Duration.of_seconds(20)) \
+    .with_idleness(Duration.of_minutes(1))
+```
+{{< /tab >}}
 {{< /tabs >}}
 
+## Watermark alignment _`Beta`_
+
+In the previous paragraph we discussed a situation when splits/partitions/shards or sources are idle
+and can stall increasing watermarks. On the other side of the spectrum, a split/partition/shard or
+source may process records very fast and in turn increase its watermark relatively faster than the
+others. This on its own is not a problem per se. However, for downstream operators that are using
+watermarks to emit some data it can actually become a problem.
+
+In this case, contrary to idle sources, the watermark of such downstream operator (like windowed
+joins on aggregations) can progress. However, such operator might need to buffer excessive amount of
+data coming from the fast inputs, as the minimal watermark from all of its inputs is held back by
+the lagging input. All records emitted by the fast input will hence have to be buffered
+in the said downstream operator state, which can lead into uncontrollable growth of the operator's
+state.
+
+In order to address the issue, you can enable watermark alignment, which will make sure no
+sources/splits/shards/partitions increase their watermarks too far ahead of the rest. You can enable
+alignment for every source separately:
+
+
+{{< tabs >}}
+{{< tab "Java" >}}
+```java
+WatermarkStrategy
+        .<Tuple2<Long, String>>forBoundedOutOfOrderness(Duration.ofSeconds(20))
+        .withWatermarkAlignment("alignment-group-1", Duration.ofSeconds(20), Duration.ofSeconds(1));
+```
+{{< /tab >}}
+{{< tab "Scala" >}}
+```scala
+WatermarkStrategy
+  .forBoundedOutOfOrderness[(Long, String)](Duration.ofSeconds(20))
+  .withWatermarkAlignment("alignment-group-1", Duration.ofSeconds(20), Duration.ofSeconds(1))
+```
+{{< /tab >}}
+{{< tab "Python" >}}
+```python
+WatermarkStrategy \
+    .for_bounded_out_of_orderness(Duration.of_seconds(20)) \
+    .with_watermark_alignment("alignment-group-1", Duration.of_seconds(20), Duration.of_seconds(1))
+```
+{{< /tab >}}
+{{< /tabs >}}
+
+{{< hint warning >}}
+**Note:** You can enable watermark alignment only for [FLIP-27]({{< ref "docs/dev/datastream/sources" >}})
+sources. It does not work for legacy or if applied after the source via
+[DataStream#assignTimestampsAndWatermarks](#using-watermark-strategies).
+{{< /hint >}}
+
+When enabling the alignment, you need to tell Flink, which group should the source belong. You do
+that by providing a label (e.g. `alignment-group-1`) which bind together all sources that share it.
+Moreover, you have to tell the maximal drift from the current minimal watermarks across all sources
+belonging to that group. The third parameter describes how often the current maximal watermark
+should be updated. The downside of frequent updates is that there will be more RPC messages
+travelling between TMs and the JM.
+
+In order to achieve the alignment Flink will pause consuming from the source/task, which generated
+watermark that is too far into the future. In the meantime it will continue reading records from
+other sources/tasks which can move the combined watermark forward and that way unblock the faster
+one.
+
+{{< hint warning >}}
+**Note:** As of 1.15, Flink supports aligning across tasks of the same source and/or different
+sources. It does not support aligning splits/partitions/shards in the same task.
+
+In a case where there are e.g. two Kafka partitions that produce watermarks at different pace, that
+get assigned to the same task watermark might not behave as expected. Fortunately, worst case it
+should not perform worse than without alignment.
+
+Given the limitation above, we suggest applying watermark alignment in two situations:
+
+1. You have two different sources (e.g. Kafka and File) that produce watermarks at different speeds
+2. You run your source with parallelism equal to the number of splits/shards/partitions, which
+   results in every subtask being assigned a single unit of work.
+
+{{< /hint >}}
 
 <a name="writing-watermarkgenerators"></a>
 
@@ -277,7 +394,7 @@ class BoundedOutOfOrdernessGenerator extends AssignerWithPeriodicWatermarks[MyEv
 
     override def onPeriodicEmit(): Unit = {
         // 发出的 watermark = 当前最大时间戳 - 最大乱序时间
-        output.emitWatermark(new Watermark(currentMaxTimestamp - maxOutOfOrderness - 1));
+        output.emitWatermark(new Watermark(currentMaxTimestamp - maxOutOfOrderness - 1))
     }
 }
 
@@ -293,9 +410,14 @@ class TimeLagWatermarkGenerator extends AssignerWithPeriodicWatermarks[MyEvent] 
     }
 
     override def onPeriodicEmit(): Unit = {
-        output.emitWatermark(new Watermark(System.currentTimeMillis() - maxTimeLag));
+        output.emitWatermark(new Watermark(System.currentTimeMillis() - maxTimeLag))
     }
 }
+```
+{{< /tab >}}
+{{< tab "Python" >}}
+```python
+目前在python中不支持该api
 ```
 {{< /tab >}}
 {{< /tabs >}}
@@ -343,11 +465,16 @@ class PunctuatedAssigner extends AssignerWithPunctuatedWatermarks[MyEvent] {
 }
 ```
 {{< /tab >}}
+{{< tab "Python" >}}
+```python
+Python API 中尚不支持该特性。
+```
+{{< /tab >}}
 {{< /tabs >}}
 
-<div class="alert alert-warning">
-<strong>注意</strong>：可以针对每个事件去生成 watermark。但是由于每个 watermark 都会在下游做一些计算，因此过多的 watermark 会降低程序性能。
-</div>
+{{< hint warning >}}
+**注意：** 可以针对每个事件去生成 watermark。但是由于每个 watermark 都会在下游做一些计算，因此过多的 watermark 会降低程序性能。
+{{< /hint >}}
 
 <a name="watermark-strategies-and-the-kafka-connector"></a>
 
@@ -366,7 +493,7 @@ class PunctuatedAssigner extends AssignerWithPunctuatedWatermarks[MyEvent] {
 ```java
 FlinkKafkaConsumer<MyType> kafkaSource = new FlinkKafkaConsumer<>("myTopic", schema, props);
 kafkaSource.assignTimestampsAndWatermarks(
-        WatermarkStrategy.
+        WatermarkStrategy
                 .forBoundedOutOfOrderness(Duration.ofSeconds(20)));
 
 DataStream<MyType> stream = env.addSource(kafkaSource);
@@ -380,6 +507,17 @@ kafkaSource.assignTimestampsAndWatermarks(
     .forBoundedOutOfOrderness(Duration.ofSeconds(20)))
 
 val stream: DataStream[MyType] = env.addSource(kafkaSource)
+```
+{{< /tab >}}
+{{< tab "Python" >}}
+```python
+kafka_source = FlinkKafkaConsumer("timer-stream-source", schema, props)
+
+stream = env
+    .add_source(kafka_source)
+    .assign_timestamps_and_watermarks(
+        WatermarkStrategy
+            .for_bounded_out_of_orderness(Duration.of_seconds(20)))
 ```
 {{< /tab >}}
 {{< /tabs >}}

@@ -18,6 +18,7 @@
 
 package org.apache.flink.formats.json;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.serialization.SerializationSchema;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -25,8 +26,10 @@ import org.apache.flink.configuration.ConfigOption;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.formats.common.TimestampFormat;
 import org.apache.flink.table.connector.ChangelogMode;
+import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.connector.format.DecodingFormat;
 import org.apache.flink.table.connector.format.EncodingFormat;
+import org.apache.flink.table.connector.format.ProjectableDecodingFormat;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
 import org.apache.flink.table.connector.source.DynamicTableSource;
 import org.apache.flink.table.data.RowData;
@@ -52,6 +55,7 @@ import static org.apache.flink.formats.json.JsonFormatOptions.TIMESTAMP_FORMAT;
  * Table format factory for providing configured instances of JSON to RowData {@link
  * SerializationSchema} and {@link DeserializationSchema}.
  */
+@Internal
 public class JsonFormatFactory implements DeserializationFormatFactory, SerializationFormatFactory {
 
     public static final String IDENTIFIER = "json";
@@ -66,10 +70,14 @@ public class JsonFormatFactory implements DeserializationFormatFactory, Serializ
         final boolean ignoreParseErrors = formatOptions.get(IGNORE_PARSE_ERRORS);
         TimestampFormat timestampOption = JsonFormatOptionsUtil.getTimestampFormat(formatOptions);
 
-        return new DecodingFormat<DeserializationSchema<RowData>>() {
+        return new ProjectableDecodingFormat<DeserializationSchema<RowData>>() {
             @Override
             public DeserializationSchema<RowData> createRuntimeDecoder(
-                    DynamicTableSource.Context context, DataType producedDataType) {
+                    DynamicTableSource.Context context,
+                    DataType physicalDataType,
+                    int[][] projections) {
+                final DataType producedDataType =
+                        Projection.of(projections).project(physicalDataType);
                 final RowType rowType = (RowType) producedDataType.getLogicalType();
                 final TypeInformation<RowData> rowDataTypeInfo =
                         context.createTypeInformation(producedDataType);
@@ -137,6 +145,16 @@ public class JsonFormatFactory implements DeserializationFormatFactory, Serializ
         Set<ConfigOption<?>> options = new HashSet<>();
         options.add(FAIL_ON_MISSING_FIELD);
         options.add(IGNORE_PARSE_ERRORS);
+        options.add(TIMESTAMP_FORMAT);
+        options.add(MAP_NULL_KEY_MODE);
+        options.add(MAP_NULL_KEY_LITERAL);
+        options.add(ENCODE_DECIMAL_AS_PLAIN_NUMBER);
+        return options;
+    }
+
+    @Override
+    public Set<ConfigOption<?>> forwardOptions() {
+        Set<ConfigOption<?>> options = new HashSet<>();
         options.add(TIMESTAMP_FORMAT);
         options.add(MAP_NULL_KEY_MODE);
         options.add(MAP_NULL_KEY_LITERAL);

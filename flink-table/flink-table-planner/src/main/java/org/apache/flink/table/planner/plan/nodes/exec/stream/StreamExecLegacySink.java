@@ -18,8 +18,10 @@
 
 package org.apache.flink.table.planner.plan.nodes.exec.stream;
 
+import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeContext;
 import org.apache.flink.table.planner.plan.nodes.exec.InputProperty;
 import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecLegacySink;
 import org.apache.flink.table.runtime.typeutils.TypeCheckUtils;
@@ -40,10 +42,10 @@ import java.util.stream.Collectors;
  *
  * @param <T> The return type of the {@link TableSink}.
  */
-public class StreamExecLegacySink<T> extends CommonExecLegacySink<T>
-        implements StreamExecNode<Object> {
+public class StreamExecLegacySink<T> extends CommonExecLegacySink<T> implements StreamExecNode<T> {
 
     public StreamExecLegacySink(
+            ReadableConfig tableConfig,
             TableSink<T> tableSink,
             @Nullable String[] upsertKeys,
             boolean needRetraction,
@@ -51,6 +53,9 @@ public class StreamExecLegacySink<T> extends CommonExecLegacySink<T>
             LogicalType outputType,
             String description) {
         super(
+                ExecNodeContext.newNodeId(),
+                ExecNodeContext.newContext(StreamExecLegacySink.class),
+                ExecNodeContext.newPersistedConfig(StreamExecLegacySink.class, tableConfig),
                 tableSink,
                 upsertKeys,
                 needRetraction,

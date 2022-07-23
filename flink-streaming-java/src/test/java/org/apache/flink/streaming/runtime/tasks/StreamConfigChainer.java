@@ -49,6 +49,7 @@ public class StreamConfigChainer<OWNER> {
     private final StreamConfig headConfig;
     private final Map<Integer, StreamConfig> chainedConfigs = new HashMap<>();
     private final int numberOfNonChainedOutputs;
+    private int bufferTimeout;
 
     private StreamConfig tailConfig;
     private int chainIndex = MAIN_NODE_ID;
@@ -127,26 +128,22 @@ public class StreamConfigChainer<OWNER> {
 
         chainIndex++;
 
-        tailConfig.setChainedOutputs(
-                Collections.singletonList(
-                        new StreamEdge(
-                                new StreamNode(
-                                        tailConfig.getChainIndex(),
-                                        null,
-                                        null,
-                                        (StreamOperator<?>) null,
-                                        null,
-                                        null),
-                                new StreamNode(
-                                        chainIndex,
-                                        null,
-                                        null,
-                                        (StreamOperator<?>) null,
-                                        null,
-                                        null),
-                                0,
+        StreamEdge streamEdge =
+                new StreamEdge(
+                        new StreamNode(
+                                tailConfig.getChainIndex(),
                                 null,
-                                null)));
+                                null,
+                                (StreamOperator<?>) null,
+                                null,
+                                null),
+                        new StreamNode(
+                                chainIndex, null, null, (StreamOperator<?>) null, null, null),
+                        0,
+                        null,
+                        null);
+        streamEdge.setBufferTimeout(bufferTimeout);
+        tailConfig.setChainedOutputs(Collections.singletonList(streamEdge));
         tailConfig = new StreamConfig(new Configuration());
         tailConfig.setStreamOperatorFactory(checkNotNull(operatorFactory));
         tailConfig.setOperatorID(checkNotNull(operatorID));
@@ -160,6 +157,7 @@ public class StreamConfigChainer<OWNER> {
                     ManagedMemoryUseCase.STATE_BACKEND, 1.0);
         }
         tailConfig.setChainIndex(chainIndex);
+        tailConfig.serializeAllConfigs();
 
         chainedConfigs.put(chainIndex, tailConfig);
 
@@ -173,7 +171,7 @@ public class StreamConfigChainer<OWNER> {
         StreamNode sourceVertex =
                 new StreamNode(chainIndex, null, null, (StreamOperator<?>) null, null, null);
         for (int i = 0; i < numberOfNonChainedOutputs; ++i) {
-            outEdgesInOrder.add(
+            StreamEdge streamEdge =
                     new StreamEdge(
                             sourceVertex,
                             new StreamNode(
@@ -185,15 +183,20 @@ public class StreamConfigChainer<OWNER> {
                                     null),
                             0,
                             new BroadcastPartitioner<>(),
-                            null));
+                            null);
+            streamEdge.setBufferTimeout(1);
+            outEdgesInOrder.add(streamEdge);
         }
 
         tailConfig.setChainEnd();
         tailConfig.setNumberOfOutputs(numberOfNonChainedOutputs);
         tailConfig.setOutEdgesInOrder(outEdgesInOrder);
         tailConfig.setNonChainedOutputs(outEdgesInOrder);
-        headConfig.setTransitiveChainedTaskConfigs(chainedConfigs);
+        chainedConfigs.values().forEach(StreamConfig::serializeAllConfigs);
+
+        headConfig.setAndSerializeTransitiveChainedTaskConfigs(chainedConfigs);
         headConfig.setOutEdgesInOrder(outEdgesInOrder);
+        headConfig.serializeAllConfigs();
 
         return owner;
     }
@@ -239,9 +242,11 @@ public class StreamConfigChainer<OWNER> {
         headConfig.setNumberOfOutputs(1);
         headConfig.setOutEdgesInOrder(outEdgesInOrder);
         headConfig.setNonChainedOutputs(outEdgesInOrder);
-        headConfig.setTransitiveChainedTaskConfigs(chainedConfigs);
+        chainedConfigs.values().forEach(StreamConfig::serializeAllConfigs);
+        headConfig.setAndSerializeTransitiveChainedTaskConfigs(chainedConfigs);
         headConfig.setOutEdgesInOrder(outEdgesInOrder);
         headConfig.setTypeSerializerOut(outputSerializer);
+        headConfig.serializeAllConfigs();
 
         return owner;
     }
@@ -249,5 +254,9 @@ public class StreamConfigChainer<OWNER> {
     public StreamConfigChainer<OWNER> name(String name) {
         tailConfig.setOperatorName(name);
         return this;
+    }
+
+    public void setBufferTimeout(int bufferTimeout) {
+        this.bufferTimeout = bufferTimeout;
     }
 }

@@ -37,11 +37,12 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.SmallIntType;
 import org.apache.flink.table.types.logical.VarCharType;
 
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Iterator;
 import java.util.Random;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Base test class for {@link BytesMultiMap} and {@link WindowBytesMultiMap}. */
 public abstract class BytesMultiMapTestBase<K> extends BytesMapTestBase {
@@ -50,7 +51,7 @@ public abstract class BytesMultiMapTestBase<K> extends BytesMapTestBase {
     static final LogicalType[] KEY_TYPES =
             new LogicalType[] {
                 new IntType(),
-                new VarCharType(VarCharType.MAX_LENGTH),
+                VarCharType.STRING_TYPE,
                 new DoubleType(),
                 new BigIntType(),
                 new BooleanType(),
@@ -60,7 +61,7 @@ public abstract class BytesMultiMapTestBase<K> extends BytesMapTestBase {
 
     static final LogicalType[] VALUE_TYPES =
             new LogicalType[] {
-                new VarCharType(VarCharType.MAX_LENGTH), new IntType(),
+                VarCharType.STRING_TYPE, new IntType(),
             };
 
     protected final PagedTypeSerializer<K> keySerializer;
@@ -121,7 +122,7 @@ public abstract class BytesMultiMapTestBase<K> extends BytesMapTestBase {
             int i = 0;
             Iterator<RowData> valueIter = iter.getValue();
             while (valueIter.hasNext()) {
-                Assert.assertEquals(valueIter.next(), values[i++]);
+                assertThat(values[i++]).isEqualTo(valueIter.next());
             }
         }
     }

@@ -15,7 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.apache.flink.table.planner.plan.rules.physical.batch
 
 import org.apache.flink.table.api.TableException
@@ -25,14 +24,15 @@ import org.apache.flink.table.planner.plan.nodes.logical.FlinkLogicalLegacySink
 import org.apache.flink.table.planner.plan.nodes.physical.batch.BatchPhysicalLegacySink
 import org.apache.flink.table.planner.plan.utils.FlinkRelOptUtil
 import org.apache.flink.table.sinks.PartitionableTableSink
+
 import org.apache.calcite.plan.RelOptRule
-import org.apache.calcite.rel.convert.ConverterRule
 import org.apache.calcite.rel.{RelCollations, RelNode}
-import org.apache.flink.table.filesystem.FileSystemConnectorOptions
+import org.apache.calcite.rel.convert.ConverterRule
 
 import scala.collection.JavaConversions._
 
-class BatchPhysicalLegacySinkRule extends ConverterRule(
+class BatchPhysicalLegacySinkRule
+  extends ConverterRule(
     classOf[FlinkLogicalLegacySink],
     FlinkConventions.LOGICAL,
     FlinkConventions.BATCH_PHYSICAL,
@@ -47,21 +47,23 @@ class BatchPhysicalLegacySinkRule extends ConverterRule(
         case partitionSink: PartitionableTableSink =>
           partitionSink.setStaticPartition(sink.staticPartitions)
           val dynamicPartFields = sink.catalogTable.getPartitionKeys
-              .filter(!sink.staticPartitions.contains(_))
+            .filter(!sink.staticPartitions.contains(_))
 
           if (dynamicPartFields.nonEmpty) {
             val dynamicPartIndices =
               dynamicPartFields.map(partitionSink.getTableSchema.getFieldNames.indexOf(_))
 
-            val shuffleEnable = sink
-                .catalogTable
-                .getOptions
-                .get(FileSystemConnectorOptions.SINK_SHUFFLE_BY_PARTITION.key())
+            // TODO This option is hardcoded to remove the dependency of planner from
+            //  flink-connector-files. We should move this option out of FileSystemConnectorOptions
+            val shuffleEnable = sink.catalogTable.getOptions
+              .getOrDefault("sink.shuffle-by-partition.enable", "false")
 
-            if (shuffleEnable != null && shuffleEnable.toBoolean) {
+            if (shuffleEnable.toBoolean) {
               requiredTraitSet = requiredTraitSet.plus(
-                FlinkRelDistribution.hash(dynamicPartIndices
-                    .map(Integer.valueOf), requireStrict = false))
+                FlinkRelDistribution.hash(
+                  dynamicPartIndices
+                    .map(Integer.valueOf),
+                  requireStrict = false))
             }
 
             if (partitionSink.configurePartitionGrouping(true)) {
@@ -70,8 +72,10 @@ class BatchPhysicalLegacySinkRule extends ConverterRule(
               requiredTraitSet = requiredTraitSet.plus(RelCollations.of(fieldCollations: _*))
             }
           }
-        case _ => throw new TableException("We need PartitionableTableSink to write data to" +
-            s" partitioned table: ${sink.sinkName}")
+        case _ =>
+          throw new TableException(
+            "We need PartitionableTableSink to write data to" +
+              s" partitioned table: ${sink.sinkName}")
       }
     }
 

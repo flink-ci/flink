@@ -19,7 +19,7 @@
 package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
-import org.apache.flink.runtime.clusterframework.types.SlotProfile;
+import org.apache.flink.runtime.clusterframework.types.SlotProfileTestingUtils;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.taskmanager.TaskManagerLocation;
 import org.apache.flink.util.TestLogger;
@@ -84,7 +84,7 @@ public class PhysicalSlotProviderImplWithSpreadOutStrategyTest extends TestLogge
         PhysicalSlotRequest request1 =
                 new PhysicalSlotRequest(
                         new SlotRequestId(),
-                        SlotProfile.preferredLocality(
+                        SlotProfileTestingUtils.preferredLocality(
                                 ResourceProfile.ANY,
                                 Collections.singleton(preferredTaskManagerLocation)),
                         false);
@@ -115,8 +115,10 @@ public class PhysicalSlotProviderImplWithSpreadOutStrategyTest extends TestLogge
                         .buildAndStart(physicalSlotProviderResource.getMainThreadExecutor());
         assertThat(slotPool.isBatchSlotRequestTimeoutCheckEnabled(), is(true));
 
-        new PhysicalSlotProviderImpl(
-                LocationPreferenceSlotSelectionStrategy.createEvenlySpreadOut(), slotPool);
+        final PhysicalSlotProvider slotProvider =
+                new PhysicalSlotProviderImpl(
+                        LocationPreferenceSlotSelectionStrategy.createEvenlySpreadOut(), slotPool);
+        slotProvider.disableBatchSlotRequestTimeoutCheck();
         assertThat(slotPool.isBatchSlotRequestTimeoutCheckEnabled(), is(false));
     }
 }

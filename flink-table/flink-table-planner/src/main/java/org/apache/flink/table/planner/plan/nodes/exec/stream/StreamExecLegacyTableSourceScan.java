@@ -21,25 +21,23 @@ package org.apache.flink.table.planner.plan.nodes.exec.stream;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.io.InputSplit;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.AssignerWithPeriodicWatermarks;
-import org.apache.flink.streaming.api.functions.AssignerWithPunctuatedWatermarks;
-import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.data.util.DataFormatConverters;
-import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
 import org.apache.flink.table.planner.codegen.CodeGeneratorContext;
 import org.apache.flink.table.planner.codegen.OperatorCodeGenerator;
-import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeConfig;
+import org.apache.flink.table.planner.plan.nodes.exec.ExecNodeContext;
 import org.apache.flink.table.planner.plan.nodes.exec.common.CommonExecLegacyTableSourceScan;
 import org.apache.flink.table.planner.plan.utils.ScanUtil;
 import org.apache.flink.table.planner.sources.TableSourceUtil;
 import org.apache.flink.table.planner.utils.JavaScalaConversionUtil;
 import org.apache.flink.table.runtime.operators.TableStreamOperator;
+import org.apache.flink.table.runtime.operators.wmassigners.PeriodicWatermarkAssignerWrapper;
+import org.apache.flink.table.runtime.operators.wmassigners.PunctuatedWatermarkAssignerWrapper;
 import org.apache.flink.table.sources.RowtimeAttributeDescriptor;
 import org.apache.flink.table.sources.StreamTableSource;
 import org.apache.flink.table.sources.TableSource;
@@ -47,11 +45,8 @@ import org.apache.flink.table.sources.wmstrategies.PeriodicWatermarkAssigner;
 import org.apache.flink.table.sources.wmstrategies.PunctuatedWatermarkAssigner;
 import org.apache.flink.table.sources.wmstrategies.WatermarkStrategy;
 import org.apache.flink.table.types.DataType;
-import org.apache.flink.table.types.FieldsDataType;
 import org.apache.flink.table.types.logical.RowType;
-import org.apache.flink.types.Row;
 
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexNode;
 
 import javax.annotation.Nullable;
@@ -67,17 +62,28 @@ public class StreamExecLegacyTableSourceScan extends CommonExecLegacyTableSource
         implements StreamExecNode<RowData> {
 
     public StreamExecLegacyTableSourceScan(
+            ReadableConfig tableConfig,
             TableSource<?> tableSource,
             List<String> qualifiedName,
             RowType outputType,
             String description) {
-        super(tableSource, qualifiedName, outputType, description);
+        super(
+                ExecNodeContext.newNodeId(),
+                ExecNodeContext.newContext(StreamExecLegacyTableSourceScan.class),
+                ExecNodeContext.newPersistedConfig(
+                        StreamExecLegacyTableSourceScan.class, tableConfig),
+                tableSource,
+                qualifiedName,
+                outputType,
+                description);
     }
 
     @SuppressWarnings("unchecked")
     @Override
     protected Transformation<RowData> createConversionTransformationIfNeeded(
-            PlannerBase planner,
+            StreamExecutionEnvironment streamExecEnv,
+            ExecNodeConfig config,
+            ClassLoader classLoader,
             Transformation<?> sourceTransform,
             @Nullable RexNode rowtimeExpression) {
 
@@ -95,13 +101,13 @@ public class StreamExecLegacyTableSourceScan extends CommonExecLegacyTableSource
                 resetElement = "";
             }
 
-            CodeGeneratorContext ctx =
-                    new CodeGeneratorContext(planner.getTableConfig())
+            final CodeGeneratorContext ctx =
+                    new CodeGeneratorContext(config, classLoader)
                             .setOperatorBaseClass(TableStreamOperator.class);
             // the produced type may not carry the correct precision user defined in DDL, because
             // it may be converted from legacy type. Fix precision using logical schema from DDL.
             // Code generation requires the correct precision of input fields.
-            DataType fixedProducedDataType =
+            final DataType fixedProducedDataType =
                     TableSourceUtil.fixPrecisionForProducedDataType(tableSource, outputType);
             transformation =
                     ScanUtil.convertToInternalRow(
@@ -111,6 +117,11 @@ public class StreamExecLegacyTableSourceScan extends CommonExecLegacyTableSource
                             fixedProducedDataType,
                             outputType,
                             qualifiedName,
+                            (detailName, simplifyName) ->
+                                    createFormattedTransformationName(
+                                            detailName, simplifyName, config),
+                            (description) ->
+                                    createFormattedTransformationDescription(description, config),
                             JavaScalaConversionUtil.toScala(Optional.ofNullable(rowtimeExpression)),
                             extractElement,
                             resetElement);
@@ -118,19 +129,17 @@ public class StreamExecLegacyTableSourceScan extends CommonExecLegacyTableSource
             transformation = (Transformation<RowData>) sourceTransform;
         }
 
-        final RelDataType relDataType = FlinkTypeFactory.INSTANCE().buildRelNodeRowType(outputType);
-        final DataStream<RowData> ingestedTable =
-                new DataStream<>(planner.getExecEnv(), transformation);
+        final DataStream<RowData> ingestedTable = new DataStream<>(streamExecEnv, transformation);
         final Optional<RowtimeAttributeDescriptor> rowtimeDesc =
                 JavaScalaConversionUtil.toJava(
-                        TableSourceUtil.getRowtimeAttributeDescriptor(tableSource, relDataType));
+                        TableSourceUtil.getRowtimeAttributeDescriptor(tableSource, outputType));
 
         final DataStream<RowData> withWatermarks =
                 rowtimeDesc
                         .map(
                                 desc -> {
                                     int rowtimeFieldIdx =
-                                            relDataType
+                                            outputType
                                                     .getFieldNames()
                                                     .indexOf(desc.getAttributeName());
                                     WatermarkStrategy strategy = desc.getWatermarkStrategy();
@@ -170,78 +179,5 @@ public class StreamExecLegacyTableSourceScan extends CommonExecLegacyTableSource
         return env.createInput(format, typeInfo)
                 .name(tableSource.explainSource())
                 .getTransformation();
-    }
-
-    /** Generates periodic watermarks based on a {@link PeriodicWatermarkAssigner}. */
-    private static class PeriodicWatermarkAssignerWrapper
-            implements AssignerWithPeriodicWatermarks<RowData> {
-        private static final long serialVersionUID = 1L;
-        private final PeriodicWatermarkAssigner assigner;
-        private final int timeFieldIdx;
-
-        /**
-         * @param timeFieldIdx the index of the rowtime attribute.
-         * @param assigner the watermark assigner.
-         */
-        private PeriodicWatermarkAssignerWrapper(
-                PeriodicWatermarkAssigner assigner, int timeFieldIdx) {
-            this.assigner = assigner;
-            this.timeFieldIdx = timeFieldIdx;
-        }
-
-        @Nullable
-        @Override
-        public Watermark getCurrentWatermark() {
-            return assigner.getWatermark();
-        }
-
-        @Override
-        public long extractTimestamp(RowData row, long recordTimestamp) {
-            long timestamp = row.getTimestamp(timeFieldIdx, 3).getMillisecond();
-            assigner.nextTimestamp(timestamp);
-            return 0;
-        }
-    }
-
-    /** Generates periodic watermarks based on a [[PunctuatedWatermarkAssigner]]. */
-    private static class PunctuatedWatermarkAssignerWrapper
-            implements AssignerWithPunctuatedWatermarks<RowData> {
-        private static final long serialVersionUID = 1L;
-        private final PunctuatedWatermarkAssigner assigner;
-        private final int timeFieldIdx;
-        private final DataFormatConverters.DataFormatConverter<RowData, Row> converter;
-
-        /**
-         * @param timeFieldIdx the index of the rowtime attribute.
-         * @param assigner the watermark assigner.
-         * @param sourceType the type of source
-         */
-        @SuppressWarnings("unchecked")
-        private PunctuatedWatermarkAssignerWrapper(
-                PunctuatedWatermarkAssigner assigner, int timeFieldIdx, DataType sourceType) {
-            this.assigner = assigner;
-            this.timeFieldIdx = timeFieldIdx;
-            DataType originDataType;
-            if (sourceType instanceof FieldsDataType) {
-                originDataType = sourceType;
-            } else {
-                originDataType = DataTypes.ROW(DataTypes.FIELD("f0", sourceType));
-            }
-            converter =
-                    DataFormatConverters.getConverterForDataType(
-                            originDataType.bridgedTo(Row.class));
-        }
-
-        @Nullable
-        @Override
-        public Watermark checkAndGetNextWatermark(RowData row, long extractedTimestamp) {
-            long timestamp = row.getLong(timeFieldIdx);
-            return assigner.getWatermark(converter.toExternal(row), timestamp);
-        }
-
-        @Override
-        public long extractTimestamp(RowData element, long recordTimestamp) {
-            return 0;
-        }
     }
 }

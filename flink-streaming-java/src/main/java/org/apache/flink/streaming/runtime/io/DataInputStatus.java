@@ -44,6 +44,15 @@ public enum DataInputStatus {
     /** Indicator that all persisted data of the data exchange has been successfully restored. */
     END_OF_RECOVERY,
 
+    /** Indicator that the input was stopped because of stop-with-savepoint without drain. */
+    STOPPED,
+
     /** Indicator that the input has reached the end of data. */
+    END_OF_DATA,
+
+    /**
+     * Indicator that the input has reached the end of data and control events. The input is about
+     * to close.
+     */
     END_OF_INPUT
 }

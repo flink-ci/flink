@@ -19,14 +19,15 @@
 
 set -Eeuo pipefail
 
-KAFKA_VERSION="2.2.2"
-CONFLUENT_VERSION="5.0.0"
-CONFLUENT_MAJOR_VERSION="5.0"
+KAFKA_VERSION="3.1.1"
+CONFLUENT_VERSION="6.2.2"
+CONFLUENT_MAJOR_VERSION="6.2"
+# Check the Confluent Platform <> Apache Kafka compatibility matrix when updating KAFKA_VERSION
 KAFKA_SQL_VERSION="universal"
 ELASTICSEARCH_VERSION=7
 # we use the smallest version possible
-ELASTICSEARCH_MAC_DOWNLOAD_URL='https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-oss-7.5.1-no-jdk-darwin-x86_64.tar.gz'
-ELASTICSEARCH_LINUX_DOWNLOAD_URL='https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-oss-7.5.1-no-jdk-linux-x86_64.tar.gz'
+ELASTICSEARCH_MAC_DOWNLOAD_URL='https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.10.2-darwin-x86_64.tar.gz'
+ELASTICSEARCH_LINUX_DOWNLOAD_URL='https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.10.2-linux-x86_64.tar.gz'
 
 source "$(dirname "$0")"/common.sh
 source "$(dirname "$0")"/kafka_sql_common.sh \
@@ -67,15 +68,6 @@ for SQL_JAR in $SQL_JARS_DIR/*.jar; do
       exit 1
     fi
   done
-
-  # check for proper legacy table factory
-  # Kinesis connector does not support legacy Table API
-  if [[ $SQL_JAR == *"flink-sql-connector-kinesis"* ]]; then
-    echo "Skipping Legacy Table API for: $SQL_JAR"
-  elif [ ! -f $EXTRACTED_JAR/META-INF/services/org.apache.flink.table.factories.TableFactory ]; then
-    echo "No legacy table factory found in JAR: $SQL_JAR"
-    exit 1
-  fi
 
   # check for table factory
   if [ ! -f $EXTRACTED_JAR/META-INF/services/org.apache.flink.table.factories.Factory ]; then
@@ -151,7 +143,7 @@ start_taskmanagers 2
 
 echo "Testing SQL statements..."
 
-KAFKA_SQL_JAR=$(find "$SQL_JARS_DIR" | grep "kafka_" )
+KAFKA_SQL_JAR=$(find "$SQL_JARS_DIR" | grep "kafka" )
 ELASTICSEARCH_SQL_JAR=$(find "$SQL_JARS_DIR" | grep "elasticsearch$ELASTICSEARCH_VERSION" )
 
 # create session environment file

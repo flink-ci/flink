@@ -20,6 +20,7 @@ package org.apache.flink.table.client.cli;
 
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.table.api.TableResult;
+import org.apache.flink.table.api.internal.TableResultInternal;
 import org.apache.flink.table.client.SqlClientException;
 import org.apache.flink.table.client.config.ResultMode;
 import org.apache.flink.table.client.config.SqlClientOptions;
@@ -27,7 +28,6 @@ import org.apache.flink.table.client.gateway.Executor;
 import org.apache.flink.table.client.gateway.ResultDescriptor;
 import org.apache.flink.table.client.gateway.SqlExecutionException;
 import org.apache.flink.table.operations.BeginStatementSetOperation;
-import org.apache.flink.table.operations.CatalogSinkModifyOperation;
 import org.apache.flink.table.operations.EndStatementSetOperation;
 import org.apache.flink.table.operations.ExplainOperation;
 import org.apache.flink.table.operations.LoadModuleOperation;
@@ -35,6 +35,9 @@ import org.apache.flink.table.operations.ModifyOperation;
 import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.QueryOperation;
 import org.apache.flink.table.operations.ShowCreateTableOperation;
+import org.apache.flink.table.operations.ShowCreateViewOperation;
+import org.apache.flink.table.operations.SinkModifyOperation;
+import org.apache.flink.table.operations.StatementSetOperation;
 import org.apache.flink.table.operations.UnloadModuleOperation;
 import org.apache.flink.table.operations.UseOperation;
 import org.apache.flink.table.operations.command.AddJarOperation;
@@ -49,7 +52,8 @@ import org.apache.flink.table.operations.ddl.AlterOperation;
 import org.apache.flink.table.operations.ddl.CreateOperation;
 import org.apache.flink.table.operations.ddl.DropOperation;
 import org.apache.flink.table.utils.EncodingUtils;
-import org.apache.flink.table.utils.PrintUtils;
+import org.apache.flink.table.utils.print.PrintStyle;
+import org.apache.flink.util.Preconditions;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.jline.reader.EndOfFileException;
@@ -58,7 +62,6 @@ import org.jline.reader.LineReaderBuilder;
 import org.jline.reader.MaskingCallback;
 import org.jline.reader.UserInterruptException;
 import org.jline.terminal.Terminal;
-import org.jline.utils.AttributedString;
 import org.jline.utils.AttributedStringBuilder;
 import org.jline.utils.AttributedStyle;
 import org.jline.utils.InfoCmp;
@@ -67,9 +70,11 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOError;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -126,6 +131,8 @@ public class CliClient implements AutoCloseable {
 
     private static final int PLAIN_TERMINAL_HEIGHT = 30;
 
+    private final SqlMultiLineParser parser;
+
     /**
      * Creates a CLI instance with a custom terminal. Make sure to close the CLI instance afterwards
      * using {@link #close()}.
@@ -142,6 +149,7 @@ public class CliClient implements AutoCloseable {
         this.executor = executor;
         this.inputTransformer = inputTransformer;
         this.historyFilePath = historyFilePath;
+        this.parser = new SqlMultiLineParser(new SqlCommandParserImpl(executor, sessionId));
 
         // create prompt
         prompt =
@@ -227,7 +235,7 @@ public class CliClient implements AutoCloseable {
     public void executeInNonInteractiveMode(String content) {
         try {
             terminal = terminalFactory.get();
-            executeFile(content, ExecutionMode.NON_INTERACTIVE_EXECUTION);
+            executeFile(content, terminal.output(), ExecutionMode.NON_INTERACTIVE_EXECUTION);
         } finally {
             closeTerminal();
         }
@@ -237,7 +245,7 @@ public class CliClient implements AutoCloseable {
         try {
             OutputStream outputStream = new ByteArrayOutputStream(256);
             terminal = TerminalUtils.createDumbTerminal(outputStream);
-            boolean success = executeFile(content, ExecutionMode.INITIALIZATION);
+            boolean success = executeFile(content, outputStream, ExecutionMode.INITIALIZATION);
             LOG.info(outputStream.toString());
             return success;
         } finally {
@@ -262,9 +270,6 @@ public class CliClient implements AutoCloseable {
      * terminal.
      */
     private void executeInteractive() {
-        isRunning = true;
-        LineReader lineReader = createLineReader(terminal);
-
         // make space from previous output and test the writer
         terminal.writer().println();
         terminal.writer().flush();
@@ -272,15 +277,40 @@ public class CliClient implements AutoCloseable {
         // print welcome
         terminal.writer().append(CliStrings.MESSAGE_WELCOME);
 
+        LineReader lineReader = createLineReader(terminal);
+        getAndExecuteStatements(lineReader, ExecutionMode.INTERACTIVE_EXECUTION);
+    }
+
+    private boolean getAndExecuteStatements(LineReader lineReader, ExecutionMode mode) {
         // begin reading loop
+        boolean exitOnFailure = !mode.equals(ExecutionMode.INTERACTIVE_EXECUTION);
+        isRunning = true;
         while (isRunning) {
             // make some space to previous command
             terminal.writer().append("\n");
             terminal.flush();
 
-            String line;
+            Optional<Operation> parsedOperation = Optional.empty();
             try {
-                line = lineReader.readLine(prompt, null, inputTransformer, null);
+                // read a statement from terminal and parse it
+                String line = lineReader.readLine(prompt, null, inputTransformer, null);
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+                // get the parsed operation.
+                // if the command is invalid, the exception caught from parser would be thrown.
+                parsedOperation = parser.getParsedOperation();
+                Preconditions.checkArgument(
+                        line.equals(parser.getCommand()),
+                        String.format(
+                                "This is a bug, please report to the flink community. Statement read[%s] isn't the same as statement parsed[%s]",
+                                line, parser.getCommand()));
+            } catch (SqlExecutionException e) {
+                // print the detailed information on about the parse errors in the terminal.
+                printExecutionException(e);
+                if (exitOnFailure) {
+                    return false;
+                }
             } catch (UserInterruptException e) {
                 // user cancelled line with Ctrl+C
                 continue;
@@ -290,12 +320,21 @@ public class CliClient implements AutoCloseable {
             } catch (Throwable t) {
                 throw new SqlClientException("Could not read from command line.", t);
             }
-            if (line == null) {
+
+            // no operation available, read next command
+            if (!parsedOperation.isPresent()) {
                 continue;
             }
 
-            executeStatement(line, ExecutionMode.INTERACTIVE_EXECUTION);
+            // execute the operation
+            boolean success = executeOperation(parsedOperation.get(), mode);
+            if (exitOnFailure && !success) {
+                return false;
+            }
         }
+
+        // finish all statements.
+        return true;
     }
 
     /**
@@ -303,26 +342,38 @@ public class CliClient implements AutoCloseable {
      *
      * @param content SQL file content
      */
-    private boolean executeFile(String content, ExecutionMode mode) {
+    private boolean executeFile(String content, OutputStream outputStream, ExecutionMode mode) {
         terminal.writer().println(CliStrings.messageInfo(CliStrings.MESSAGE_EXECUTE_FILE).toAnsi());
 
-        for (String statement : CliStatementSplitter.splitContent(content)) {
-            terminal.writer()
-                    .println(new AttributedString(String.format("%s%s", prompt, statement)));
-            terminal.flush();
-
-            if (!executeStatement(statement, mode)) {
-                // cancel execution when meet error or ctrl + C;
-                return false;
+        // append line delimiter
+        InputStream inputStream =
+                new ByteArrayInputStream(SqlMultiLineParser.formatSqlFile(content).getBytes());
+        Terminal dumbTerminal = TerminalUtils.createDumbTerminal(inputStream, outputStream);
+        try {
+            LineReader lineReader = createLineReader(dumbTerminal);
+            return getAndExecuteStatements(lineReader, mode);
+        } catch (Throwable e) {
+            printExecutionException(e);
+            return false;
+        } finally {
+            try {
+                dumbTerminal.close();
+            } catch (IOException e) {
+                // ignore
             }
         }
-        return true;
     }
 
-    private boolean executeStatement(String statement, ExecutionMode executionMode) {
+    private boolean executeOperation(Operation operation, ExecutionMode executionMode) {
         try {
-            final Optional<Operation> operation = parseCommand(statement);
-            operation.ifPresent(op -> callOperation(op, executionMode));
+            final Thread thread = Thread.currentThread();
+            final Terminal.SignalHandler previousHandler =
+                    terminal.handle(Terminal.Signal.INT, (signal) -> thread.interrupt());
+            try {
+                callOperation(operation, executionMode);
+            } finally {
+                terminal.handle(Terminal.Signal.INT, previousHandler);
+            }
         } catch (SqlExecutionException e) {
             printExecutionException(e);
             return false;
@@ -360,30 +411,13 @@ public class CliClient implements AutoCloseable {
 
         // check the current operation is allowed in STATEMENT SET.
         if (isStatementSetMode) {
-            if (!(operation instanceof CatalogSinkModifyOperation
+            if (!(operation instanceof SinkModifyOperation
                     || operation instanceof EndStatementSetOperation)) {
                 // It's up to invoker of the executeStatement to determine whether to continue
                 // execution
                 throw new SqlExecutionException(MESSAGE_STATEMENT_SET_SQL_EXECUTION_ERROR);
             }
         }
-    }
-
-    private Optional<Operation> parseCommand(String stmt) {
-        // normalize
-        stmt = stmt.trim();
-        // remove ';' at the end
-        if (stmt.endsWith(";")) {
-            stmt = stmt.substring(0, stmt.length() - 1).trim();
-        }
-
-        // meet bad case, e.g ";\n"
-        if (stmt.trim().isEmpty()) {
-            return Optional.empty();
-        }
-
-        Operation operation = executor.parseStatement(sessionId, stmt);
-        return Optional.of(operation);
     }
 
     private void callOperation(Operation operation, ExecutionMode mode) {
@@ -404,9 +438,9 @@ public class CliClient implements AutoCloseable {
         } else if (operation instanceof ResetOperation) {
             // RESET
             callReset((ResetOperation) operation);
-        } else if (operation instanceof CatalogSinkModifyOperation) {
+        } else if (operation instanceof SinkModifyOperation) {
             // INSERT INTO/OVERWRITE
-            callInsert((CatalogSinkModifyOperation) operation);
+            callInsert((SinkModifyOperation) operation);
         } else if (operation instanceof QueryOperation) {
             // SELECT
             callSelect((QueryOperation) operation);
@@ -419,6 +453,9 @@ public class CliClient implements AutoCloseable {
         } else if (operation instanceof EndStatementSetOperation) {
             // END
             callEndStatementSet();
+        } else if (operation instanceof StatementSetOperation) {
+            // statement set
+            callInserts(((StatementSetOperation) operation).getOperations());
         } else if (operation instanceof AddJarOperation) {
             // ADD JAR
             callAddJar((AddJarOperation) operation);
@@ -431,6 +468,9 @@ public class CliClient implements AutoCloseable {
         } else if (operation instanceof ShowCreateTableOperation) {
             // SHOW CREATE TABLE
             callShowCreateTable((ShowCreateTableOperation) operation);
+        } else if (operation instanceof ShowCreateViewOperation) {
+            // SHOW CREATE VIEW
+            callShowCreateView((ShowCreateViewOperation) operation);
         } else {
             // fallback to default implementation
             executeOperation(operation);
@@ -541,7 +581,7 @@ public class CliClient implements AutoCloseable {
         }
     }
 
-    private void callInsert(CatalogSinkModifyOperation operation) {
+    private void callInsert(SinkModifyOperation operation) {
         if (isStatementSetMode) {
             statementSetOperations.add(operation);
             printInfo(CliStrings.MESSAGE_ADD_STATEMENT_TO_STATEMENT_SET);
@@ -581,6 +621,10 @@ public class CliClient implements AutoCloseable {
         printRawContent(operation);
     }
 
+    public void callShowCreateView(ShowCreateViewOperation operation) {
+        printRawContent(operation);
+    }
+
     public void printRawContent(Operation operation) {
         TableResult tableResult = executor.executeOperation(sessionId, operation);
         // show raw content instead of tableau style
@@ -611,22 +655,19 @@ public class CliClient implements AutoCloseable {
     }
 
     private void executeOperation(Operation operation) {
-        TableResult result = executor.executeOperation(sessionId, operation);
+        TableResultInternal result = executor.executeOperation(sessionId, operation);
         if (TABLE_RESULT_OK == result) {
             // print more meaningful message than tableau OK result
             printInfo(MESSAGE_EXECUTE_STATEMENT);
         } else {
             // print tableau if result has content
-            PrintUtils.printAsTableauForm(
-                    result.getResolvedSchema(),
-                    result.collect(),
-                    terminal.writer(),
-                    Integer.MAX_VALUE,
-                    "",
-                    false,
-                    false,
-                    CliUtils.getSessionTimeZone(executor.getSessionConfig(sessionId)));
-            terminal.flush();
+            PrintStyle.tableauWithDataInferredColumnWidths(
+                            result.getResolvedSchema(),
+                            result.getRowDataToStringConverter(),
+                            Integer.MAX_VALUE,
+                            true,
+                            false)
+                    .print(result.collectInternal(), terminal.writer());
         }
     }
 
@@ -667,7 +708,7 @@ public class CliClient implements AutoCloseable {
                 LineReaderBuilder.builder()
                         .terminal(terminal)
                         .appName(CliStrings.CLI_NAME)
-                        .parser(new SqlMultiLineParser())
+                        .parser(parser)
                         .completer(new SqlCompleter(sessionId, executor))
                         .build();
         // this option is disabled for now for correct backslash escaping
