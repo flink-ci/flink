@@ -132,7 +132,7 @@ public class HiveSourceBuilder {
         }
         validateScanConfigurations(this.tableOptions);
         checkAcidTable(this.tableOptions, tablePath);
-        setConfigurationToJobConf();
+        setFlinkConfigurationToJobConf();
     }
 
     /**
@@ -161,7 +161,7 @@ public class HiveSourceBuilder {
         this.tableOptions = catalogTable.getOptions();
         validateScanConfigurations(tableOptions);
         checkAcidTable(tableOptions, tablePath);
-        setConfigurationToJobConf();
+        setFlinkConfigurationToJobConf();
     }
 
     /**
@@ -286,7 +286,7 @@ public class HiveSourceBuilder {
                         STREAMING_SOURCE_PARTITION_INCLUDE.key(), partitionInclude));
     }
 
-    private void setConfigurationToJobConf() {
+    private void setFlinkConfigurationToJobConf() {
         jobConf.set(
                 ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM.key(),
                 flinkConf
