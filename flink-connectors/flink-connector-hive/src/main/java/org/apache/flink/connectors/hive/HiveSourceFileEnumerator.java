@@ -100,8 +100,9 @@ public class HiveSourceFileEnumerator implements FileEnumerator {
         return hiveSplits;
     }
 
-    private static boolean isSetSplitMaxSizeSupport(List<HiveTablePartition> partitions) {
-        // now, only orc format supports set max size for split
+    private static boolean supportSetSplitMaxSize(List<HiveTablePartition> partitions) {
+        // now, the configuration 'mapreduce.input.fileinputformat.split.maxsize' we set only
+        // works for orc format
         for (HiveTablePartition partition : partitions) {
             String serializationLib =
                     partition.getStorageDescriptor().getSerdeInfo().getSerializationLib();
@@ -115,7 +116,7 @@ public class HiveSourceFileEnumerator implements FileEnumerator {
     private static void setSplitMaxSize(
             List<HiveTablePartition> partitions, JobConf jobConf, int minNumSplits)
             throws IOException {
-        if (!isSetSplitMaxSizeSupport(partitions)) {
+        if (!supportSetSplitMaxSize(partitions)) {
             return;
         }
         // if minNumSplits <= 0, we set it to 1 manually

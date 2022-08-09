@@ -57,13 +57,11 @@ public class HiveSourceFileEnumeratorTest {
                 String.valueOf(
                         HiveOptions.TABLE_EXEC_HIVE_SPLIT_MAX_BYTES.defaultValue().getBytes()));
         jobConf.set(HiveOptions.TABLE_EXEC_HIVE_LOAD_PARTITION_SPLITS_THREAD_NUM.key(), "1");
-        // set to the strategy to 'etl` manually to make we can test configuration for splits
-        // with these small files
 
         File wareHouse = temporaryFolder.newFolder("testCreateInputSplits");
         // init the files for the partition
         StorageDescriptor sd = new StorageDescriptor();
-        // set parquet format
+        // set orc format
         SerDeInfo serdeInfo = new SerDeInfo();
         serdeInfo.setSerializationLib("orc");
         sd.setSerdeInfo(serdeInfo);
