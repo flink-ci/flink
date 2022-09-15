@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for the internal {@link FileSystemJobResultStore} mechanisms. */
 @ExtendWith(TestLoggerExtension.class)
-public class FileSystemJobResultStoreTestInternal {
+public class FileSystemJobResultStoreTest {
 
     private static final ObjectMapper MAPPER = JacksonMapperFactory.createObjectMapper();
 
@@ -62,11 +62,11 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testValidEntryPathCreation() {
+    public void testValidEntryPathCreationInternal() {
         final Path entryParent =
                 fileSystemJobResultStore.constructEntryPath("random-name").getParent();
         assertThat(entryParent)
-                .extracting(FileSystemJobResultStoreTestInternal::stripSucceedingSlash)
+                .extracting(FileSystemJobResultStoreTest::stripSucceedingSlash)
                 .isEqualTo(stripSucceedingSlash(basePath));
     }
 
@@ -80,7 +80,7 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testHasValidJobResultStoreEntryExtension() {
+    public void testHasValidJobResultStoreEntryExtensionInternal() {
         assertThat(
                         FileSystemJobResultStore.hasValidJobResultStoreEntryExtension(
                                 "test" + FileSystemJobResultStore.FILE_EXTENSION))
@@ -95,7 +95,7 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testHasValidDirtyJobResultStoreEntryExtension() {
+    public void testHasValidDirtyJobResultStoreEntryExtensionInternal() {
         assertThat(
                         FileSystemJobResultStore.hasValidDirtyJobResultStoreEntryExtension(
                                 "test" + FileSystemJobResultStore.DIRTY_FILE_EXTENSION))
@@ -110,7 +110,7 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testBaseDirectoryCreationOnResultStoreInitialization() throws Exception {
+    public void testBaseDirectoryCreationOnResultStoreInitializationInternal() throws Exception {
         final File emptyBaseDirectory = new File(temporaryFolder.getPath(), "empty-temp-dir");
         final Path basePath = new Path(emptyBaseDirectory.getPath());
         assertThat(emptyBaseDirectory).doesNotExist();
@@ -121,14 +121,14 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testStoreDirtyJobResultCreatesFile() throws Exception {
+    public void testStoreDirtyJobResultCreatesFileInternal() throws Exception {
         fileSystemJobResultStore.createDirtyResult(DUMMY_JOB_RESULT_ENTRY);
         assertThat(getCleanResultIdsFromFileSystem()).isEmpty();
         assertThat(expectedDirtyFile(DUMMY_JOB_RESULT_ENTRY)).exists().isFile().isNotEmpty();
     }
 
     @Test
-    public void testStoreCleanJobResultCreatesFile() throws Exception {
+    public void testStoreCleanJobResultCreatesFileInternal() throws Exception {
         fileSystemJobResultStore.createDirtyResult(DUMMY_JOB_RESULT_ENTRY);
         fileSystemJobResultStore.markResultAsClean(DUMMY_JOB_RESULT_ENTRY.getJobId());
         assertThat(getCleanResultIdsFromFileSystem())
@@ -136,7 +136,7 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testStoreCleanJobResultDeletesDirtyFile() throws Exception {
+    public void testStoreCleanJobResultDeletesDirtyFileInternal() throws Exception {
         fileSystemJobResultStore.createDirtyResult(DUMMY_JOB_RESULT_ENTRY);
         assertThat(expectedDirtyFile(DUMMY_JOB_RESULT_ENTRY)).exists().isFile().isNotEmpty();
 
@@ -145,7 +145,7 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testCleanDirtyJobResultTwiceIsIdempotent() throws IOException {
+    public void testCleanDirtyJobResultTwiceIsIdempotentInternal() throws IOException {
         fileSystemJobResultStore.createDirtyResult(DUMMY_JOB_RESULT_ENTRY);
         fileSystemJobResultStore.markResultAsClean(DUMMY_JOB_RESULT_ENTRY.getJobId());
 
@@ -165,7 +165,7 @@ public class FileSystemJobResultStoreTestInternal {
      * the dirty files for a job entry are deleted when the result is marked as clean.
      */
     @Test
-    public void testDeleteOnCommit() throws IOException {
+    public void testDeleteOnCommitInternal() throws IOException {
         Path path = new Path(temporaryFolder.toURI());
         fileSystemJobResultStore = new FileSystemJobResultStore(path.getFileSystem(), path, true);
 
@@ -178,7 +178,7 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testVersionSerialization() throws IOException {
+    public void testVersionSerializationInternal() throws IOException {
         fileSystemJobResultStore.createDirtyResult(DUMMY_JOB_RESULT_ENTRY);
         final File dirtyFile = expectedDirtyFile(DUMMY_JOB_RESULT_ENTRY);
         final FileSystemJobResultStore.JsonJobResultEntry deserializedEntry =
@@ -188,7 +188,7 @@ public class FileSystemJobResultStoreTestInternal {
     }
 
     @Test
-    public void testJobResultSerializationDeserialization() throws IOException {
+    public void testJobResultSerializationDeserializationInternal() throws IOException {
         fileSystemJobResultStore.createDirtyResult(DUMMY_JOB_RESULT_ENTRY);
         final File dirtyFile = expectedDirtyFile(DUMMY_JOB_RESULT_ENTRY);
         final FileSystemJobResultStore.JsonJobResultEntry deserializedEntry =
