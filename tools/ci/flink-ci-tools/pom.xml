@@ -29,7 +29,7 @@ under the License.
 		<relativePath>../../..</relativePath>
 	</parent>
 
-	<artifactId>java-ci-tools</artifactId>
+	<artifactId>flink-ci-tools</artifactId>
 	<version>1.17-SNAPSHOT</version>
 	<name>Flink : Tools : CI : Java</name>
 
@@ -69,17 +69,4 @@ under the License.
 			<scope>compile</scope>
 		</dependency>
 	</dependencies>
-
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-deploy-plugin</artifactId>
-				<configuration>
-					<skip>true</skip>
-				</configuration>
-			</plugin>
-		</plugins>
-	</build>
-
 </project>

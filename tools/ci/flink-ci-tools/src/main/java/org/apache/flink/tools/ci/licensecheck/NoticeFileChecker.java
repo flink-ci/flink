@@ -26,18 +26,21 @@ import com.google.common.collect.Multimap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -49,9 +52,6 @@ public class NoticeFileChecker {
 
     private static final Logger LOG = LoggerFactory.getLogger(NoticeFileChecker.class);
 
-    private static final List<String> MODULES_SKIPPING_DEPLOYMENT =
-            loadFromResources("modules-skipping-deployment.modulelist");
-
     private static final List<String> MODULES_DEFINING_EXCESS_DEPENDENCIES =
             loadFromResources("modules-defining-excess-dependencies.modulelist");
 
@@ -61,6 +61,19 @@ public class NoticeFileChecker {
                     ".*:shade \\((shade-flink|shade-dist|default)\\) @ ([^ _]+)(_[0-9.]+)? --.*");
     private static final Pattern SHADE_INCLUDE_MODULE_PATTERN =
             Pattern.compile(".*Including ([^:]+):([^:]+):jar:([^ ]+) in the shaded jar");
+
+    // Examples:
+    //
+    // Deployment on CI with alternative repo
+    // [INFO] --- maven-deploy-plugin:2.8.2:deploy (default-deploy) @ flink-parent ---
+    // [INFO] Using alternate deployment repository.../tmp/flink-validation-deployment
+    //
+    // Skipped deployment:
+    // [INFO] --- maven-deploy-plugin:2.8.2:deploy (default-deploy) @ flink-parent ---
+    // [INFO] Skipping artifact deployment
+    private static final Pattern DEPLOY_MODULE_PATTERN =
+            Pattern.compile(
+                    ".maven-deploy-plugin:.*:deploy .* @ (?<module>[^ _]+)(_[0-9.]+)? --.*");
 
     // Examples:
     // "- org.apache.htrace:htrace-core:3.1.0-incubating"
@@ -78,12 +91,21 @@ public class NoticeFileChecker {
                         parseModulesFromBuildResult(buildResult),
                         DependencyParser.parseDependencyCopyOutput(buildResult.toPath()));
 
+        final Set<String> deployedModules = parseDeployedModulesFromBuildResult(buildResult);
+
         LOG.info(
                 "Extracted "
+                        + deployedModules.size()
+                        + " modules that were deployed of which "
                         + modulesWithBundledDependencies.keySet().size()
-                        + " modules with a total of "
+                        + " bundle dependencies with a total of "
                         + modulesWithBundledDependencies.values().size()
                         + " dependencies");
+
+        final HashSet<String> moduleSkippingDeployment =
+                new HashSet<>(modulesWithBundledDependencies.keySet());
+        moduleSkippingDeployment.removeAll(deployedModules);
+        moduleSkippingDeployment.forEach(modulesWithBundledDependencies::removeAll);
 
         // find modules producing a shaded-jar
         List<Path> noticeFiles = findNoticeFiles(root);
@@ -125,13 +147,13 @@ public class NoticeFileChecker {
                         .map(NoticeFileChecker::getModuleFromNoticeFile)
                         .collect(Collectors.toList()));
         for (String moduleWithoutNotice : shadingModules) {
-            if (!MODULES_SKIPPING_DEPLOYMENT.contains(moduleWithoutNotice)) {
-                LOG.error(
-                        "Module {} is missing a NOTICE file. It has shaded dependencies: {}",
-                        moduleWithoutNotice,
-                        modulesWithShadedDependencies.get(moduleWithoutNotice));
-                severeIssueCount++;
-            }
+            LOG.error(
+                    "Module {} is missing a NOTICE file. It has shaded dependencies: {}",
+                    moduleWithoutNotice,
+                    modulesWithShadedDependencies.get(moduleWithoutNotice).stream()
+                            .map(Dependency::toString)
+                            .collect(Collectors.joining("\n\t", "\n\t", "")));
+            severeIssueCount++;
         }
         return severeIssueCount;
     }
@@ -313,15 +335,42 @@ public class NoticeFileChecker {
         return result;
     }
 
+    private static Set<String> parseDeployedModulesFromBuildResult(File buildResult)
+            throws IOException {
+        final Set<String> deployedModules = new HashSet<>();
+        try (Stream<String> linesStream = Files.lines(buildResult.toPath())) {
+            final Iterator<String> lines = linesStream.iterator();
+            while (lines.hasNext()) {
+                final String line = lines.next();
+                final Matcher matcher = DEPLOY_MODULE_PATTERN.matcher(line);
+                if (matcher.find()) {
+                    final String module = matcher.group("module");
+                    if (lines.hasNext() && !lines.next().contains("Skipping artifact deployment")) {
+                        deployedModules.add(module);
+                    }
+                }
+            }
+        }
+        return deployedModules;
+    }
+
     private static List<String> loadFromResources(String fileName) {
         try {
-            Path resource = Paths.get(NoticeFileChecker.class.getResource("/" + fileName).toURI());
-            List<String> result =
-                    Files.readAllLines(resource).stream()
-                            .filter(line -> !line.startsWith("#") && !line.isEmpty())
-                            .collect(Collectors.toList());
-            LOG.debug("Loaded {} items from resource {}", result.size(), fileName);
-            return result;
+            try (BufferedReader bufferedReader =
+                    new BufferedReader(
+                            new InputStreamReader(
+                                    Objects.requireNonNull(
+                                            NoticeFileChecker.class.getResourceAsStream(
+                                                    "/" + fileName))))) {
+
+                List<String> result =
+                        bufferedReader
+                                .lines()
+                                .filter(line -> !line.startsWith("#") && !line.isEmpty())
+                                .collect(Collectors.toList());
+                LOG.debug("Loaded {} items from resource {}", result.size(), fileName);
+                return result;
+            }
         } catch (Throwable e) {
             // wrap anything in a RuntimeException to be callable from the static initializer
             throw new RuntimeException("Error while loading resource", e);
