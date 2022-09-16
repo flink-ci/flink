@@ -18,10 +18,14 @@
 package org.apache.flink.connector.jdbc;
 
 import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.connector.base.sink.writer.config.AsyncSinkWriterConfiguration;
 import org.apache.flink.connector.jdbc.internal.GenericJdbcSinkFunction;
 import org.apache.flink.connector.jdbc.internal.JdbcOutputFormat;
+import org.apache.flink.connector.jdbc.internal.connection.JdbcConnectionProvider;
 import org.apache.flink.connector.jdbc.internal.connection.SimpleJdbcConnectionProvider;
 import org.apache.flink.connector.jdbc.internal.executor.JdbcBatchStatementExecutor;
+import org.apache.flink.connector.jdbc.sink2.JdbcException;
+import org.apache.flink.connector.jdbc.sink2.statement.JdbcQueryStatement;
 import org.apache.flink.connector.jdbc.xa.JdbcXaSinkFunction;
 import org.apache.flink.connector.jdbc.xa.XaFacade;
 import org.apache.flink.streaming.api.functions.sink.SinkFunction;
@@ -29,6 +33,9 @@ import org.apache.flink.util.function.SerializableSupplier;
 
 import javax.sql.XADataSource;
 
+import java.io.Serializable;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.function.Function;
 
 /** Facade to create JDBC {@link SinkFunction sinks}. */
@@ -110,6 +117,68 @@ public class JdbcSink {
                         exactlyOnceOptions.isTransactionPerConnection()),
                 executionOptions,
                 exactlyOnceOptions);
+    }
+
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+            String sql,
+            JdbcStatementBuilder<T> statementBuilder,
+            JdbcConnectionOptions connectionOptions) {
+        return sinkTo(sql, statementBuilder, connectionOptions, JdbcExecutionOptions.defaults());
+    }
+
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+            String sql,
+            JdbcStatementBuilder<T> statementBuilder,
+            JdbcConnectionOptions connectionOptions,
+            JdbcExecutionOptions executionOptions) {
+        JdbcQueryStatement<T> queryStatement =
+                new JdbcQueryStatement<T>() {
+                    @Override
+                    public String query() {
+                        return sql;
+                    }
+
+                    @Override
+                    public void map(PreparedStatement ps, T out) throws JdbcException {
+                        try {
+                            statementBuilder.accept(ps, out);
+                        } catch (SQLException ex) {
+                            throw new JdbcException(ex.getMessage(), ex);
+                        }
+                    }
+                };
+        return sinkTo(queryStatement, connectionOptions, executionOptions);
+    }
+
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+            JdbcQueryStatement<T> queryStatement,
+            JdbcConnectionOptions connectionOptions,
+            JdbcExecutionOptions executionOptions) {
+        SimpleJdbcConnectionProvider connectionProvider =
+                new SimpleJdbcConnectionProvider(connectionOptions);
+        return sinkTo(queryStatement, connectionProvider, executionOptions);
+    }
+
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+            JdbcQueryStatement<T> queryStatement,
+            JdbcConnectionProvider connectionProvider,
+            JdbcExecutionOptions executionOptions) {
+
+        AsyncSinkWriterConfiguration config =
+                AsyncSinkWriterConfiguration.builder()
+                        //                .setMaxBatchSize(executionOptions.getBatchSize())
+                        .setMaxBatchSize(10)
+                        .setMaxBatchSizeInBytes(110)
+                        .setMaxInFlightRequests(1)
+                        .setMaxBufferedRequests(100)
+                        //
+                        // .setMaxTimeInBufferMS(executionOptions.getBatchIntervalMs())
+                        .setMaxTimeInBufferMS(1_000)
+                        .setMaxRecordSizeInBytes(110)
+                        .build();
+
+        return new org.apache.flink.connector.jdbc.sink2.JdbcSink<>(
+                connectionProvider, config, queryStatement);
     }
 
     private JdbcSink() {}

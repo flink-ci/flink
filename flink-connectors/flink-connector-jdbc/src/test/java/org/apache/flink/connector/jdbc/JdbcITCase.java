@@ -177,4 +177,57 @@ public class JdbcITCase extends JdbcTestBase {
         T value = get.apply(rs);
         return rs.wasNull() ? null : value;
     }
+
+    @Test
+    public void testInsertWithSinkTo() throws Exception {
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setRestartStrategy(new RestartStrategies.NoRestartStrategyConfiguration());
+        env.setParallelism(1);
+        env.fromElements(TEST_DATA)
+                .sinkTo(
+                        JdbcSink.sinkTo(
+                                String.format(INSERT_TEMPLATE, INPUT_TABLE),
+                                TEST_ENTRY_JDBC_STATEMENT_BUILDER,
+                                new JdbcConnectionOptionsBuilder()
+                                        .withUrl(getDbMetadata().getUrl())
+                                        .withDriverName(getDbMetadata().getDriverClass())
+                                        .build()));
+        env.execute();
+
+        assertThat(selectBooks()).isEqualTo(Arrays.asList(TEST_DATA));
+    }
+
+    @Test
+    public void testObjectReuseWithSinkTo() throws Exception {
+        Configuration configuration = new Configuration();
+        configuration.set(OBJECT_REUSE, true);
+        StreamExecutionEnvironment env =
+                StreamExecutionEnvironment.getExecutionEnvironment(configuration);
+        env.setRestartStrategy(new RestartStrategies.NoRestartStrategyConfiguration());
+        env.setParallelism(1);
+
+        AtomicInteger counter = new AtomicInteger(0);
+        String[] words = {"a", "and", "b", "were", "sitting in the buffer"};
+        StringHolder reused = new StringHolder();
+        env.fromElements(words)
+                .map(
+                        word -> {
+                            reused.setContent(word);
+                            return reused;
+                        })
+                .sinkTo(
+                        JdbcSink.sinkTo(
+                                JdbcTestFixture.INSERT_INTO_WORDS_TEMPLATE,
+                                (ps, e) -> {
+                                    ps.setInt(1, counter.getAndIncrement());
+                                    ps.setString(2, e.content);
+                                },
+                                new JdbcConnectionOptionsBuilder()
+                                        .withUrl(getDbMetadata().getUrl())
+                                        .withDriverName(getDbMetadata().getDriverClass())
+                                        .build()));
+        env.execute();
+
+        assertThat(selectWords()).isEqualTo(Arrays.asList(words));
+    }
 }
