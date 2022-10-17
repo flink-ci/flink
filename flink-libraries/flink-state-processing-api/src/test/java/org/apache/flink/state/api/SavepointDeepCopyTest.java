@@ -164,7 +164,7 @@ public class SavepointDeepCopyTest extends AbstractTestBase {
         String savepointPath2 = savepointUrl2.getPath();
 
         SavepointWriter savepoint2 =
-                SavepointWriter.fromExistingSavepoint(savepointPath1, backend)
+                SavepointWriter.fromExistingSavepoint(env, savepointPath1, backend)
                         .withConfiguration(FS_SMALL_FILE_THRESHOLD, FILE_STATE_SIZE_THRESHOLD);
 
         savepoint2
