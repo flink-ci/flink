@@ -30,8 +30,7 @@ public class SimpleJdbcWriterStatement<IN> implements JdbcWriterStatement<IN> {
 
     private final JdbcConnectionProvider connectionProvider;
     private final JdbcQueryStatement<IN> queryStatement;
-    private transient Connection connection;
-    private transient PreparedStatement statementUpsert;
+    private transient PreparedStatement preparedStatement;
 
     public SimpleJdbcWriterStatement(
             JdbcConnectionProvider connectionProvider, JdbcQueryStatement<IN> queryStatement) {
@@ -40,14 +39,23 @@ public class SimpleJdbcWriterStatement<IN> implements JdbcWriterStatement<IN> {
     }
 
     @Override
-    public void prepared(Integer subtaskId) throws JdbcException {
+    public void prepare() throws JdbcException {
         try {
-            this.connection = connectionProvider.getOrEstablishConnection();
+            Connection connection = connectionProvider.getOrEstablishConnection();
             if (connection == null) {
                 throw new JdbcException("cant establish connection");
             }
-            statementUpsert = connection.prepareStatement(queryStatement.query());
+            preparedStatement = connection.prepareStatement(queryStatement.query());
         } catch (SQLException | ClassNotFoundException ex) {
+            throw new JdbcException(ex.getMessage(), ex);
+        }
+    }
+
+    @Override
+    public boolean isValid() throws JdbcException {
+        try {
+            return connectionProvider.isConnectionValid();
+        } catch (SQLException ex) {
             throw new JdbcException(ex.getMessage(), ex);
         }
     }
@@ -59,10 +67,10 @@ public class SimpleJdbcWriterStatement<IN> implements JdbcWriterStatement<IN> {
         }
         try {
             for (IN elem : entries) {
-                queryStatement.map(statementUpsert, elem);
-                statementUpsert.addBatch();
+                queryStatement.map(preparedStatement, elem);
+                preparedStatement.addBatch();
             }
-            statementUpsert.executeBatch();
+            preparedStatement.executeBatch();
         } catch (SQLException ex) {
             throw new JdbcException(ex.getMessage(), ex);
         }
@@ -71,10 +79,9 @@ public class SimpleJdbcWriterStatement<IN> implements JdbcWriterStatement<IN> {
     @Override
     public void close() throws JdbcException {
         try {
-            statementUpsert.close();
-            statementUpsert = null;
-            connection.close();
-            connection = null;
+            preparedStatement.close();
+            preparedStatement = null;
+            connectionProvider.closeConnection();
         } catch (SQLException ex) {
             throw new JdbcException(ex.getMessage(), ex);
         }

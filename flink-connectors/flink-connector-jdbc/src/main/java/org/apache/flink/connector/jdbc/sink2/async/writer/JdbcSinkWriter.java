@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.jdbc.sink2.writer;
+package org.apache.flink.connector.jdbc.sink2.async.writer;
 
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.connector.base.sink.writer.AsyncSinkWriter;
@@ -29,7 +29,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** A JdbcSinkWriter implementation for {@link SinkWriter}. */
+/** A JdbcSinkWriter implementation for {@link AsyncSinkWriter}. */
 public class JdbcSinkWriter<OUT extends Serializable> extends AsyncSinkWriter<OUT, OUT> {
 
     private final JdbcWriterStatement<OUT> statement;
@@ -51,7 +51,7 @@ public class JdbcSinkWriter<OUT extends Serializable> extends AsyncSinkWriter<OU
 
     @Override
     protected long getSizeInBytes(OUT entry) {
-        return 0;
+        return -1;
     }
 
     @Override

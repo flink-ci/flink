@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.flink.connector.jdbc.sink2;
+package org.apache.flink.connector.jdbc.sink2.async;
 
 import org.apache.flink.api.connector.sink2.Sink;
 import org.apache.flink.connector.base.sink.AsyncSinkBase;
@@ -24,7 +24,7 @@ import org.apache.flink.connector.base.sink.writer.config.AsyncSinkWriterConfigu
 import org.apache.flink.connector.jdbc.internal.connection.JdbcConnectionProvider;
 import org.apache.flink.connector.jdbc.sink2.statement.JdbcQueryStatement;
 import org.apache.flink.connector.jdbc.sink2.statement.SimpleJdbcWriterStatement;
-import org.apache.flink.connector.jdbc.sink2.writer.JdbcSinkWriter;
+import org.apache.flink.connector.jdbc.sink2.async.writer.JdbcSinkWriter;
 import org.apache.flink.core.io.SimpleVersionedSerializer;
 
 import java.io.IOException;
@@ -68,12 +68,13 @@ public class JdbcSink<OUT extends Serializable> extends AsyncSinkBase<OUT, OUT> 
             throws IOException {
         SimpleJdbcWriterStatement<OUT> statement =
                 new SimpleJdbcWriterStatement<>(connectionProvider, queryStatement);
+        statement.prepare();
         return new JdbcSinkWriter<>(
                 statement, getElementConverter(), context, writerOptions, recoveredState);
     }
 
     @Override
     public SimpleVersionedSerializer<BufferedRequestState<OUT>> getWriterStateSerializer() {
-        return null;
+        return new JdbcSerializer<>();
     }
 }

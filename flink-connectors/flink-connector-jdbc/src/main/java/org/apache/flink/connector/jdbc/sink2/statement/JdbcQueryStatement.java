@@ -24,12 +24,9 @@ import java.sql.PreparedStatement;
 
 /**
  * Sets {@link PreparedStatement} parameters to use in JDBC Sink based on a specific type of record.
- *
- * @param <T> type of payload in {@link org.apache.flink.streaming.runtime.streamrecord.StreamRecord
- *     StreamRecord}
  */
 public interface JdbcQueryStatement<T> extends Serializable {
     String query();
 
-    void map(PreparedStatement ps, T out) throws JdbcException;
+    void map(PreparedStatement ps, T data) throws JdbcException;
 }

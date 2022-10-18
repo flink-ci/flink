@@ -119,14 +119,14 @@ public class JdbcSink {
                 exactlyOnceOptions);
     }
 
-    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.async.JdbcSink<T> sinkTo(
             String sql,
             JdbcStatementBuilder<T> statementBuilder,
             JdbcConnectionOptions connectionOptions) {
         return sinkTo(sql, statementBuilder, connectionOptions, JdbcExecutionOptions.defaults());
     }
 
-    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.async.JdbcSink<T> sinkTo(
             String sql,
             JdbcStatementBuilder<T> statementBuilder,
             JdbcConnectionOptions connectionOptions,
@@ -150,7 +150,7 @@ public class JdbcSink {
         return sinkTo(queryStatement, connectionOptions, executionOptions);
     }
 
-    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.async.JdbcSink<T> sinkTo(
             JdbcQueryStatement<T> queryStatement,
             JdbcConnectionOptions connectionOptions,
             JdbcExecutionOptions executionOptions) {
@@ -159,7 +159,7 @@ public class JdbcSink {
         return sinkTo(queryStatement, connectionProvider, executionOptions);
     }
 
-    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.JdbcSink<T> sinkTo(
+    public static <T extends Serializable> org.apache.flink.connector.jdbc.sink2.async.JdbcSink<T> sinkTo(
             JdbcQueryStatement<T> queryStatement,
             JdbcConnectionProvider connectionProvider,
             JdbcExecutionOptions executionOptions) {
@@ -177,7 +177,7 @@ public class JdbcSink {
                         .setMaxRecordSizeInBytes(110)
                         .build();
 
-        return new org.apache.flink.connector.jdbc.sink2.JdbcSink<>(
+        return new org.apache.flink.connector.jdbc.sink2.async.JdbcSink<>(
                 connectionProvider, config, queryStatement);
     }
 

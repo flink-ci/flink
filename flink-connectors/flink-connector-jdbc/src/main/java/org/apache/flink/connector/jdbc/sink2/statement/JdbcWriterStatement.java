@@ -24,13 +24,15 @@ import java.util.List;
 
 /**
  * Allow to generate the process of writing to Jdbc based on a specific type of record.
- *
- * @param <T> type of payload in {@link org.apache.flink.streaming.runtime.streamrecord.StreamRecord
- *     StreamRecord}
  */
 public interface JdbcWriterStatement<T> extends Serializable, AutoCloseable {
 
-    void prepared(Integer subtaskId) throws JdbcException;
+    void prepare() throws JdbcException;
+    boolean isValid() throws JdbcException;
+
+    default boolean isNotValid() throws JdbcException {
+        return !isValid();
+    }
 
     void process(List<T> entries) throws JdbcException;
 
