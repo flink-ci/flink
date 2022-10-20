@@ -79,7 +79,7 @@ public class SavepointWriter {
      *
      * @param path The path to an existing savepoint on disk.
      * @return A {@link SavepointWriter}.
-     * @see #fromExistingSavepoint(String, StateBackend)
+     * @see #fromExistingSavepoint(StreamExecutionEnvironment, String, StateBackend)
      * @see #withConfiguration(ConfigOption, Object)
      */
     public static SavepointWriter fromExistingSavepoint(
@@ -140,7 +140,7 @@ public class SavepointWriter {
      *
      * @param maxParallelism The max parallelism of the savepoint.
      * @return A {@link SavepointWriter}.
-     * @see #newSavepoint(StateBackend, int)
+     * @see #newSavepoint(StreamExecutionEnvironment, StateBackend, int)
      * @see #withConfiguration(ConfigOption, Object)
      */
     public static SavepointWriter newSavepoint(
@@ -161,7 +161,7 @@ public class SavepointWriter {
      * @param stateBackend The state backend of the savepoint used for keyed state.
      * @param maxParallelism The max parallelism of the savepoint.
      * @return A {@link SavepointWriter}.
-     * @see #newSavepoint(int)
+     * @see #newSavepoint(StreamExecutionEnvironment, int)
      */
     public static SavepointWriter newSavepoint(
             StreamExecutionEnvironment executionEnvironment,

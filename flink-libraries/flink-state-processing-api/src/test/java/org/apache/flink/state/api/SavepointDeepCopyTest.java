@@ -146,7 +146,7 @@ public class SavepointDeepCopyTest extends AbstractTestBase {
         File savepointUrl1 = createAndRegisterTempFile(new AbstractID().toHexString());
         String savepointPath1 = savepointUrl1.getPath();
 
-        SavepointWriter.newSavepoint(backend, 128)
+        SavepointWriter.newSavepoint(env, backend, 128)
                 .withConfiguration(FS_SMALL_FILE_THRESHOLD, FILE_STATE_SIZE_THRESHOLD)
                 .withOperator(OperatorIdentifier.forUid("Operator1"), transformation)
                 .write(savepointPath1);
