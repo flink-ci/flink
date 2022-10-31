@@ -151,7 +151,6 @@ under the License.
 						</goals>
 						<configuration>
 							<sources>
-								<source>src/test/java</source>
 								<source>src/test/scala</source>
 							</sources>
 						</configuration>
