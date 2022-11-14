@@ -419,7 +419,7 @@ services:
   ```yaml
   jobmanager:
     build:
-      dockerfile: ./Dockerfile.kafka
+      dockerfile: ./Kafka.Dockerfile
     ...
   ```
 
