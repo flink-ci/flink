@@ -55,8 +55,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import static org.apache.flink.runtime.checkpoint.CheckpointCoordinatorTestingUtils.StringSerializer;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.isNull;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.mock;
@@ -318,7 +318,7 @@ class CheckpointCoordinatorMasterHooksTest {
 
         verify(statefulHook1, times(1)).restoreCheckpoint(eq(checkpointId), eq(state1));
         verify(statefulHook2, times(1)).restoreCheckpoint(eq(checkpointId), eq(state2));
-        verify(statelessHook, times(1)).restoreCheckpoint(eq(checkpointId), isNull(Void.class));
+        verify(statelessHook, times(1)).restoreCheckpoint(eq(checkpointId), isNull());
     }
 
     @Test
@@ -387,7 +387,7 @@ class CheckpointCoordinatorMasterHooksTest {
         cc.restoreLatestCheckpointedStateToAll(Collections.emptySet(), true);
 
         verify(statefulHook, times(1)).restoreCheckpoint(eq(checkpointId), eq(state1));
-        verify(statelessHook, times(1)).restoreCheckpoint(eq(checkpointId), isNull(Void.class));
+        verify(statelessHook, times(1)).restoreCheckpoint(eq(checkpointId), isNull());
     }
 
     // ------------------------------------------------------------------------

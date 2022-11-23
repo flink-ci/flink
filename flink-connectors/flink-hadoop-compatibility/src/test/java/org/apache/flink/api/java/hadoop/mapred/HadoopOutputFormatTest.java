@@ -33,13 +33,13 @@ import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.mapred.TaskAttemptContext;
 import org.apache.hadoop.util.Progressable;
 import org.junit.Test;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
 import java.io.IOException;
 
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.nullable;
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.mock;
@@ -81,7 +81,7 @@ public class HadoopOutputFormatTest {
         HadoopOutputFormat<String, Long> outputFormat =
                 new HadoopOutputFormat<>(dummyOutputFormat, jobConf);
 
-        outputFormat.configure(Matchers.<org.apache.flink.configuration.Configuration>any());
+        outputFormat.configure(ArgumentMatchers.any());
 
         verify(dummyOutputFormat, times(1)).setConf(any(Configuration.class));
     }
@@ -95,7 +95,7 @@ public class HadoopOutputFormatTest {
         HadoopOutputFormat<String, Long> outputFormat =
                 new HadoopOutputFormat<>(dummyOutputFormat, jobConf);
 
-        outputFormat.configure(Matchers.<org.apache.flink.configuration.Configuration>any());
+        outputFormat.configure(ArgumentMatchers.any());
 
         verify(dummyOutputFormat, times(1)).configure(any(JobConf.class));
     }

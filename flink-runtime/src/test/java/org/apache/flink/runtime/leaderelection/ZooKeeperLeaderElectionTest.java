@@ -54,7 +54,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -485,7 +485,7 @@ public class ZooKeeperLeaderElectionTest extends TestLogger {
 
             when(mockCreateBuilder
                             .creatingParentsIfNeeded()
-                            .withMode(Matchers.any(CreateMode.class))
+                            .withMode(ArgumentMatchers.any(CreateMode.class))
                             .forPath(anyString(), any(byte[].class)))
                     .thenThrow(testException);
 

@@ -63,7 +63,7 @@ import com.amazonaws.services.kinesis.model.SequenceNumberRange;
 import com.amazonaws.services.kinesis.model.Shard;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.powermock.api.mockito.PowerMockito;
@@ -164,7 +164,7 @@ public class FlinkKinesisConsumerTest extends TestLogger {
         consumer.setRuntimeContext(context);
 
         OperatorStateStore operatorStateStore = mock(OperatorStateStore.class);
-        when(operatorStateStore.getUnionListState(Matchers.any(ListStateDescriptor.class)))
+        when(operatorStateStore.getUnionListState(ArgumentMatchers.any(ListStateDescriptor.class)))
                 .thenReturn(listState);
 
         StateInitializationContext initializationContext = mock(StateInitializationContext.class);
@@ -251,7 +251,7 @@ public class FlinkKinesisConsumerTest extends TestLogger {
         }
 
         OperatorStateStore operatorStateStore = mock(OperatorStateStore.class);
-        when(operatorStateStore.getUnionListState(Matchers.any(ListStateDescriptor.class)))
+        when(operatorStateStore.getUnionListState(ArgumentMatchers.any(ListStateDescriptor.class)))
                 .thenReturn(listState);
 
         StateInitializationContext initializationContext = mock(StateInitializationContext.class);
@@ -350,7 +350,7 @@ public class FlinkKinesisConsumerTest extends TestLogger {
         }
 
         OperatorStateStore operatorStateStore = mock(OperatorStateStore.class);
-        when(operatorStateStore.getUnionListState(Matchers.any(ListStateDescriptor.class)))
+        when(operatorStateStore.getUnionListState(ArgumentMatchers.any(ListStateDescriptor.class)))
                 .thenReturn(listState);
 
         StateInitializationContext initializationContext = mock(StateInitializationContext.class);
@@ -427,7 +427,7 @@ public class FlinkKinesisConsumerTest extends TestLogger {
         }
 
         OperatorStateStore operatorStateStore = mock(OperatorStateStore.class);
-        when(operatorStateStore.getUnionListState(Matchers.any(ListStateDescriptor.class)))
+        when(operatorStateStore.getUnionListState(ArgumentMatchers.any(ListStateDescriptor.class)))
                 .thenReturn(listState);
 
         StateInitializationContext initializationContext = mock(StateInitializationContext.class);
@@ -535,7 +535,7 @@ public class FlinkKinesisConsumerTest extends TestLogger {
         }
 
         OperatorStateStore operatorStateStore = mock(OperatorStateStore.class);
-        when(operatorStateStore.getUnionListState(Matchers.any(ListStateDescriptor.class)))
+        when(operatorStateStore.getUnionListState(ArgumentMatchers.any(ListStateDescriptor.class)))
                 .thenReturn(listState);
 
         StateInitializationContext initializationContext = mock(StateInitializationContext.class);
@@ -669,7 +669,7 @@ public class FlinkKinesisConsumerTest extends TestLogger {
         }
 
         OperatorStateStore operatorStateStore = mock(OperatorStateStore.class);
-        when(operatorStateStore.getUnionListState(Matchers.any(ListStateDescriptor.class)))
+        when(operatorStateStore.getUnionListState(ArgumentMatchers.any(ListStateDescriptor.class)))
                 .thenReturn(listState);
 
         StateInitializationContext initializationContext = mock(StateInitializationContext.class);

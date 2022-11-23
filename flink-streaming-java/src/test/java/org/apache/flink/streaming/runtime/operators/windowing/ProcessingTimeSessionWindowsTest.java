@@ -33,7 +33,7 @@ import org.apache.flink.util.TestLogger;
 import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
 
 import org.junit.Test;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 
 import java.util.Collection;
 
@@ -47,7 +47,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 import static org.junit.Assert.fail;
-import static org.mockito.Matchers.anyCollection;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -93,7 +93,7 @@ public class ProcessingTimeSessionWindowsTest extends TestLogger {
 
         assigner.mergeWindows(Lists.newArrayList(new TimeWindow(0, 0)), callback);
 
-        verify(callback, never()).merge(anyCollection(), Matchers.anyObject());
+        verify(callback, never()).merge(anyCollection(), ArgumentMatchers.any());
     }
 
     @Test
@@ -106,7 +106,7 @@ public class ProcessingTimeSessionWindowsTest extends TestLogger {
 
         assigner.mergeWindows(Lists.newArrayList(new TimeWindow(0, 1)), callback);
 
-        verify(callback, never()).merge(anyCollection(), Matchers.anyObject());
+        verify(callback, never()).merge(anyCollection(), ArgumentMatchers.any());
     }
 
     @Test
@@ -144,7 +144,7 @@ public class ProcessingTimeSessionWindowsTest extends TestLogger {
                                                 new TimeWindow(4, 5), new TimeWindow(5, 6))),
                         eq(new TimeWindow(4, 6)));
 
-        verify(callback, times(2)).merge(anyCollection(), Matchers.anyObject());
+        verify(callback, times(2)).merge(anyCollection(), ArgumentMatchers.any());
     }
 
     @Test
@@ -179,7 +179,7 @@ public class ProcessingTimeSessionWindowsTest extends TestLogger {
                                                 new TimeWindow(5, 6), new TimeWindow(4, 7))),
                         eq(new TimeWindow(4, 7)));
 
-        verify(callback, times(2)).merge(anyCollection(), Matchers.anyObject());
+        verify(callback, times(2)).merge(anyCollection(), ArgumentMatchers.any());
     }
 
     @Test

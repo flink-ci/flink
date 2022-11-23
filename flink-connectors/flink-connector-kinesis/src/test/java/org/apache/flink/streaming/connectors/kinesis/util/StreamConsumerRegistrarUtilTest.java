@@ -34,7 +34,7 @@ import static org.apache.flink.streaming.connectors.kinesis.config.ConsumerConfi
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyZeroInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 /** Tests for {@link StreamConsumerRegistrar}. */
@@ -81,7 +81,7 @@ public class StreamConsumerRegistrarUtilTest {
 
         StreamConsumerRegistrarUtil.deregisterStreamConsumers(registrar, configProps, streams);
 
-        verifyZeroInteractions(registrar);
+        verifyNoMoreInteractions(registrar);
     }
 
     private Properties getDefaultConfiguration() {

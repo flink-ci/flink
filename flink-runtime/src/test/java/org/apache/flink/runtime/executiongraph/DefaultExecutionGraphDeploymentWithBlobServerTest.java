@@ -32,7 +32,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.rules.TemporaryFolder;
-import org.mockito.Matchers;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mockito;
 
 import java.io.IOException;
@@ -41,7 +41,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 
 /**
@@ -81,7 +81,7 @@ public class DefaultExecutionGraphDeploymentWithBlobServerTest
                             return key;
                         })
                 .when(blobServer)
-                .putPermanent(any(JobID.class), Matchers.<byte[]>any());
+                .putPermanent(any(JobID.class), ArgumentMatchers.<byte[]>any());
 
         blobServer.start();
     }
