@@ -15,8 +15,9 @@
 #  See the License for the specific language governing permissions and
 # limitations under the License.
 ################################################################################
+from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Union
+from typing import Union, Optional
 
 from py4j.java_gateway import JavaObject
 
@@ -82,3 +83,17 @@ class DeliveryGuarantee(Enum):
         JDeliveryGuarantee = get_gateway().jvm \
             .org.apache.flink.connector.base.DeliveryGuarantee
         return getattr(JDeliveryGuarantee, self.name)
+
+
+class StreamTransformer(ABC):
+
+    @abstractmethod
+    def apply(self, ds):
+        pass
+
+
+class SupportsPreprocessing(ABC):
+
+    @abstractmethod
+    def get_transformer(self) -> Optional[StreamTransformer]:
+        pass

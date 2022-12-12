@@ -34,6 +34,8 @@ Details on Pulsar compatibility can be found in [PIP-72](https://github.com/apac
 
 {{< artifact flink-connector-pulsar >}}
 
+{{< py_download_link "pulsar" >}}
+
 Flink's streaming connectors are not part of the binary distribution.
 See how to link with them for cluster execution [here]({{< ref "docs/dev/configuration/overview" >}}).
 
@@ -299,11 +301,44 @@ PulsarSource.builder().set_subscription_name("my-exclusive").set_subscription_ty
 {{< /tab >}}
 {{< /tabs >}}
 
-Ensure that you provide a `RangeGenerator` implementation if you want to use the `Key_Shared` subscription type on the Pulsar connector.
-The `RangeGenerator` generates a set of key hash ranges so that a respective reader subtask only dispatches messages where the hash of the message key is contained in the specified range.
+#### Key_Shared subscriptions
 
-The Pulsar connector uses `UniformRangeGenerator` that divides the range by the Flink source
+All the Pulsar's messages will be calculated with a key hash in Key_Shared subscription.
+The hash range must be 0 to 65535. We try to compute the key hash in the order of `Message.getOrderingKey()`,
+`Message.getKey()` or `Message.getKeyBytes()`. We will use `"NO_KEY"` str as the message key if none of these keys has been provided.
+
+Pulsar's Key_Shared subscription comes in two forms in Connector, the `KeySharedMode.SPLIT` and `KeySharedMode.JOIN`.
+Different `KeySharedMode` means different split assignment behaviors. If you only consume a subset of Pulsar's key hash range,
+remember to use the `KeySharedMode.JOIN` which will subscribe all the range in only one reader.
+Otherwise, when the ranges can join into a full Pulsar key hash range (0~65535) you should use `KeySharedMode.SPLIT`
+mode for sharing the splits among all the backend readers.
+
+In the `KeySharedMode.SPLIT` mode. The topic will be subscribed by multiple readers.
+But Pulsar has one limit in this situation. That is if a Message can't find the corresponding reader by the key hash range.
+No messages will be delivered to the current readers, until there is a reader which can subscribe to such messages.
+
+##### Define a RangeGenerator
+
+Ensure that you have provided a `RangeGenerator` implementation if you want to use the `Key_Shared` subscription type on the Pulsar connector.
+The `RangeGenerator` generates a set of key hash ranges so that a respective reader subtask only dispatches
+messages where the hash of the message key is contained in the specified range.
+
+The Pulsar connector uses `SplitRangeGenerator` that divides the range by the Flink source
 parallelism if no `RangeGenerator` is provided in the `Key_Shared` subscription type.
+
+Since the Pulsar didn't expose the key hash range method. We have to provide an `FixedKeysRangeGenerator` for end-user.
+You can add the keys you want to consume, no need to calculate any hash ranges.
+The key's hash isn't specified to only one key, so the consuming results may contain the messages with
+different keys comparing the keys you have defined in this range generator.
+Remember to use flink's `DataStream.filter()` method after the Pulsar source.
+
+```java
+FixedKeysRangeGenerator.builder()
+    .supportNullKey()
+    .key("someKey")
+    .keys(Arrays.asList("key1", "key2"))
+    .build()
+```
 
 ### Starting Position
 
@@ -354,6 +389,7 @@ The Pulsar connector consumes from the latest available message if the message I
   ```
   {{< /tab >}}
   {{< /tabs >}}
+
 - Start from a specified message between the earliest and the latest.
 The Pulsar connector consumes from the latest available message if the message ID doesn't exist.
 
@@ -371,7 +407,10 @@ The Pulsar connector consumes from the latest available message if the message I
   {{< /tab >}}
   {{< /tabs >}}
 
-- Start from the specified message time by `Message<byte[]>.getPublishTime()`.
+- Start from the specified message publish time by `Message<byte[]>.getPublishTime()`.
+This method is deprecated because the name is totally wrong which may cause confuse.
+You can use `StartCursor.fromPublishTime(long)` instead.
+
   {{< tabs "pulsar-starting-position-message-time" >}}
   {{< tab "Java" >}}
   ```java
@@ -381,6 +420,20 @@ The Pulsar connector consumes from the latest available message if the message I
   {{< tab "Python" >}}
   ```python
   StartCursor.from_message_time(int)
+  ```
+  {{< /tab >}}
+  {{< /tabs >}}
+
+- Start from the specified message publish time by `Message<byte[]>.getPublishTime()`.
+  {{< tabs "pulsar-starting-position-publish-time" >}}
+  {{< tab "Java" >}}
+  ```java
+  StartCursor.fromPublishTime(long);
+  ```
+  {{< /tab >}}
+  {{< tab "Python" >}}
+  ```python
+  StartCursor.from_publish_time(int)
   ```
   {{< /tab >}}
   {{< /tabs >}}
@@ -418,7 +471,7 @@ Built-in stop cursors include:
   {{< /tab >}}
   {{< /tabs >}}
 
-- Stop at the latest available message when the  Pulsar source starts consuming messages.
+- Stop at the latest available message when the Pulsar source starts consuming messages.
   {{< tabs "pulsar-boundedness-latest" >}}
   {{< tab "Java" >}}
   ```java
@@ -445,6 +498,7 @@ Built-in stop cursors include:
   ```
   {{< /tab >}}
   {{< /tabs >}}
+
 - Stop but include the given message in the consuming result.
   {{< tabs "pulsar-boundedness-after-message-id" >}}
   {{< tab "Java" >}}
@@ -459,8 +513,39 @@ Built-in stop cursors include:
   {{< /tab >}}
   {{< /tabs >}}
 
-- Stop at the specified message time by `Message<byte[]>.getPublishTime()`.
-  {{< tabs "pulsar-boundedness-publish-time" >}}
+- Stop at the specified event time by `Message<byte[]>.getEventTime()`. The message with the
+given event time won't be included in the consuming result.
+  {{< tabs "pulsar-boundedness-at-event-time" >}} 
+  {{< tab "Java" >}}
+  ```java
+  StopCursor.atEventTime(long);
+  ```
+  {{< /tab >}}
+  {{< tab "Python" >}}
+  ```python
+  StopCursor.at_event_time(int)
+  ```
+  {{< /tab >}}
+  {{< /tabs >}}
+
+- Stop after the specified event time by `Message<byte[]>.getEventTime()`. The message with the
+given event time will be included in the consuming result.
+  {{< tabs "pulsar-boundedness-after-event-time" >}}
+  {{< tab "Java" >}}
+  ```java
+  StopCursor.afterEventTime(long);
+  ```
+  {{< /tab >}}
+  {{< tab "Python" >}}
+  ```python
+  StopCursor.after_event_time(int)
+  ```
+  {{< /tab >}}
+  {{< /tabs >}}
+
+- Stop at the specified publish time by `Message<byte[]>.getPublishTime()`. The message with the
+given publish time won't be included in the consuming result.
+  {{< tabs "pulsar-boundedness-at-publish-time" >}}
   {{< tab "Java" >}}
   ```java
   StopCursor.atPublishTime(long);
@@ -473,9 +558,20 @@ Built-in stop cursors include:
   {{< /tab >}}
   {{< /tabs >}}
 
-  {{< hint warning >}}
-  StopCursor.atEventTime(long) is now deprecated.
-  {{< /hint >}}
+- Stop after the specified publish time by `Message<byte[]>.getPublishTime()`. The message with the
+given publish time will be included in the consuming result.
+  {{< tabs "pulsar-boundedness-after-publish-time" >}}
+  {{< tab "Java" >}}
+  ```java
+  StopCursor.afterPublishTime(long);
+  ```
+  {{< /tab >}}
+  {{< tab "Python" >}}
+  ```python
+  StopCursor.after_publish_time(int)
+  ```
+  {{< /tab >}}
+  {{< /tabs >}}
 
 ### Source Configurable Options
 

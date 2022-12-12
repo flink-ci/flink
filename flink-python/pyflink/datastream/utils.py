@@ -20,7 +20,7 @@ import datetime
 import pickle
 from abc import abstractmethod
 
-from pyflink.common import Row, RowKind
+from pyflink.common import Row, RowKind, Configuration
 from pyflink.common.typeinfo import (RowTypeInfo, TupleTypeInfo, Types, BasicArrayTypeInfo,
                                      PrimitiveArrayTypeInfo, MapTypeInfo, ListTypeInfo,
                                      ObjectArrayTypeInfo, ExternalTypeInfo, TypeInformation)
@@ -32,6 +32,22 @@ class ResultTypeQueryable(object):
     @abstractmethod
     def get_produced_type(self) -> TypeInformation:
         pass
+
+
+def create_hadoop_configuration(config: Configuration):
+    jvm = get_gateway().jvm
+    hadoop_config = jvm.org.apache.hadoop.conf.Configuration()
+    for k, v in config.to_dict().items():
+        hadoop_config.set(k, v)
+    return hadoop_config
+
+
+def create_java_properties(config: Configuration):
+    jvm = get_gateway().jvm
+    properties = jvm.java.util.Properties()
+    for k, v in config.to_dict().items():
+        properties.put(k, v)
+    return properties
 
 
 def convert_to_python_obj(data, type_info):

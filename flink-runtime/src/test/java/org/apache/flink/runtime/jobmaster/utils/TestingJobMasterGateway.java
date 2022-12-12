@@ -24,10 +24,12 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.api.java.tuple.Tuple4;
 import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.api.java.tuple.Tuple6;
+import org.apache.flink.core.execution.CheckpointType;
 import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.runtime.blocklist.BlockedNode;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -66,7 +68,6 @@ import javax.annotation.Nullable;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -133,13 +134,13 @@ public class TestingJobMasterGateway implements JobMasterGateway {
     private final TriFunction<String, Boolean, SavepointFormatType, CompletableFuture<String>>
             triggerSavepointFunction;
 
-    @Nonnull private final Supplier<CompletableFuture<String>> triggerCheckpointFunction;
+    @Nonnull
+    private final Function<CheckpointType, CompletableFuture<CompletedCheckpoint>>
+            triggerCheckpointFunction;
 
     @Nonnull
     private final TriFunction<String, Boolean, SavepointFormatType, CompletableFuture<String>>
             stopWithSavepointFunction;
-
-    @Nonnull private final BiConsumer<AllocationID, Throwable> notifyAllocationFailureConsumer;
 
     @Nonnull
     private final Consumer<
@@ -236,11 +237,12 @@ public class TestingJobMasterGateway implements JobMasterGateway {
             @Nonnull
                     TriFunction<String, Boolean, SavepointFormatType, CompletableFuture<String>>
                             triggerSavepointFunction,
-            @Nonnull Supplier<CompletableFuture<String>> triggerCheckpointFunction,
+            @Nonnull
+                    Function<CheckpointType, CompletableFuture<CompletedCheckpoint>>
+                            triggerCheckpointFunction,
             @Nonnull
                     TriFunction<String, Boolean, SavepointFormatType, CompletableFuture<String>>
                             stopWithSavepointFunction,
-            @Nonnull BiConsumer<AllocationID, Throwable> notifyAllocationFailureConsumer,
             @Nonnull
                     Consumer<
                                     Tuple5<
@@ -309,7 +311,6 @@ public class TestingJobMasterGateway implements JobMasterGateway {
         this.triggerSavepointFunction = triggerSavepointFunction;
         this.triggerCheckpointFunction = triggerCheckpointFunction;
         this.stopWithSavepointFunction = stopWithSavepointFunction;
-        this.notifyAllocationFailureConsumer = notifyAllocationFailureConsumer;
         this.acknowledgeCheckpointConsumer = acknowledgeCheckpointConsumer;
         this.declineCheckpointConsumer = declineCheckpointConsumer;
         this.fencingTokenSupplier = fencingTokenSupplier;
@@ -412,8 +413,9 @@ public class TestingJobMasterGateway implements JobMasterGateway {
     }
 
     @Override
-    public CompletableFuture<String> triggerCheckpoint(Time timeout) {
-        return triggerCheckpointFunction.get();
+    public CompletableFuture<CompletedCheckpoint> triggerCheckpoint(
+            CheckpointType checkpointType, Time timeout) {
+        return triggerCheckpointFunction.apply(checkpointType);
     }
 
     @Override
@@ -423,11 +425,6 @@ public class TestingJobMasterGateway implements JobMasterGateway {
             final boolean terminate,
             final Time timeout) {
         return stopWithSavepointFunction.apply(targetDirectory, terminate, formatType);
-    }
-
-    @Override
-    public void notifyAllocationFailure(AllocationID allocationID, Exception cause) {
-        notifyAllocationFailureConsumer.accept(allocationID, cause);
     }
 
     @Override

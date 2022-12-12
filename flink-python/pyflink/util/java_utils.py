@@ -82,14 +82,11 @@ def is_instance_of(java_object, java_class):
 
 
 def get_j_env_configuration(j_env):
-    if is_instance_of(j_env, "org.apache.flink.api.java.ExecutionEnvironment"):
-        return j_env.getConfiguration()
-    else:
-        env_clazz = load_java_class(
-            "org.apache.flink.streaming.api.environment.StreamExecutionEnvironment")
-        field = env_clazz.getDeclaredField("configuration")
-        field.setAccessible(True)
-        return field.get(j_env)
+    env_clazz = load_java_class(
+        "org.apache.flink.streaming.api.environment.StreamExecutionEnvironment")
+    field = env_clazz.getDeclaredField("configuration")
+    field.setAccessible(True)
+    return field.get(j_env)
 
 
 def get_field_value(java_obj, field_name):
@@ -128,7 +125,8 @@ def is_local_deployment(j_configuration):
     jvm = get_gateway().jvm
     JDeploymentOptions = jvm.org.apache.flink.configuration.DeploymentOptions
     return j_configuration.containsKey(JDeploymentOptions.TARGET.key()) \
-        and j_configuration.getString(JDeploymentOptions.TARGET.key(), None) == "local"
+        and j_configuration.getString(JDeploymentOptions.TARGET.key(), None) in \
+        ("local", "minicluster")
 
 
 def add_jars_to_context_class_loader(jar_urls):

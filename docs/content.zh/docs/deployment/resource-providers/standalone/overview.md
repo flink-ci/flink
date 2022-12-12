@@ -157,7 +157,7 @@ bin/start-cluster.sh
 #### 添加 JobManager
 
 ```bash
-bin/jobmanager.sh ((start|start-foreground) [host] [webui-port])|stop|stop-all
+bin/jobmanager.sh ((start|start-foreground) [args] [webui-port])|stop|stop-all
 ```
 
 <a name="adding-a-taskmanager"></a>
@@ -195,7 +195,7 @@ By default, the job manager will pick a *random port* for inter process communic
 1. **Configure high availability mode and ZooKeeper quorum** in `conf/flink-conf.yaml`:
 
    <pre>
-   high-availability: zookeeper
+   high-availability.type: zookeeper
    high-availability.zookeeper.quorum: localhost:2181
    high-availability.zookeeper.path.root: /flink
    high-availability.cluster-id: /cluster_one # important: customize per cluster

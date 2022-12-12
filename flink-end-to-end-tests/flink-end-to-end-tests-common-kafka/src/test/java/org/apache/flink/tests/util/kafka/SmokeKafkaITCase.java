@@ -25,9 +25,8 @@ import org.apache.flink.connector.testframe.container.FlinkContainers;
 import org.apache.flink.connector.testframe.container.FlinkContainersSettings;
 import org.apache.flink.connector.testframe.container.TestcontainersSettings;
 import org.apache.flink.streaming.api.environment.ExecutionCheckpointingOptions;
+import org.apache.flink.test.resources.ResourceTestUtils;
 import org.apache.flink.test.util.JobSubmission;
-import org.apache.flink.tests.util.TestUtils;
-import org.apache.flink.testutils.junit.FailsOnJava11;
 import org.apache.flink.util.TestLoggerExtension;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.Lists;
@@ -43,7 +42,6 @@ import org.apache.kafka.common.serialization.IntegerDeserializer;
 import org.apache.kafka.common.serialization.IntegerSerializer;
 import org.apache.kafka.common.serialization.VoidDeserializer;
 import org.apache.kafka.common.serialization.VoidSerializer;
-import org.junit.experimental.categories.Category;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -70,10 +68,9 @@ import static org.apache.flink.util.DockerImageVersions.KAFKA;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** smoke test for the kafka connectors. */
-@Category(value = {FailsOnJava11.class})
 @ExtendWith({TestLoggerExtension.class})
 @Testcontainers
-public class SmokeKafkaITCase {
+class SmokeKafkaITCase {
 
     private static final Logger LOG = LoggerFactory.getLogger(SmokeKafkaITCase.class);
     private static final String INTER_CONTAINER_KAFKA_ALIAS = "kafka";
@@ -110,7 +107,7 @@ public class SmokeKafkaITCase {
     }
 
     @BeforeAll
-    private static void setUp() {
+    static void setUp() {
         final Map<String, Object> adminProperties = new HashMap<>();
         adminProperties.put(
                 CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG,
@@ -125,14 +122,14 @@ public class SmokeKafkaITCase {
     }
 
     @AfterAll
-    private static void teardown() {
+    static void teardown() {
         admin.close();
         producer.close();
     }
 
     @Test
     public void testKafka() throws Exception {
-        final Path kafkaExampleJar = TestUtils.getResource(EXAMPLE_JAR_MATCHER);
+        final Path kafkaExampleJar = ResourceTestUtils.getResource(EXAMPLE_JAR_MATCHER);
 
         final String inputTopic = "test-input-" + "-" + UUID.randomUUID();
         final String outputTopic = "test-output" + "-" + UUID.randomUUID();
@@ -140,9 +137,11 @@ public class SmokeKafkaITCase {
         // create the required topics
         final short replicationFactor = 1;
         admin.createTopics(
-                Lists.newArrayList(
-                        new NewTopic(inputTopic, 1, replicationFactor),
-                        new NewTopic(outputTopic, 1, replicationFactor)));
+                        Lists.newArrayList(
+                                new NewTopic(inputTopic, 1, replicationFactor),
+                                new NewTopic(outputTopic, 1, replicationFactor)))
+                .all()
+                .get();
 
         producer.send(new ProducerRecord<>(inputTopic, 1));
         producer.send(new ProducerRecord<>(inputTopic, 2));

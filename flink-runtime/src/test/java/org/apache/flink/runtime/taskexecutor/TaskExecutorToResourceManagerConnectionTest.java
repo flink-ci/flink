@@ -156,7 +156,8 @@ class TaskExecutorToResourceManagerConnectionTest {
         return new TaskExecutorRegistrationSuccess(
                 new InstanceID(),
                 ResourceID.generate(),
-                new ClusterInformation("blobServerHost", 55555));
+                new ClusterInformation("blobServerHost", 55555),
+                null);
     }
 
     @BeforeEach
@@ -172,7 +173,7 @@ class TaskExecutorToResourceManagerConnectionTest {
 
     @AfterEach
     void tearDown() throws Exception {
-        rpcService.stopService().get(TEST_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
+        rpcService.closeAsync().get(TEST_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
     }
 
     private class TestRegistrationConnectionListener<

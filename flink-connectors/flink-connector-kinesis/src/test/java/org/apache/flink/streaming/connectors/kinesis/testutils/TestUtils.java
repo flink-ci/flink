@@ -36,6 +36,7 @@ import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.mockito.Mockito;
 
+import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -118,18 +119,24 @@ public class TestUtils {
 
     public static StreamShardHandle createDummyStreamShardHandle(
             final String streamName, final String shardId) {
+        return createDummyStreamShardHandle(
+                streamName,
+                shardId,
+                new HashKeyRange()
+                        .withStartingHashKey("0")
+                        .withEndingHashKey(
+                                new BigInteger(StringUtils.repeat("FF", 16), 16).toString()));
+    }
+
+    public static StreamShardHandle createDummyStreamShardHandle(
+            final String streamName, final String shardId, final HashKeyRange hashKeyRange) {
         final Shard shard =
                 new Shard()
                         .withSequenceNumberRange(
                                 new SequenceNumberRange()
                                         .withStartingSequenceNumber("0")
                                         .withEndingSequenceNumber("9999999999999"))
-                        .withHashKeyRange(
-                                new HashKeyRange()
-                                        .withStartingHashKey("0")
-                                        .withEndingHashKey(
-                                                new BigInteger(StringUtils.repeat("FF", 16), 16)
-                                                        .toString()))
+                        .withHashKeyRange(hashKeyRange)
                         .withShardId(shardId);
 
         return new StreamShardHandle(streamName, shard);
@@ -169,10 +176,31 @@ public class TestUtils {
         return mockedRuntimeContext;
     }
 
+    public static <T> T getField(String fieldName, Object obj) throws Exception {
+        Field field = obj.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return (T) field.get(obj);
+    }
+
+    public static <T> T getField(String fieldName, Class<?> superclass, Object obj)
+            throws Exception {
+        Field field = superclass.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return (T) field.get(obj);
+    }
+
     /** A test record consumer used to capture messages from kinesis. */
     public static class TestConsumer implements RecordPublisher.RecordBatchConsumer {
         private final List<RecordBatch> recordBatches = new ArrayList<>();
         private String latestSequenceNumber;
+
+        public TestConsumer() {
+            this(null);
+        }
+
+        public TestConsumer(String latestSequenceNumber) {
+            this.latestSequenceNumber = latestSequenceNumber;
+        }
 
         @Override
         public SequenceNumber accept(final RecordBatch batch) {

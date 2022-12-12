@@ -133,7 +133,7 @@ Connector Options
         <th class="text-center" style="width: 42%">Description</th>
     </tr>
     <tr>
-      <th colspan="5" class="text-left" style="width: 100%">Common Options</th>
+      <th colspan="6" class="text-left" style="width: 100%">Common Options</th>
     </tr>
     </thead>
     <tbody>
@@ -180,6 +180,7 @@ Connector Options
     <tr>
       <td><h5>aws.trust.all.certificates</h5></td>
       <td>optional</td>
+      <td>no</td>
       <td style="word-wrap: break-word;">false</td>
       <td>Boolean</td>
       <td>If true accepts all SSL certificates.</td>
@@ -187,7 +188,7 @@ Connector Options
     </tbody>
     <thead>
     <tr>
-      <th colspan="5" class="text-left" style="width: 100%">Authentication Options</th>
+      <th colspan="6" class="text-left" style="width: 100%">Authentication Options</th>
     </tr>
     </thead>
     <tbody>
@@ -256,6 +257,14 @@ Connector Options
 	  <td>The external ID to use when credential provider type is set to ASSUME_ROLE.</td>
     </tr>
     <tr>
+	  <td><h5>aws.credentials.role.stsEndpoint</h5></td>
+	  <td>optional</td>
+      <td>no</td>
+	  <td style="word-wrap: break-word;">(none)</td>
+	  <td>String</td>
+	  <td>The AWS endpoint for STS (derived from the AWS region setting if not set) to use when credential provider type is set to ASSUME_ROLE.</td>
+    </tr>
+    <tr>
 	  <td><h5>aws.credentials.role.provider</h5></td>
 	  <td>optional</td>
       <td>no</td>
@@ -274,7 +283,7 @@ Connector Options
     </tbody>
     <thead>
     <tr>
-      <th colspan="5" class="text-left" style="width: 100%">Source Options</th>
+      <th colspan="6" class="text-left" style="width: 100%">Source Options</th>
     </tr>
     </thead>
     <tbody>
@@ -681,7 +690,7 @@ Connector Options
     </tbody>
     <thead>
     <tr>
-      <th colspan="5" class="text-left" style="width: 100%">Sink Options</th>
+      <th colspan="6" class="text-left" style="width: 100%">Sink Options</th>
     </tr>
     </thead>
     <tbody>
@@ -716,6 +725,7 @@ Connector Options
     <tr>
       <td><h5>sink.http-client.max-concurrency</h5></td>
       <td>optional</td>
+      <td>no</td>
       <td style="word-wrap: break-word;">10000</td>
       <td>Integer</td>
       <td>
@@ -725,6 +735,7 @@ Connector Options
     <tr>
       <td><h5>sink.http-client.read-timeout</h5></td>
       <td>optional</td>
+      <td>no</td>
       <td style="word-wrap: break-word;">360000</td>
       <td>Integer</td>
       <td>
@@ -734,6 +745,7 @@ Connector Options
     <tr>
       <td><h5>sink.http-client.protocol.version</h5></td>
       <td>optional</td>
+      <td>no</td>
       <td style="word-wrap: break-word;">HTTP2</td>
       <td>String</td>
       <td>Http version used by Kinesis Client.</td>
@@ -741,6 +753,7 @@ Connector Options
     <tr>
       <td><h5>sink.batch.max-size</h5></td>
       <td>optional</td>
+      <td>yes</td>
       <td style="word-wrap: break-word;">500</td>
       <td>Integer</td>
       <td>Maximum batch size of elements to be passed to <code>KinesisAsyncClient</code> to be written downstream.</td>
@@ -748,6 +761,7 @@ Connector Options
     <tr>
       <td><h5>sink.requests.max-inflight</h5></td>
       <td>optional</td>
+      <td>yes</td>
       <td style="word-wrap: break-word;">16</td>
       <td>Integer</td>
       <td>Request threshold for uncompleted requests by <code>KinesisAsyncClient</code>before blocking new write requests and applying backpressure.</td>
@@ -755,6 +769,7 @@ Connector Options
     <tr>
       <td><h5>sink.requests.max-buffered</h5></td>
       <td>optional</td>
+      <td>yes</td>
       <td style="word-wrap: break-word;">10000</td>
       <td>String</td>
       <td>Request buffer threshold for buffered requests by <code>KinesisAsyncClient</code> before blocking new write requests and applying backpressure.</td>
@@ -762,6 +777,7 @@ Connector Options
     <tr>
       <td><h5>sink.flush-buffer.size</h5></td>
       <td>optional</td>
+      <td>yes</td>
       <td style="word-wrap: break-word;">5242880</td>
       <td>Long</td>
       <td>Threshold value in bytes for writer buffer in <code>KinesisAsyncClient</code> before flushing.</td>
@@ -769,9 +785,18 @@ Connector Options
     <tr>
       <td><h5>sink.flush-buffer.timeout</h5></td>
       <td>optional</td>
+      <td>yes</td>
       <td style="word-wrap: break-word;">5000</td>
       <td>Long</td>
       <td>Threshold time in milliseconds for an element to be in a buffer of<code>KinesisAsyncClient</code> before flushing.</td>
+    </tr>
+    <tr>
+      <td><h5>sink.fail-on-error</h5></td>
+      <td>optional</td>
+      <td>yes</td>
+      <td style="word-wrap: break-word;">false</td>
+      <td>Boolean</td>
+      <td>Flag used for retrying failed requests. If set any request failure will not be retried and will fail the job.</td>
     </tr>
     </tbody>
 </table>
@@ -846,7 +871,7 @@ You can enable and configure EFO with the following properties:
     This is the preferred strategy for the majority of applications.
     However, jobs with parallelism greater than 1 will result in tasks competing to register and acquire the stream consumer ARN.
     For jobs with very large parallelism this can result in an increased start-up time.
-    The describe operation has a limit of 20 [transactions per second](https://docs.aws.amazon.com/kinesis/latest/APIReference/API_DescribeStreamConsumer.html),
+    The `DescribeStreamConsumer` operation has a limit of 20 [transactions per second](https://docs.aws.amazon.com/kinesis/latest/APIReference/API_DescribeStreamConsumer.html),
     this means application startup time will increase by roughly `parallelism/20 seconds`.
   * `EAGER`: Stream consumers are registered in the `FlinkKinesisConsumer` constructor.
     If the stream consumer already exists, it will be reused.
@@ -867,7 +892,7 @@ However, consumer names do not have to be unique across data streams.
 Reusing a consumer name will result in existing subscriptions being terminated.
 
 <span class="label label-info">Note</span> With the `LAZY` strategy, stream consumers are de-registered when the job is shutdown gracefully.
-In the event that a job terminates within executing the shutdown hooks, stream consumers will remain active.
+In the event that a job terminates without executing the shutdown hooks, stream consumers will remain active.
 In this situation the stream consumers will be gracefully reused when the application restarts.
 With the `NONE` and `EAGER` strategies, stream consumer de-registration is not performed by `FlinkKinesisConsumer`.
 

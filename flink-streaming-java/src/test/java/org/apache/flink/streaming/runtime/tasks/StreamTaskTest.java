@@ -48,6 +48,7 @@ import org.apache.flink.runtime.execution.CancelTaskException;
 import org.apache.flink.runtime.execution.Environment;
 import org.apache.flink.runtime.execution.ExecutionState;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
+import org.apache.flink.runtime.io.AvailabilityProvider;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironment;
 import org.apache.flink.runtime.io.network.NettyShuffleEnvironmentBuilder;
 import org.apache.flink.runtime.io.network.api.StopMode;
@@ -86,9 +87,11 @@ import org.apache.flink.runtime.state.StateHandleID;
 import org.apache.flink.runtime.state.StateInitializationContext;
 import org.apache.flink.runtime.state.StatePartitionStreamProvider;
 import org.apache.flink.runtime.state.StreamStateHandle;
+import org.apache.flink.runtime.state.TaskExecutorStateChangelogStoragesManager;
 import org.apache.flink.runtime.state.TaskLocalStateStoreImpl;
 import org.apache.flink.runtime.state.TaskStateManager;
 import org.apache.flink.runtime.state.TaskStateManagerImpl;
+import org.apache.flink.runtime.state.TestTaskStateManager;
 import org.apache.flink.runtime.state.changelog.inmemory.InMemoryStateChangelogStorage;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.state.ttl.mock.MockStateBackend;
@@ -789,6 +792,7 @@ public class StreamTaskTest extends TestLogger {
                         createExecutionAttemptId(),
                         mock(TaskLocalStateStoreImpl.class),
                         new InMemoryStateChangelogStorage(),
+                        new TaskExecutorStateChangelogStoragesManager(),
                         null,
                         checkpointResponder);
 
@@ -982,6 +986,7 @@ public class StreamTaskTest extends TestLogger {
                         createExecutionAttemptId(),
                         mock(TaskLocalStateStoreImpl.class),
                         new InMemoryStateChangelogStorage(),
+                        new TaskExecutorStateChangelogStoragesManager(),
                         null,
                         checkpointResponder);
 
@@ -1187,6 +1192,29 @@ public class StreamTaskTest extends TestLogger {
 
             task.invoke();
             assertEquals(numberOfProcessCalls, inputProcessor.currentNumProcessCalls);
+        }
+    }
+
+    @Test
+    public void testProcessWithRaceInDataAvailability() throws Exception {
+        try (final MockEnvironment environment =
+                MockEnvironment.builder()
+                        .setTaskStateManager(
+                                TestTaskStateManager.builder()
+                                        // replicate NPE of FLINK-29397
+                                        .setStateChangelogStorage(null)
+                                        .build())
+                        .build()) {
+            environment.addOutputs(
+                    Collections.singletonList(new AvailabilityTestResultPartitionWriter(true)));
+
+            final StreamInputProcessor inputProcessor = new RacyTestInputProcessor();
+            final StreamTask<?, ?> task =
+                    new MockStreamTaskBuilder(environment)
+                            .setStreamInputProcessor(inputProcessor)
+                            .build();
+
+            task.invoke();
         }
     }
 
@@ -1948,6 +1976,38 @@ public class StreamTaskTest extends TestLogger {
         @Override
         public CompletableFuture<?> getAvailableFuture() {
             return availabilityProvider.getAvailableFuture();
+        }
+    }
+
+    /**
+     * A stream input processor implementation that replicates a race condition where processInput
+     * reports that nothing is available, but isAvailable (called later) returns true.
+     */
+    private static class RacyTestInputProcessor implements StreamInputProcessor {
+
+        private boolean firstCall = true;
+
+        @Override
+        public DataInputStatus processInput() {
+            try {
+                return firstCall ? DataInputStatus.NOTHING_AVAILABLE : DataInputStatus.END_OF_INPUT;
+            } finally {
+                firstCall = false;
+            }
+        }
+
+        @Override
+        public CompletableFuture<Void> prepareSnapshot(
+                ChannelStateWriter channelStateWriter, final long checkpointId) {
+            return FutureUtils.completedVoidFuture();
+        }
+
+        @Override
+        public void close() throws IOException {}
+
+        @Override
+        public CompletableFuture<?> getAvailableFuture() {
+            return AvailabilityProvider.AVAILABLE;
         }
     }
 

@@ -22,14 +22,17 @@ import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.connector.aws.testutils.LocalstackContainer;
 import org.apache.flink.connector.testframe.container.FlinkContainers;
 import org.apache.flink.connector.testframe.container.TestcontainersSettings;
+import org.apache.flink.test.resources.ResourceTestUtils;
 import org.apache.flink.test.util.SQLJobSubmission;
-import org.apache.flink.tests.util.TestUtils;
 import org.apache.flink.util.DockerImageVersions;
 import org.apache.flink.util.TestLogger;
+import org.apache.flink.util.jackson.JacksonMapperFactory;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonCreator;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.annotation.JsonProperty;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
+
 import org.assertj.core.api.Assertions;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -79,7 +82,9 @@ public class KinesisFirehoseTableITTest extends TestLogger {
     private static final String BUCKET_NAME = "s3-firehose";
     private static final String STREAM_NAME = "s3-stream";
 
-    private final Path sqlConnectorFirehoseJar = TestUtils.getResource(".*firehose.jar");
+    private static final ObjectMapper OBJECT_MAPPER = JacksonMapperFactory.createObjectMapper();
+
+    private final Path sqlConnectorFirehoseJar = ResourceTestUtils.getResource(".*firehose.jar");
 
     private SdkHttpClient httpClient;
     private S3Client s3Client;
@@ -207,7 +212,7 @@ public class KinesisFirehoseTableITTest extends TestLogger {
 
     private <T> T fromJson(final String json, final Class<T> type) {
         try {
-            return new ObjectMapper().readValue(json, type);
+            return OBJECT_MAPPER.readValue(json, type);
         } catch (JsonProcessingException e) {
             throw new RuntimeException(String.format("Failed to deserialize json: %s", json), e);
         }
@@ -218,6 +223,7 @@ public class KinesisFirehoseTableITTest extends TestLogger {
         private final String code;
         private final int quantity;
 
+        @JsonCreator
         public Order(
                 @JsonProperty("code") final String code, @JsonProperty("quantity") int quantity) {
             this.code = code;

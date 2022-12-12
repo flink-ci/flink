@@ -54,7 +54,7 @@ public class KerberosDelegationTokenManagerITCase {
 
     @Test
     public void isProviderEnabledMustGiveBackTrueByDefault() {
-        ExceptionThrowingDelegationTokenProvider.enabled = false;
+        ExceptionThrowingHadoopDelegationTokenProvider.enabled = false;
         Configuration configuration = new Configuration();
         KerberosDelegationTokenManager delegationTokenManager =
                 new KerberosDelegationTokenManager(configuration, null, null);
@@ -64,7 +64,7 @@ public class KerberosDelegationTokenManagerITCase {
 
     @Test
     public void isProviderEnabledMustGiveBackFalseWhenDisabled() {
-        ExceptionThrowingDelegationTokenProvider.enabled = false;
+        ExceptionThrowingHadoopDelegationTokenProvider.enabled = false;
         Configuration configuration = new Configuration();
         configuration.setBoolean("security.kerberos.token.provider.test.enabled", false);
         KerberosDelegationTokenManager delegationTokenManager =
@@ -84,27 +84,28 @@ public class KerberosDelegationTokenManagerITCase {
                 Exception.class,
                 () -> {
                     try {
-                        ExceptionThrowingDelegationTokenProvider.enabled = true;
+                        ExceptionThrowingHadoopDelegationTokenProvider.enabled = true;
                         new KerberosDelegationTokenManager(new Configuration(), null, null);
                     } finally {
-                        ExceptionThrowingDelegationTokenProvider.enabled = false;
+                        ExceptionThrowingHadoopDelegationTokenProvider.enabled = false;
                     }
                 });
     }
 
     @Test
     public void testAllProvidersLoaded() {
-        ExceptionThrowingDelegationTokenProvider.enabled = false;
-        ExceptionThrowingDelegationTokenProvider.constructed = false;
+        ExceptionThrowingHadoopDelegationTokenProvider.enabled = false;
+        ExceptionThrowingHadoopDelegationTokenProvider.constructed = false;
         Configuration configuration = new Configuration();
         configuration.setBoolean("security.kerberos.token.provider.throw.enabled", false);
         KerberosDelegationTokenManager delegationTokenManager =
                 new KerberosDelegationTokenManager(configuration, null, null);
 
-        assertEquals(2, delegationTokenManager.delegationTokenProviders.size());
+        assertEquals(3, delegationTokenManager.delegationTokenProviders.size());
         assertTrue(delegationTokenManager.isProviderLoaded("hadoopfs"));
+        assertTrue(delegationTokenManager.isProviderLoaded("hbase"));
         assertTrue(delegationTokenManager.isProviderLoaded("test"));
-        assertTrue(ExceptionThrowingDelegationTokenProvider.constructed);
+        assertTrue(ExceptionThrowingHadoopDelegationTokenProvider.constructed);
         assertFalse(delegationTokenManager.isProviderLoaded("throw"));
     }
 
@@ -119,8 +120,8 @@ public class KerberosDelegationTokenManagerITCase {
             when(userGroupInformation.isFromKeytab()).thenReturn(true);
             ugi.when(UserGroupInformation::getCurrentUser).thenReturn(userGroupInformation);
 
-            ExceptionThrowingDelegationTokenProvider.enabled = false;
-            ExceptionThrowingDelegationTokenProvider.constructed = false;
+            ExceptionThrowingHadoopDelegationTokenProvider.enabled = false;
+            ExceptionThrowingHadoopDelegationTokenProvider.constructed = false;
             Configuration configuration = new Configuration();
             configuration.setBoolean("security.kerberos.token.provider.throw.enabled", false);
             KerberosDelegationTokenManager delegationTokenManager =
@@ -146,8 +147,8 @@ public class KerberosDelegationTokenManagerITCase {
             UserGroupInformation userGroupInformation = mock(UserGroupInformation.class);
             ugi.when(UserGroupInformation::getCurrentUser).thenReturn(userGroupInformation);
 
-            ExceptionThrowingDelegationTokenProvider.enabled = false;
-            ExceptionThrowingDelegationTokenProvider.constructed = false;
+            ExceptionThrowingHadoopDelegationTokenProvider.enabled = false;
+            ExceptionThrowingHadoopDelegationTokenProvider.constructed = false;
             Configuration configuration = new Configuration();
             configuration.setBoolean("security.kerberos.token.provider.throw.enabled", false);
             AtomicInteger startTokensUpdateCallCount = new AtomicInteger(0);
@@ -155,7 +156,7 @@ public class KerberosDelegationTokenManagerITCase {
             KerberosLoginProvider kerberosLoginProvider =
                     new KerberosLoginProvider(configuration) {
                         @Override
-                        public UserGroupInformation doLogin() {
+                        public UserGroupInformation doLoginAndReturnUGI() {
                             if (startTokensUpdateCallCount.get() == 2) {
                                 retryExceptionThrown.set(true);
                                 throw new RuntimeException("Intended exception to test retry");
@@ -187,8 +188,8 @@ public class KerberosDelegationTokenManagerITCase {
 
     @Test
     public void calculateRenewalDelayShouldConsiderRenewalRatio() {
-        ExceptionThrowingDelegationTokenProvider.enabled = false;
-        ExceptionThrowingDelegationTokenProvider.constructed = false;
+        ExceptionThrowingHadoopDelegationTokenProvider.enabled = false;
+        ExceptionThrowingHadoopDelegationTokenProvider.constructed = false;
         Configuration configuration = new Configuration();
         configuration.setBoolean("security.kerberos.token.provider.throw.enabled", false);
         configuration.set(KERBEROS_TOKENS_RENEWAL_TIME_RATIO, 0.5);

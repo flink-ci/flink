@@ -182,12 +182,6 @@ public class PendingCheckpoint implements Checkpoint {
         return jobId;
     }
 
-    /** @deprecated use {@link #getCheckpointID()} */
-    @Deprecated
-    public long getCheckpointId() {
-        return getCheckpointID();
-    }
-
     @Override
     public long getCheckpointID() {
         return checkpointId;
@@ -324,7 +318,8 @@ public class PendingCheckpoint implements Checkpoint {
 
                 // write out the metadata
                 final CheckpointMetadata savepoint =
-                        new CheckpointMetadata(checkpointId, operatorStates.values(), masterStates);
+                        new CheckpointMetadata(
+                                checkpointId, operatorStates.values(), masterStates, props);
                 final CompletedCheckpointStorageLocation finalizedLocation;
 
                 try (CheckpointMetadataOutputStream out =

@@ -56,6 +56,7 @@ import org.apache.flink.table.types.logical.utils.LogicalTypeChecks
 import org.apache.flink.table.types.utils.DataTypeUtils
 
 import org.apache.calcite.rel.`type`._
+import org.apache.calcite.rel.RelCollations
 import org.apache.calcite.rel.core.{Aggregate, AggregateCall}
 import org.apache.calcite.rel.core.Aggregate.AggCallBinding
 import org.apache.calcite.sql.`type`.{SqlTypeName, SqlTypeUtil}
@@ -761,10 +762,14 @@ object AggregateUtil extends Enumeration {
         SqlStdOperatorTable.COUNT,
         false,
         false,
+        false,
         new util.ArrayList[Integer](),
         -1,
+        null,
+        RelCollations.EMPTY,
         typeFactory.createSqlType(SqlTypeName.BIGINT),
-        "_$count1$_")
+        "_$count1$_"
+      )
 
       indexOfCountStar = Some(aggregateCalls.length)
       countStarInserted = true
@@ -835,8 +840,11 @@ object AggregateUtil extends Enumeration {
             call.getAggregation,
             false,
             false,
+            false,
             call.getArgList,
             -1, // remove filterArg
+            null,
+            RelCollations.EMPTY,
             call.getType,
             call.getName)
         } else {
@@ -885,7 +893,7 @@ object AggregateUtil extends Enumeration {
         // ordered by type root definition
         case CHAR | VARCHAR | BOOLEAN | DECIMAL | TINYINT | SMALLINT | INTEGER | BIGINT | FLOAT |
             DOUBLE | DATE | TIME_WITHOUT_TIME_ZONE | TIMESTAMP_WITHOUT_TIME_ZONE |
-            TIMESTAMP_WITH_LOCAL_TIME_ZONE | INTERVAL_YEAR_MONTH | INTERVAL_DAY_TIME =>
+            TIMESTAMP_WITH_LOCAL_TIME_ZONE | INTERVAL_YEAR_MONTH | INTERVAL_DAY_TIME | ARRAY =>
           argTypes(0)
         case t =>
           throw new TableException(

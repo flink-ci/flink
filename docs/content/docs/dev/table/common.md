@@ -35,6 +35,12 @@ Structure of Table API and SQL Programs
 
 The following code example shows the common structure of Table API and SQL programs.
 
+{{< hint warning >}}
+All Flink Scala APIs are deprecated and will be removed in a future Flink version version. You can still build your application in Scala, but you should move to the Java version of either the DataStream and/or Table API.
+
+See <a href="https://cwiki.apache.org/confluence/display/FLINK/FLIP-265+Deprecate+and+remove+Scala+API+support">FLIP-265 Deprecate and remove Scala API support</a>
+{{< /hint >}}
+
 {{< tabs "0727d1e7-3f22-4eba-a25f-6a554b6a1359" >}}
 {{< tab "Java" >}}
 ```java
@@ -902,7 +908,7 @@ print(table.explain())
 
 The result of the above example is
 
-{{< expand "Explain" >}}
+{{< details "Explain" >}}
 ```text
 
 == Abstract Syntax Tree ==
@@ -924,7 +930,7 @@ Union(all=[true], union=[count, word])
 +- DataStreamScan(table=[[Unregistered_DataStream_2]], fields=[count, word])
 
 ```
-{{< /expand >}}
+{{< /details >}}
 
 The following code shows an example and the corresponding output for multiple-sinks plan using `StatementSet.explain()` method:
 
@@ -1066,7 +1072,7 @@ print(explanation)
 
 the result of multiple-sinks plan is
 
-{{< expand "MultiTable Explain" >}}
+{{< details "MultiTable Explain" >}}
 ```text
 
 == Abstract Syntax Tree ==
@@ -1104,7 +1110,7 @@ LegacySink(name=[`default_catalog`.`default_database`.`MySink2`], fields=[count,
    +- LegacyTableSourceScan(table=[[default_catalog, default_database, MySource2, source: [CsvTableSource(read fields: count, word)]]], fields=[count, word])
 
 ```
-{{< /expand >}}
+{{< /details >}}
 
 {{< top >}}
 

@@ -166,6 +166,46 @@ following parameters in `TableConfig` (note that these parameters affect all sou
   </tbody>
 </table>
 
+### Tuning Split Size While Reading Hive Table
+While reading Hive table, the data files will be enumerated into splits, one of which is a portion of data consumed by the source.
+Splits are granularity by which the source distributes the work and parallelize the data reading.
+Users can do some performance tuning by tuning the split's size with the follow configurations.
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+        <th class="text-left" style="width: 20%">Key</th>
+        <th class="text-left" style="width: 15%">Default</th>
+        <th class="text-left" style="width: 10%">Type</th>
+        <th class="text-left" style="width: 55%">Description</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+        <td><h5>table.exec.hive.split-max-size</h5></td>
+        <td style="word-wrap: break-word;">128mb</td>
+        <td>MemorySize</td>
+        <td>The maximum number of bytes (default is 128MB) to pack into a split while reading Hive table.</td>
+    </tr>
+    <tr>
+        <td><h5>table.exec.hive.file-open-cost</h5></td>
+        <td style="word-wrap: break-word;">4mb</td>
+        <td>MemorySize</td>
+        <td>The estimated cost (default is 4MB) to open a file. Used to enumerate Hive's files to splits.
+            If the value is overestimated, Flink will tend to pack Hive's data into less splits, which will helpful when Hive's table contains many small files.
+            If the value is underestimated, Flink will tend to pack Hive's data into more splits, which will help improve parallelism.
+        </td>
+    </tr>
+  </tbody>
+</table>
+{{< hint warning >}}
+**NOTE**:
+- To tune the split's size, Flink will first get all files' size for all partitions.
+  If there are too many partitions, it maybe time-consuming,
+  then you can configure the job configuration `table.exec.hive.calculate-partition-size.thread-num` (3 by default) to a bigger value to enable more threads to speed up the process.
+- Currently, these configurations for tuning split size only works for the Hive table stored as ORC format.
+{{< /hint >}}
+
 ### Load Partition Splits
 
 Multi-thread is used to split hive's partitions. You can use `table.exec.hive.load-partition-splits.thread-num` to configure the thread number. The default value is 3 and the configured value should be bigger than 0.
@@ -472,6 +512,51 @@ This configuration is set in the `TableConfig` and will affect all sinks of the 
   </tbody>
 </table>
 
+### Dynamic Partition Writing
+Different from static partition writing which requires users to specify the partition column value, dynamic partition writing allow
+users not to specify partition column value. 
+For example, for a partitioned table like:
+```sql
+CREATE TABLE fact_tz(x int) PARTITIONED BY (day STRING, hour STRING);
+```
+Users can use the follow SQL statement to write data to partitioned table `fact_tz`:
+```sql
+INSERT INTO TABLE fact_tz PARTITION (day, hour) select 1, '2022-8-8', '14';
+```
+It's a typical case for dynamic partition writing since user does not specify any partition column value in the SQL statement.
+
+By default, if it's for dynamic partition writing, Flink will sort the data additionally by dynamic partition columns before writing into sink table.
+That means the sink will receive all elements of one partition and then all elements of another partition.
+Elements of different partitions will not be mixed. This is helpful for Hive sink to reduce the number of partition writers and improve writing performance by writing one partition at a time.
+Otherwise, too many partition writers may cause the OutOfMemory exception.
+
+To avoid the extra sorting, you can set job configuration `table.exec.hive.sink.sort-by-dynamic-partition.enable` (`true` by default) to `false`.
+But with such a configuration, as said before, it may throw OutOfMemory exception if there are too many partitions fall into same sink node.
+
+To relieve the problem of too many partition writers, if data is not skewed, you can add `DISTRIBUTED BY <partition_field>` in your SQL statement to shuffle the data with same partition into same node.
+
+Also, you can manually add `SORTED BY <partition_field>` in your SQL statement to achieve the same purpose as `table.exec.hive.sink.sort-by-dynamic-partition.enable=true`.
+
+**NOTE:** 
+- The configuration `table.exec.hive.sink.sort-by-dynamic-partition.enable` only works in Flink `BATCH` mode.
+- Currently, `DISTRIBUTED BY` and `SORTED BY` is only supported when using [Hive dialect]({{< ref "docs/dev/table/hive-compatibility/hive-dialect/overview" >}})  in Flink `BATCH` mode.
+
+### Auto Gather Statistic
+By default, Flink will gather the statistic automatically and then committed to Hive metastore during writing Hive table.
+
+But in some case, you may want to disable it as it may be time-consuming to gather the statistic.
+Then, you can set the job configuration `table.exec.hive.sink.statistic-auto-gather.enable` (`true` by default) to `false`
+to disable it.
+
+If the Hive table is stored as Parquet or ORC format, `numFiles`/`totalSize`/`numRows`/`rawDataSize` can be gathered.
+Otherwise, only `numFiles`/`totalSize` can be gathered.
+
+To gather statistic `numRows`/`rawDataSize` for Parquet and ORC format, Flink will only read the file's footer to do fast gathering.
+But it may still time-consuming when there are too many files, then you can configure the job configuration `table.exec.hive.sink.statistic-auto-gather.thread-num` (`3` by default) to 
+use more threads to speed the gathering.
+
+**NOTE:**
+- Only `BATCH` mode supports to auto gather statistic, `STREAMING` mode doesn't support it yet.
 
 ## Formats
 

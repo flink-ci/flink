@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.rpc;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ScheduledFutureAdapter;
@@ -307,17 +308,7 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
      * @return Self gateway of the specified type which can be used to issue asynchronous rpcs
      */
     public <C extends RpcGateway> C getSelfGateway(Class<C> selfGatewayType) {
-        if (selfGatewayType.isInstance(rpcServer)) {
-            @SuppressWarnings("unchecked")
-            C selfGateway = ((C) rpcServer);
-
-            return selfGateway;
-        } else {
-            throw new RuntimeException(
-                    "RpcEndpoint does not implement the RpcGateway interface of type "
-                            + selfGatewayType
-                            + '.');
-        }
+        return rpcService.getSelfGateway(selfGatewayType, rpcServer);
     }
 
     /**
@@ -470,11 +461,21 @@ public abstract class RpcEndpoint implements RpcGateway, AutoCloseableAsync {
 
         MainThreadExecutor(
                 MainThreadExecutable gateway, Runnable mainThreadCheck, String endpointId) {
+            this(
+                    gateway,
+                    mainThreadCheck,
+                    Executors.newSingleThreadScheduledExecutor(
+                            new ExecutorThreadFactory(endpointId + "-main-scheduler")));
+        }
+
+        @VisibleForTesting
+        MainThreadExecutor(
+                MainThreadExecutable gateway,
+                Runnable mainThreadCheck,
+                ScheduledExecutorService mainScheduledExecutor) {
             this.gateway = Preconditions.checkNotNull(gateway);
             this.mainThreadCheck = Preconditions.checkNotNull(mainThreadCheck);
-            this.mainScheduledExecutor =
-                    Executors.newSingleThreadScheduledExecutor(
-                            new ExecutorThreadFactory(endpointId + "-main-scheduler"));
+            this.mainScheduledExecutor = mainScheduledExecutor;
         }
 
         @Override

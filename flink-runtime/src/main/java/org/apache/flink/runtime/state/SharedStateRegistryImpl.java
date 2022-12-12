@@ -21,6 +21,7 @@ package org.apache.flink.runtime.state;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.core.fs.FSDataInputStream;
 import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
+import org.apache.flink.runtime.checkpoint.SnapshotType.SharingFilesStrategy;
 import org.apache.flink.runtime.jobgraph.RestoreMode;
 import org.apache.flink.util.concurrent.Executors;
 
@@ -40,6 +41,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 import java.util.concurrent.RejectedExecutionException;
 
+import static org.apache.flink.runtime.checkpoint.SnapshotType.SharingFilesStrategy.NO_SHARING;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
@@ -51,6 +53,9 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
 
     /** All registered state objects by an artificial key */
     private final Map<SharedStateRegistryKey, SharedStateEntry> registeredStates;
+
+    private final Map<Long, Optional<SharingFilesStrategy>> restoredCheckpointSharingStrategies =
+            new HashMap<>();
 
     /** This flag indicates whether or not the registry is open or if close() was called */
     private boolean open;
@@ -72,10 +77,14 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
         this.open = true;
     }
 
+    @Override
     public StreamStateHandle registerReference(
-            SharedStateRegistryKey registrationKey, StreamStateHandle state, long checkpointID) {
+            final SharedStateRegistryKey registrationKey,
+            final StreamStateHandle newHandle,
+            final long checkpointID,
+            final boolean preventDiscardingCreatedCheckpoint) {
 
-        checkNotNull(state);
+        checkNotNull(newHandle, "State handle should not be null.");
 
         StreamStateHandle scheduledStateDeletion = null;
         SharedStateEntry entry;
@@ -86,57 +95,78 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
             entry = registeredStates.get(registrationKey);
 
             if (entry == null) {
-                // Additional check that should never fail, because only state handles that are not
-                // placeholders should
-                // ever be inserted to the registry.
                 checkState(
-                        !isPlaceholder(state),
+                        !isPlaceholder(newHandle),
                         "Attempt to reference unknown state: " + registrationKey);
 
-                entry = new SharedStateEntry(state, checkpointID);
-                registeredStates.put(registrationKey, entry);
-                LOG.trace("Registered new shared state {} under key {}.", entry, registrationKey);
-
-            } else {
-                // Delete if this is a real duplicate.
-                // Note that task (backend) is not required to re-upload state
-                // if the confirmation notification was missing.
-                // However, it's also not required to use exactly the same handle or placeholder
-                if (!Objects.equals(state, entry.stateHandle)) {
-                    if (entry.confirmed || isPlaceholder(state)) {
-                        scheduledStateDeletion = state;
-                    } else {
-                        // Old entry is not in a confirmed checkpoint yet, and the new one differs.
-                        // This might result from (omitted KG range here for simplicity):
-                        // 1. Flink recovers from a failure using a checkpoint 1
-                        // 2. State Backend is initialized to UID xyz and a set of SST: { 01.sst }
-                        // 3. JM triggers checkpoint 2
-                        // 4. TM sends handle: "xyz-002.sst"; JM registers it under "xyz-002.sst"
-                        // 5. TM crashes; everything is repeated from (2)
-                        // 6. TM recovers from CP 1 again: backend UID "xyz", SST { 01.sst }
-                        // 7. JM triggers checkpoint 3
-                        // 8. TM sends NEW state "xyz-002.sst"
-                        // 9. JM discards it as duplicate
-                        // 10. checkpoint completes, but a wrong SST file is used
-                        // So we use a new entry and discard the old one:
-                        scheduledStateDeletion = entry.stateHandle;
-                        entry.stateHandle = state;
-                    }
-                    LOG.trace(
-                            "Identified duplicate state registration under key {}. New state {} was determined to "
-                                    + "be an unnecessary copy of existing state {} and will be dropped.",
-                            registrationKey,
-                            state,
-                            entry.stateHandle);
-                }
                 LOG.trace(
-                        "Updating last checkpoint for {} from {} to {}",
+                        "Registered new shared state {} under key {}.", newHandle, registrationKey);
+                entry = new SharedStateEntry(newHandle, checkpointID);
+                registeredStates.put(registrationKey, entry);
+
+                // no further handling
+                return entry.stateHandle;
+
+            } else if (entry.stateHandle == newHandle) {
+                // might be a bug but state backend is not required to use a place-holder
+                LOG.info(
+                        "Duplicated registration under key {} with the same object: {}",
                         registrationKey,
-                        entry.lastUsedCheckpointID,
-                        checkpointID);
-                entry.advanceLastUsingCheckpointID(checkpointID);
+                        newHandle);
+            } else if (Objects.equals(entry.stateHandle, newHandle)) {
+                // might be a bug but state backend is not required to use a place-holder
+                LOG.info(
+                        "Duplicated registration under key {} with the new object: {}.",
+                        registrationKey,
+                        newHandle);
+            } else if (isPlaceholder(newHandle)) {
+                LOG.trace(
+                        "Duplicated registration under key {} with a placeholder (normal case)",
+                        registrationKey);
+                scheduledStateDeletion = newHandle;
+            } else if (entry.confirmed) {
+                LOG.info(
+                        "Duplicated registration under key {} of a new state: {}. "
+                                + "This might happen if checkpoint confirmation was delayed and state backend re-uploaded the state. "
+                                + "Discarding the new state and keeping the old one which is included into a completed checkpoint",
+                        registrationKey,
+                        newHandle);
+                scheduledStateDeletion = newHandle;
+            } else {
+                // Old entry is not in a confirmed checkpoint yet, and the new one differs.
+                // This might result from (omitted KG range here for simplicity):
+                // 1. Flink recovers from a failure using a checkpoint 1
+                // 2. State Backend is initialized to UID xyz and a set of SST: { 01.sst }
+                // 3. JM triggers checkpoint 2
+                // 4. TM sends handle: "xyz-002.sst"; JM registers it under "xyz-002.sst"
+                // 5. TM crashes; everything is repeated from (2)
+                // 6. TM recovers from CP 1 again: backend UID "xyz", SST { 01.sst }
+                // 7. JM triggers checkpoint 3
+                // 8. TM sends NEW state "xyz-002.sst"
+                // 9. JM discards it as duplicate
+                // 10. checkpoint completes, but a wrong SST file is used
+                // So we use a new entry and discard the old one:
+                LOG.info(
+                        "Duplicated registration under key {} of a new state: {}. "
+                                + "This might happen during the task failover if state backend creates different states with the same key before and after the failure. "
+                                + "Discarding the OLD state and keeping the NEW one which is included into a completed checkpoint",
+                        registrationKey,
+                        newHandle);
+                scheduledStateDeletion = entry.stateHandle;
+                entry.stateHandle = newHandle;
             }
-        }
+
+            LOG.trace(
+                    "Updating last checkpoint for {} from {} to {}",
+                    registrationKey,
+                    entry.lastUsedCheckpointID,
+                    checkpointID);
+            entry.advanceLastUsingCheckpointID(checkpointID);
+
+            if (preventDiscardingCreatedCheckpoint) {
+                entry.preventDiscardingCreatedCheckpoint();
+            }
+        } // end of synchronized (registeredStates)
 
         scheduleAsyncDelete(scheduledStateDeletion);
         return entry.stateHandle;
@@ -162,7 +192,14 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
                         subsumed.add(entry.stateHandle);
                     }
                     it.remove();
-                } else {
+                } else if (preventsDiscardingCreatedCheckpoint(entry)) {
+                    // Newly created checkpoints can be discarded right after subsumption. But the
+                    // initial checkpoint needs to be kept until all of its private AND shared state
+                    // is not in use. This is to enable recovery in CLAIM mode from:
+                    // - native incremental savepoints
+                    // - non-changelog checkpoints with changelog enabled
+                    // Keeping any checkpoint for longer leaves its folder undeleted on job
+                    // cancellation (and also on crash or JM failover).
                     checkpointInUse.add(entry.createdByCheckpointID);
                 }
             }
@@ -192,6 +229,11 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
     @Override
     public void registerAllAfterRestored(CompletedCheckpoint checkpoint, RestoreMode mode) {
         registerAll(checkpoint.getOperatorStates().values(), checkpoint.getCheckpointID());
+        restoredCheckpointSharingStrategies.put(
+                checkpoint.getCheckpointID(),
+                checkpoint
+                        .getRestoredProperties()
+                        .map(props -> props.getCheckpointType().getSharingFilesStrategy()));
         // In NO_CLAIM and LEGACY restore modes, shared state of the initial checkpoints must be
         // preserved. This is achieved by advancing highestRetainCheckpointID here, and then
         // checking entry.createdByCheckpointID against it on checkpoint subsumption.
@@ -222,7 +264,7 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
     private void scheduleAsyncDelete(StreamStateHandle streamStateHandle) {
         // We do the small optimization to not issue discards for placeholders, which are NOPs.
         if (streamStateHandle != null && !isPlaceholder(streamStateHandle)) {
-            LOG.trace("Scheduled delete of state handle {}.", streamStateHandle);
+            LOG.debug("Scheduled delete of state handle {}.", streamStateHandle);
             AsyncDisposalRunnable asyncDisposalRunnable =
                     new AsyncDisposalRunnable(streamStateHandle);
             try {
@@ -277,6 +319,12 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
     /** An entry in the registry, tracking the handle and the corresponding reference count. */
     private static final class SharedStateEntry {
 
+        /**
+         * Whether usage of this state should prevent deletion of the checkpoint that created this
+         * state.
+         */
+        private boolean preventDiscardingCreatedCheckpoint = false;
+
         /** The shared state handle */
         StreamStateHandle stateHandle;
 
@@ -307,6 +355,14 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
 
         private void advanceLastUsingCheckpointID(long checkpointID) {
             lastUsedCheckpointID = Math.max(checkpointID, lastUsedCheckpointID);
+        }
+
+        private void preventDiscardingCreatedCheckpoint() {
+            // Changed from false to true when a newer checkpoint starts reusing this state entry
+            // after recovery. This is to delay discarding the checkpoint until all of its
+            // state (both shared and private) is not used. That allows to handle transition from
+            // changelog off to on in CLAIM mode.
+            this.preventDiscardingCreatedCheckpoint = true;
         }
     }
 
@@ -364,5 +420,25 @@ public class SharedStateRegistryImpl implements SharedStateRegistry {
         public String toString() {
             return "EmptyDiscardStateObject{" + stateHandleID + '}';
         }
+    }
+
+    private boolean preventsDiscardingCreatedCheckpoint(SharedStateEntry entry) {
+        // explicitly set by the backend, e.g. private state is reused
+        if (entry.preventDiscardingCreatedCheckpoint
+                && restoredCheckpointSharingStrategies.containsKey(entry.createdByCheckpointID)) {
+            return true;
+        }
+        // With NO_SHARING strategy, shared state, if any, is bundled inside the checkpoint folder.
+        // So the folder deletion should be delayed as long as some shared state is still in use.
+        // That allows to recover from Incremental RocksDB Native Savepoint in CLAIM mode.
+        // noinspection RedundantIfStatement
+        if (restoredCheckpointSharingStrategies
+                .getOrDefault(entry.createdByCheckpointID, Optional.empty())
+                .filter(sharingFilesStrategy -> sharingFilesStrategy == NO_SHARING)
+                .isPresent()) {
+            return true;
+        }
+
+        return false;
     }
 }

@@ -25,7 +25,7 @@ under the License.
 	<parent>
 		<groupId>org.apache.flink</groupId>
 		<artifactId>flink-formats</artifactId>
-		<version>1.16-SNAPSHOT</version>
+		<version>1.17-SNAPSHOT</version>
 	</parent>
 
 	<artifactId>flink-parquet</artifactId>
@@ -159,15 +159,6 @@ under the License.
 		</dependency>
 
 		<!-- Tests -->
-
-		<!--Support ParquetFileSystemStatisticsReport using calcite verify plan methods, see FLINK-27990 -->
-		<dependency>
-			<groupId>com.google.guava</groupId>
-			<artifactId>guava</artifactId>
-			<version>${guava.version}</version>
-			<scope>test</scope>
-		</dependency>
-
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-test-utils</artifactId>

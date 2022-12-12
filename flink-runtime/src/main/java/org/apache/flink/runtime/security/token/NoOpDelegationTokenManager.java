@@ -18,11 +18,14 @@
 
 package org.apache.flink.runtime.security.token;
 
+import org.apache.flink.annotation.Internal;
+
 import org.apache.hadoop.security.Credentials;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** {@link DelegationTokenManager} implementation which does nothing. */
+@Internal
 public class NoOpDelegationTokenManager implements DelegationTokenManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(NoOpDelegationTokenManager.class);
@@ -37,7 +40,7 @@ public class NoOpDelegationTokenManager implements DelegationTokenManager {
     }
 
     @Override
-    public void start() {
+    public void start(DelegationTokenListener delegationTokenListener) {
         LOG.debug("start");
     }
 

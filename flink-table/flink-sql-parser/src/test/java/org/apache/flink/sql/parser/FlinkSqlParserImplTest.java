@@ -64,13 +64,38 @@ class FlinkSqlParserImplTest extends SqlParserTest {
         sql("desc catalog a").ok("DESCRIBE CATALOG `A`");
     }
 
-    /**
-     * Here we override the super method to avoid test error from `describe schema` supported in
-     * original calcite.
-     */
+    // ignore test methods that we don't support
+    // BEGIN
+    // ARRAY_AGG
+    @Disabled
+    @Test
+    void testArrayAgg() {}
+
+    // DESCRIBE SCHEMA
     @Disabled
     @Test
     void testDescribeSchema() {}
+
+    // DESCRIBE STATEMENT
+    @Disabled
+    @Test
+    void testDescribeStatement() {}
+
+    // GROUP CONCAT
+    @Disabled
+    @Test
+    void testGroupConcat() {}
+
+    // EXPLAIN AS DOT
+    @Disabled
+    @Test
+    void testExplainAsDot() {}
+
+    // STRING_AGG
+    @Disabled
+    @Test
+    void testStringAgg() {}
+    // END
 
     @Test
     void testUseCatalog() {
@@ -285,14 +310,6 @@ class FlinkSqlParserImplTest extends SqlParserTest {
         sql("show columns in catalog1.db1.tbl not like '%'")
                 .ok("SHOW COLUMNS IN `CATALOG1`.`DB1`.`TBL` NOT LIKE '%'");
     }
-
-    /**
-     * Here we override the super method to avoid test error from `describe statement` supported in
-     * original calcite.
-     */
-    @Disabled
-    @Test
-    void testDescribeStatement() {}
 
     @Test
     void testAlterTable() {
@@ -1059,6 +1076,25 @@ class FlinkSqlParserImplTest extends SqlParserTest {
                         + "  ^a^.b.c = 'ab',\n"
                         + "  a.b.c1 = 'aabb')\n";
         sql(sql).fails("(?s).*Encountered \"a\" at line 6, column 3.\n.*");
+    }
+
+    @Test
+    void testCreateTableLikeWithoutOption() {
+        final String sql =
+                "create table source_table(\n"
+                        + "  a int,\n"
+                        + "  b bigint,\n"
+                        + "  c string\n"
+                        + ")\n"
+                        + "LIKE parent_table";
+        final String expected =
+                "CREATE TABLE `SOURCE_TABLE` (\n"
+                        + "  `A` INTEGER,\n"
+                        + "  `B` BIGINT,\n"
+                        + "  `C` STRING\n"
+                        + ")\n"
+                        + "LIKE `PARENT_TABLE`";
+        sql(sql).ok(expected);
     }
 
     @Test
@@ -1886,6 +1922,80 @@ class FlinkSqlParserImplTest extends SqlParserTest {
                         "ANALYZE TABLE `EMPS` PARTITION (`X`, `Y` = 'cd') COMPUTE STATISTICS FOR ALL COLUMNS");
         sql("analyze table emps partition(x=^,^ y) compute statistics for all columns")
                 .fails("(?s).*Encountered \"\\,\" at line 1, column 32.\n.*");
+    }
+
+    @Test
+    void testCreateTableAsSelectWithoutOptions() {
+        sql("CREATE TABLE t AS SELECT * FROM b").ok("CREATE TABLE `T`\nAS\nSELECT *\nFROM `B`");
+    }
+
+    @Test
+    void testCreateTableAsSelectWithOptions() {
+        sql("CREATE TABLE t WITH ('test' = 'zm') AS SELECT * FROM b")
+                .ok("CREATE TABLE `T` WITH (\n  'test' = 'zm'\n)\nAS\nSELECT *\nFROM `B`");
+    }
+
+    @Test
+    void testCreateTableAsSelectWithCreateTableLike() {
+        sql("CREATE TABLE t (col1 string) WITH ('test' = 'zm') like b ^AS^ SELECT col1 FROM b")
+                .fails("(?s).*Encountered \"AS\" at line 1, column 58.*");
+    }
+
+    @Test
+    void testCreateTableAsSelectWithTmpTable() {
+        sql("CREATE TEMPORARY TABLE t (col1 string) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE TABLE AS SELECT syntax does not support to create temporary table yet."));
+    }
+
+    @Test
+    void testCreateTableAsSelectWithExplicitColumns() {
+        sql("CREATE TABLE t (col1 string) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE TABLE AS SELECT syntax does not support to specify explicit columns yet."));
+    }
+
+    @Test
+    void testCreateTableAsSelectWithWatermark() {
+        sql("CREATE TABLE t (watermark FOR ts AS ts - interval '3' second) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE TABLE AS SELECT syntax does not support to specify explicit watermark yet."));
+    }
+
+    @Test
+    void testCreateTableAsSelectWithConstraints() {
+        sql("CREATE TABLE t (PRIMARY KEY (col1)) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE TABLE AS SELECT syntax does not support primary key constraints yet."));
+    }
+
+    @Test
+    void testCreateTableAsSelectWithPartitionKey() {
+        sql("CREATE TABLE t PARTITIONED BY(col1) WITH ('test' = 'zm') AS SELECT col1 FROM b")
+                .node(
+                        new ValidationMatcher()
+                                .fails(
+                                        "CREATE TABLE AS SELECT syntax does not support to create partitioned table yet."));
+    }
+
+    @Test
+    void testStopJob() {
+        sql("STOP JOB 'myjob'").ok("STOP JOB 'myjob'");
+        sql("STOP JOB 'myjob' WITH SAVEPOINT").ok("STOP JOB 'myjob' WITH SAVEPOINT");
+        sql("STOP JOB 'myjob' WITH SAVEPOINT WITH DRAIN")
+                .ok("STOP JOB 'myjob' WITH SAVEPOINT WITH DRAIN");
+        sql("STOP JOB 'myjob' ^WITH DRAIN^")
+                .fails("WITH DRAIN could only be used after WITH SAVEPOINT.");
+        sql("STOP JOB 'myjob' ^WITH DRAIN^ WITH SAVEPOINT")
+                .fails("WITH DRAIN could only be used after WITH SAVEPOINT.");
     }
 
     public static BaseMatcher<SqlNode> validated(String validatedSql) {

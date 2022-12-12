@@ -28,13 +28,9 @@ package org.apache.flink.util;
  */
 public class DockerImageVersions {
 
-    public static final String ELASTICSEARCH_7 =
-            "docker.elastic.co/elasticsearch/elasticsearch:7.10.2";
+    public static final String KAFKA = "confluentinc/cp-kafka:7.2.2";
 
-    public static final String ELASTICSEARCH_6 =
-            "docker.elastic.co/elasticsearch/elasticsearch:6.8.20";
-
-    public static final String KAFKA = "confluentinc/cp-kafka:6.2.2";
+    public static final String SCHEMA_REGISTRY = "confluentinc/cp-schema-registry:7.2.2";
 
     public static final String RABBITMQ = "rabbitmq:3.9.8-management-alpine";
 
@@ -42,9 +38,7 @@ public class DockerImageVersions {
 
     public static final String LOCALSTACK = "localstack/localstack:0.13.3";
 
-    public static final String PULSAR = "apachepulsar/pulsar:2.10.0";
-
-    public static final String CASSANDRA_4_0 = "cassandra:4.0.3";
+    public static final String PULSAR = "apachepulsar/pulsar:2.10.2";
 
     public static final String MINIO = "minio/minio:RELEASE.2022-02-07T08-17-33Z";
 
@@ -54,4 +48,6 @@ public class DockerImageVersions {
 
     public static final String GOOGLE_CLOUD_PUBSUB_EMULATOR =
             "gcr.io/google.com/cloudsdktool/cloud-sdk:379.0.0";
+
+    public static final String HIVE2 = "prestodb/hdp2.6-hive:10";
 }

@@ -23,6 +23,8 @@ import org.apache.flink.core.memory.MemorySegment;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.buffer.BufferRecycler;
 import org.apache.flink.runtime.io.network.partition.BufferReaderWriterUtil;
+import org.apache.flink.runtime.io.network.partition.ResultSubpartition;
+import org.apache.flink.util.ExceptionUtils;
 
 import javax.annotation.Nullable;
 
@@ -34,6 +36,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.function.Consumer;
 
 import static org.apache.flink.runtime.io.network.partition.BufferReaderWriterUtil.positionToNextBuffer;
 import static org.apache.flink.runtime.io.network.partition.BufferReaderWriterUtil.readFromByteChannel;
@@ -48,13 +51,15 @@ import static org.apache.flink.util.Preconditions.checkState;
  */
 public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
 
-    private final ByteBuffer headerBuf = BufferReaderWriterUtil.allocatedHeaderBuffer();
+    private final ByteBuffer headerBuf;
 
     private final int subpartitionId;
 
+    private final HsConsumerId consumerId;
+
     private final FileChannel dataFileChannel;
 
-    private final HsSubpartitionViewInternalOperations operations;
+    private final HsSubpartitionConsumerInternalOperations operations;
 
     private final CachedRegionManager cachedRegionManager;
 
@@ -62,19 +67,27 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
 
     private final Deque<BufferIndexOrError> loadedBuffers = new LinkedBlockingDeque<>();
 
+    private final Consumer<HsSubpartitionFileReader> fileReaderReleaser;
+
     private volatile boolean isFailed;
 
     public HsSubpartitionFileReaderImpl(
             int subpartitionId,
+            HsConsumerId consumerId,
             FileChannel dataFileChannel,
-            HsSubpartitionViewInternalOperations operations,
+            HsSubpartitionConsumerInternalOperations operations,
             HsFileDataIndex dataIndex,
-            int maxBufferReadAhead) {
+            int maxBufferReadAhead,
+            Consumer<HsSubpartitionFileReader> fileReaderReleaser,
+            ByteBuffer headerBuf) {
         this.subpartitionId = subpartitionId;
+        this.consumerId = consumerId;
         this.dataFileChannel = dataFileChannel;
         this.operations = operations;
+        this.headerBuf = headerBuf;
         this.bufferIndexManager = new BufferIndexManager(maxBufferReadAhead);
         this.cachedRegionManager = new CachedRegionManager(subpartitionId, dataIndex);
+        this.fileReaderReleaser = fileReaderReleaser;
     }
 
     @Override
@@ -86,12 +99,12 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
             return false;
         }
         HsSubpartitionFileReaderImpl that = (HsSubpartitionFileReaderImpl) o;
-        return subpartitionId == that.subpartitionId;
+        return subpartitionId == that.subpartitionId && Objects.equals(consumerId, that.consumerId);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(subpartitionId);
+        return Objects.hash(subpartitionId, consumerId);
     }
 
     /**
@@ -152,7 +165,7 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
         }
 
         if (loadedBuffers.size() <= numLoaded) {
-            operations.notifyDataAvailableFromDisk();
+            operations.notifyDataAvailable();
         }
     }
 
@@ -171,13 +184,17 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
         }
 
         loadedBuffers.add(BufferIndexOrError.newError(failureCause));
-        operations.notifyDataAvailableFromDisk();
+        operations.notifyDataAvailable();
     }
 
     /** Refresh downstream consumption progress for another round scheduling of reading. */
     @Override
     public void prepareForScheduling() {
-        bufferIndexManager.updateLastConsumed(operations.getConsumingOffset());
+        // Access the consuming offset with lock, to prevent loading any buffer released from the
+        // memory data manager that is already consumed.
+        int consumingOffset = operations.getConsumingOffset(true);
+        bufferIndexManager.updateLastConsumed(consumingOffset);
+        cachedRegionManager.updateConsumingOffset(consumingOffset);
     }
 
     /** Provides priority calculation logic for io scheduler. */
@@ -192,9 +209,81 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
         return loadedBuffers;
     }
 
+    @Override
+    public Optional<ResultSubpartition.BufferAndBacklog> consumeBuffer(int nextBufferToConsume)
+            throws Throwable {
+        if (!checkAndGetFirstBufferIndexOrError(nextBufferToConsume).isPresent()) {
+            return Optional.empty();
+        }
+
+        // already ensure that peek element is not null and not throwable.
+        BufferIndexOrError current = checkNotNull(loadedBuffers.poll());
+
+        BufferIndexOrError next = loadedBuffers.peek();
+
+        Buffer.DataType nextDataType = next == null ? Buffer.DataType.NONE : next.getDataType();
+        int backlog = loadedBuffers.size();
+        int bufferIndex = current.getIndex();
+        Buffer buffer =
+                current.getBuffer()
+                        .orElseThrow(
+                                () ->
+                                        new NullPointerException(
+                                                "Get a non-throwable and non-buffer bufferIndexOrError, which is not allowed"));
+        return Optional.of(
+                ResultSubpartition.BufferAndBacklog.fromBufferAndLookahead(
+                        buffer, nextDataType, backlog, bufferIndex));
+    }
+
+    @Override
+    public Buffer.DataType peekNextToConsumeDataType(int nextBufferToConsume) {
+        Buffer.DataType dataType = Buffer.DataType.NONE;
+        try {
+            dataType =
+                    checkAndGetFirstBufferIndexOrError(nextBufferToConsume)
+                            .map(BufferIndexOrError::getDataType)
+                            .orElse(Buffer.DataType.NONE);
+        } catch (Throwable throwable) {
+            ExceptionUtils.rethrow(throwable);
+        }
+        return dataType;
+    }
+
+    @Override
+    public void releaseDataView() {
+        fileReaderReleaser.accept(this);
+    }
+
+    @Override
+    public int getBacklog() {
+        return loadedBuffers.size();
+    }
+
     // ------------------------------------------------------------------------
     //  Internal Methods
     // ------------------------------------------------------------------------
+
+    private Optional<BufferIndexOrError> checkAndGetFirstBufferIndexOrError(int expectedBufferIndex)
+            throws Throwable {
+        BufferIndexOrError peek = loadedBuffers.peek();
+        while (peek != null) {
+            if (peek.getThrowable().isPresent()) {
+                throw peek.getThrowable().get();
+            } else if (peek.getIndex() == expectedBufferIndex) {
+                break;
+            } else if (peek.getIndex() > expectedBufferIndex) {
+                return Optional.empty();
+            } else if (peek.getIndex() < expectedBufferIndex) {
+                // Because the update of consumption progress may be delayed, there is a
+                // very small probability to load the buffer that has been consumed from memory.
+                // Skip these buffers directly to avoid repeated consumption.
+                loadedBuffers.poll();
+                peek = loadedBuffers.peek();
+            }
+        }
+
+        return Optional.ofNullable(peek);
+    }
 
     private void moveFileOffsetToBuffer(int bufferIndex) throws IOException {
         Tuple2<Integer, Long> indexAndOffset =
@@ -301,6 +390,8 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
         private final int subpartitionId;
         private final HsFileDataIndex dataIndex;
 
+        private int consumingOffset = -1;
+
         private int currentBufferIndex;
         private int numSkip;
         private int numReadable;
@@ -314,6 +405,10 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
         // ------------------------------------------------------------------------
         //  Called by HsSubpartitionFileReader
         // ------------------------------------------------------------------------
+
+        public void updateConsumingOffset(int consumingOffset) {
+            this.consumingOffset = consumingOffset;
+        }
 
         /** Return Long.MAX_VALUE if region does not exist to giving the lowest priority. */
         private long getFileOffset(int bufferIndex) {
@@ -370,7 +465,7 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
             }
 
             Optional<HsFileDataIndex.ReadableRegion> lookupResultOpt =
-                    dataIndex.getReadableRegion(subpartitionId, bufferIndex);
+                    dataIndex.getReadableRegion(subpartitionId, bufferIndex, consumingOffset);
             if (!lookupResultOpt.isPresent()) {
                 currentBufferIndex = -1;
                 numReadable = 0;
@@ -400,12 +495,22 @@ public class HsSubpartitionFileReaderImpl implements HsSubpartitionFileReader {
         @Override
         public HsSubpartitionFileReader createFileReader(
                 int subpartitionId,
+                HsConsumerId consumerId,
                 FileChannel dataFileChannel,
-                HsSubpartitionViewInternalOperations operation,
+                HsSubpartitionConsumerInternalOperations operation,
                 HsFileDataIndex dataIndex,
-                int maxBuffersReadAhead) {
+                int maxBuffersReadAhead,
+                Consumer<HsSubpartitionFileReader> fileReaderReleaser,
+                ByteBuffer headerBuffer) {
             return new HsSubpartitionFileReaderImpl(
-                    subpartitionId, dataFileChannel, operation, dataIndex, maxBuffersReadAhead);
+                    subpartitionId,
+                    consumerId,
+                    dataFileChannel,
+                    operation,
+                    dataIndex,
+                    maxBuffersReadAhead,
+                    fileReaderReleaser,
+                    headerBuffer);
         }
     }
 }

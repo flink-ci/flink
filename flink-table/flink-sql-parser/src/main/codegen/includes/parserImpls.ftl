@@ -1111,6 +1111,7 @@ SqlCreate SqlCreateTable(Span s, boolean replace, boolean isTemporary) :
     SqlNodeList columnList = SqlNodeList.EMPTY;
 	SqlCharStringLiteral comment = null;
 	SqlTableLike tableLike = null;
+    SqlNode asQuery = null;
 
     SqlNodeList propertyList = SqlNodeList.EMPTY;
     SqlNodeList partitionColumns = SqlNodeList.EMPTY;
@@ -1151,9 +1152,8 @@ SqlCreate SqlCreateTable(Span s, boolean replace, boolean isTemporary) :
     [
         <LIKE>
         tableLike = SqlTableLike(getPos())
-    ]
-    {
-        return new SqlCreateTable(startPos.plus(getPos()),
+        {
+            return new SqlCreateTableLike(startPos.plus(getPos()),
                 tableName,
                 columnList,
                 constraints,
@@ -1164,6 +1164,35 @@ SqlCreate SqlCreateTable(Span s, boolean replace, boolean isTemporary) :
                 tableLike,
                 isTemporary,
                 ifNotExists);
+        }
+    |
+        <AS>
+        asQuery = OrderedQueryOrExpr(ExprContext.ACCEPT_QUERY)
+        {
+            return new SqlCreateTableAs(startPos.plus(getPos()),
+                tableName,
+                columnList,
+                constraints,
+                propertyList,
+                partitionColumns,
+                watermark,
+                comment,
+                asQuery,
+                isTemporary,
+                ifNotExists);
+        }
+    ]
+    {
+        return new SqlCreateTable(startPos.plus(getPos()),
+            tableName,
+            columnList,
+            constraints,
+            propertyList,
+            partitionColumns,
+            watermark,
+            comment,
+            isTemporary,
+            ifNotExists);
     }
 }
 
@@ -2294,5 +2323,50 @@ SqlNode SqlAnalyzeTable():
 
     {
         return new SqlAnalyzeTable(s.end(this), tableName, partitionSpec, columns, allColumns);
+    }
+}
+
+/**
+* Parses a STOP JOB statement:
+* STOP JOB <JOB_ID> [<WITH SAVEPOINT>] [<WITH DRAIN>];
+*/
+SqlStopJob SqlStopJob() :
+{
+    SqlCharStringLiteral jobId;
+    boolean isWithSavepoint = false;
+    boolean isWithDrain = false;
+    final Span span;
+}
+{
+    <STOP> <JOB> <QUOTED_STRING>
+    {
+        String id = SqlParserUtil.parseString(token.image);
+        jobId = SqlLiteral.createCharString(id, getPos());
+    }
+    [
+        LOOKAHEAD(2)
+        <WITH> <SAVEPOINT>
+        {
+            isWithSavepoint = true;
+        }
+    ]
+    [
+        LOOKAHEAD(2)
+        <WITH>
+        {
+            span = span();
+        }
+        <DRAIN>
+        {
+            span.end(this);
+            if (!isWithSavepoint) {
+                throw SqlUtil.newContextException(span.pos(),
+                    ParserResource.RESOURCE.withDrainOnlyUsedWithSavepoint());
+            }
+            isWithDrain = true;
+        }
+    ]
+    {
+        return new SqlStopJob(getPos(), jobId, isWithSavepoint, isWithDrain);
     }
 }

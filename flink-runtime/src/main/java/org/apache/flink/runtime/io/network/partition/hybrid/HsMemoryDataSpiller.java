@@ -21,17 +21,23 @@ package org.apache.flink.runtime.io.network.partition.hybrid;
 import org.apache.flink.runtime.io.network.buffer.Buffer;
 import org.apache.flink.runtime.io.network.partition.BufferReaderWriterUtil;
 import org.apache.flink.runtime.io.network.partition.hybrid.HsFileDataIndex.SpilledBuffer;
+import org.apache.flink.util.ExceptionUtils;
+import org.apache.flink.util.FatalExitExceptionHandler;
 
 import org.apache.flink.shaded.guava30.com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * This component is responsible for asynchronously writing in-memory data to disk. Each spilling
@@ -41,7 +47,15 @@ public class HsMemoryDataSpiller implements AutoCloseable {
     /** One thread to perform spill operation. */
     private final ExecutorService ioExecutor =
             Executors.newSingleThreadScheduledExecutor(
-                    new ThreadFactoryBuilder().setNameFormat("hybrid spiller thread").build());
+                    new ThreadFactoryBuilder()
+                            .setNameFormat("hybrid spiller thread")
+                            // It is more appropriate to use task fail over than exit JVM here,
+                            // but the task thread will bring some extra overhead to check the
+                            // exception information set by other thread. As the spiller thread will
+                            // not encounter exceptions in most cases, we temporarily choose the
+                            // form of fatal error to deal except thrown by spiller thread.
+                            .setUncaughtExceptionHandler(FatalExitExceptionHandler.INSTANCE)
+                            .build());
 
     /** File channel to write data. */
     private final FileChannel dataFileChannel;
@@ -49,8 +63,10 @@ public class HsMemoryDataSpiller implements AutoCloseable {
     /** Records the current writing location. */
     private long totalBytesWritten;
 
-    public HsMemoryDataSpiller(FileChannel dataFileChannel) {
-        this.dataFileChannel = dataFileChannel;
+    public HsMemoryDataSpiller(Path dataFilePath) throws IOException {
+        this.dataFileChannel =
+                FileChannel.open(
+                        dataFilePath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 
     /**
@@ -79,10 +95,10 @@ public class HsMemoryDataSpiller implements AutoCloseable {
             // complete spill future when buffers are written to disk successfully.
             // note that the ownership of these buffers is transferred to the MemoryDataManager,
             // which controls data's life cycle.
-            // TODO update file data index and handle buffers release in future ticket.
             spilledFuture.complete(spilledBuffers);
-        } catch (Throwable t) {
-            spilledFuture.completeExceptionally(t);
+        } catch (IOException exception) {
+            // if spilling is failed, throw exception directly to uncaughtExceptionHandler.
+            ExceptionUtils.rethrow(exception);
         }
     }
 
@@ -135,8 +151,31 @@ public class HsMemoryDataSpiller implements AutoCloseable {
         bufferWithHeaders[index + 1] = buffer.getNioBufferReadable();
     }
 
-    @Override
-    public void close() throws Exception {
+    /**
+     * Close this {@link HsMemoryDataSpiller} when resultPartition is closed. It means spiller will
+     * no longer accept new spilling operation.
+     *
+     * <p>This method only called by main task thread.
+     */
+    public void close() {
         ioExecutor.shutdown();
+    }
+
+    /**
+     * Release this {@link HsMemoryDataSpiller} when resultPartition is released. It means spiller
+     * will wait for all previous spilling operation done blocking and close the file channel.
+     *
+     * <p>This method only called by rpc thread.
+     */
+    public void release() {
+        try {
+            ioExecutor.shutdown();
+            if (!ioExecutor.awaitTermination(5L, TimeUnit.MINUTES)) {
+                throw new TimeoutException("Shutdown spilling thread timeout.");
+            }
+            dataFileChannel.close();
+        } catch (Exception e) {
+            ExceptionUtils.rethrow(e);
+        }
     }
 }

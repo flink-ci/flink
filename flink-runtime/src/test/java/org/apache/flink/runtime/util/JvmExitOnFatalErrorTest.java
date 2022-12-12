@@ -45,9 +45,11 @@ import org.apache.flink.runtime.jobgraph.tasks.AbstractInvokable;
 import org.apache.flink.runtime.jobgraph.tasks.InputSplitProvider;
 import org.apache.flink.runtime.memory.MemoryManager;
 import org.apache.flink.runtime.memory.MemoryManagerBuilder;
+import org.apache.flink.runtime.memory.SharedResources;
 import org.apache.flink.runtime.metrics.groups.UnregisteredMetricGroups;
 import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.shuffle.ShuffleEnvironment;
+import org.apache.flink.runtime.state.TaskExecutorStateChangelogStoragesManager;
 import org.apache.flink.runtime.state.TaskLocalStateStore;
 import org.apache.flink.runtime.state.TaskLocalStateStoreImpl;
 import org.apache.flink.runtime.state.TaskStateManager;
@@ -219,6 +221,7 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
                                 executionAttemptID,
                                 localStateStore,
                                 changelogStorage,
+                                new TaskExecutorStateChangelogStoragesManager(),
                                 null,
                                 mock(CheckpointResponder.class));
 
@@ -231,6 +234,7 @@ public class JvmExitOnFatalErrorTest extends TestLogger {
                                 Collections.<ResultPartitionDeploymentDescriptor>emptyList(),
                                 Collections.<InputGateDeploymentDescriptor>emptyList(),
                                 memoryManager,
+                                new SharedResources(),
                                 ioManager,
                                 shuffleEnvironment,
                                 new KvStateService(new KvStateRegistry(), null, null),

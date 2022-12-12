@@ -819,7 +819,7 @@ public class KinesisDataFetcher<T> {
                 LOG.warn("Encountered exception closing record publisher factory", e);
             }
         } finally {
-            shardConsumersExecutor.shutdownNow();
+            gracefulShutdownShardConsumers();
 
             cancelFuture.complete(null);
 
@@ -850,6 +850,11 @@ public class KinesisDataFetcher<T> {
     @VisibleForTesting
     protected void deregisterStreamConsumer() {
         StreamConsumerRegistrarUtil.deregisterStreamConsumers(configProps, streams);
+    }
+
+    /** Gracefully stops shardConsumersExecutor without interrupting running threads. */
+    private void gracefulShutdownShardConsumers() {
+        shardConsumersExecutor.shutdown();
     }
 
     /**
@@ -1169,6 +1174,14 @@ public class KinesisDataFetcher<T> {
             }
         }
 
+        LOG.debug(
+                "WatermarkEmitter subtask: {}, last watermark: {}, potential watermark: {}"
+                        + ", potential next watermark: {}",
+                indexOfThisConsumerSubtask,
+                lastWatermark,
+                potentialWatermark,
+                potentialNextWatermark);
+
         // advance watermark if possible (watermarks can only be ascending)
         if (potentialWatermark == Long.MAX_VALUE) {
             if (shardWatermarks.isEmpty() || shardIdleIntervalMillis > 0) {
@@ -1260,11 +1273,11 @@ public class KinesisDataFetcher<T> {
         public void onProcessingTime(long timestamp) {
             if (nextWatermark != Long.MIN_VALUE) {
                 long globalWatermark = lastGlobalWatermark;
-                // TODO: refresh watermark while idle
                 if (!(isIdle && nextWatermark == propagatedLocalWatermark)) {
                     globalWatermark = watermarkTracker.updateWatermark(nextWatermark);
                     propagatedLocalWatermark = nextWatermark;
                 } else {
+                    globalWatermark = watermarkTracker.updateWatermark(Long.MIN_VALUE);
                     LOG.info(
                             "WatermarkSyncCallback subtask: {} is idle",
                             indexOfThisConsumerSubtask);
@@ -1274,12 +1287,14 @@ public class KinesisDataFetcher<T> {
                     lastLogged = System.currentTimeMillis();
                     LOG.info(
                             "WatermarkSyncCallback subtask: {} local watermark: {}"
-                                    + ", global watermark: {}, delta: {} timeouts: {}, emitter: {}",
+                                    + ", global watermark: {}, delta: {} timeouts: {}, idle: {}"
+                                    + ", emitter: {}",
                             indexOfThisConsumerSubtask,
                             nextWatermark,
                             globalWatermark,
                             nextWatermark - globalWatermark,
                             watermarkTracker.getUpdateTimeoutCount(),
+                            isIdle,
                             recordEmitter.printInfo());
 
                     // Following is for debugging non-reproducible issue with stalled watermark

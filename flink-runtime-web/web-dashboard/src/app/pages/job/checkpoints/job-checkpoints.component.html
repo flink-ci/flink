@@ -157,13 +157,18 @@
               <nz-divider nzType="vertical"></nz-divider>
               <span>
                 <strong>Checkpointed Data Size:</strong>
-                {{ checkPointStats['latest']['completed']['checkpointed_size'] | humanizeBytes }}
+                {{ checkPointStats['latest']['savepoint']['checkpointed_size'] | humanizeBytes }}
               </span>
               <nz-divider nzType="vertical"></nz-divider>
               <span>
                 <strong>Full Checkpoint Data Size:</strong>
                 {{ checkPointStats['latest']['savepoint']['state_size'] | humanizeBytes }}
               </span>
+              <ng-container *ngIf="checkPointStats['latest']['savepoint']['savepointFormat']">
+                <nz-divider nzType="vertical"></nz-divider>
+                <strong>Savepoint Format:</strong>
+                {{ checkPointStats['latest']['savepoint']['savepointFormat'] }}
+              </ng-container>
               <nz-divider nzType="vertical"></nz-divider>
               <span>
                 <strong>Path:</strong>
@@ -551,15 +556,15 @@
             </td>
           </tr>
           <tr>
-            <td>Changelog state-backend</td>
-            <td *ngIf="checkPointConfig['state_backend'] === 'ChangelogStateBackend'">Enabled</td>
-            <td *ngIf="checkPointConfig['state_backend'] !== 'ChangelogStateBackend'">Disabled</td>
+            <td>State Changelog</td>
+            <td *ngIf="checkPointConfig['state_changelog_enabled']">Enabled</td>
+            <td *ngIf="!checkPointConfig['state_changelog_enabled']">Disabled</td>
           </tr>
-          <tr *ngIf="checkPointConfig['state_backend'] === 'ChangelogStateBackend'">
+          <tr *ngIf="checkPointConfig['state_changelog_enabled']">
             <td>Changelog Storage</td>
             <td>{{ checkPointConfig['changelog_storage'] }}</td>
           </tr>
-          <tr *ngIf="checkPointConfig['state_backend'] === 'ChangelogStateBackend'">
+          <tr *ngIf="checkPointConfig['state_changelog_enabled']">
             <td>Changelog Periodic Materialization Interval</td>
             <td>
               {{

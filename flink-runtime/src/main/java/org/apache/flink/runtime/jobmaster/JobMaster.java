@@ -24,6 +24,7 @@ import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.JobManagerOptions;
+import org.apache.flink.core.execution.CheckpointType;
 import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.queryablestate.KvStateID;
 import org.apache.flink.runtime.accumulators.AccumulatorSnapshot;
@@ -33,6 +34,7 @@ import org.apache.flink.runtime.blocklist.BlocklistContext;
 import org.apache.flink.runtime.blocklist.BlocklistHandler;
 import org.apache.flink.runtime.blocklist.BlocklistUtils;
 import org.apache.flink.runtime.checkpoint.CheckpointMetrics;
+import org.apache.flink.runtime.checkpoint.CompletedCheckpoint;
 import org.apache.flink.runtime.checkpoint.TaskStateSnapshot;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
@@ -760,7 +762,9 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
                 disconnectTaskManager(
                         taskManagerId,
                         new FlinkException(
-                                "A registered TaskManager re-registered with a new session id. This indicates a restart of the TaskManager. Closing the old connection."));
+                                String.format(
+                                        "A registered TaskManager %s re-registered with a new session id. This indicates a restart of the TaskManager. Closing the old connection.",
+                                        taskManagerId)));
             }
         }
 
@@ -852,6 +856,12 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
     }
 
     @Override
+    public CompletableFuture<CompletedCheckpoint> triggerCheckpoint(
+            final CheckpointType checkpointType, final Time timeout) {
+        return schedulerNG.triggerCheckpoint(checkpointType);
+    }
+
+    @Override
     public CompletableFuture<String> triggerSavepoint(
             @Nullable final String targetDirectory,
             final boolean cancelJob,
@@ -862,11 +872,6 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
     }
 
     @Override
-    public CompletableFuture<String> triggerCheckpoint(Time timeout) {
-        return schedulerNG.triggerCheckpoint();
-    }
-
-    @Override
     public CompletableFuture<String> stopWithSavepoint(
             @Nullable final String targetDirectory,
             final SavepointFormatType formatType,
@@ -874,11 +879,6 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
             final Time timeout) {
 
         return schedulerNG.stopWithSavepoint(targetDirectory, terminate, formatType);
-    }
-
-    @Override
-    public void notifyAllocationFailure(AllocationID allocationID, Exception cause) {
-        internalFailAllocation(null, allocationID, cause);
     }
 
     @Override
@@ -1067,22 +1067,42 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
     private void jobStatusChanged(final JobStatus newJobStatus) {
         validateRunsInMainThread();
         if (newJobStatus.isGloballyTerminalState()) {
-            runAsync(
-                    () -> {
-                        Collection<ResultPartitionID> allTracked =
-                                partitionTracker.getAllTrackedPartitions().stream()
-                                        .map(d -> d.getShuffleDescriptor().getResultPartitionID())
-                                        .collect(Collectors.toList());
-                        if (newJobStatus == JobStatus.FINISHED) {
-                            partitionTracker.stopTrackingAndReleaseOrPromotePartitions(allTracked);
-                        } else {
-                            partitionTracker.stopTrackingAndReleasePartitions(allTracked);
-                        }
-                    });
+            CompletableFuture<Void> partitionPromoteFuture;
+            if (newJobStatus == JobStatus.FINISHED) {
+                Collection<ResultPartitionID> jobPartitions =
+                        partitionTracker.getAllTrackedNonClusterPartitions().stream()
+                                .map(d -> d.getShuffleDescriptor().getResultPartitionID())
+                                .collect(Collectors.toList());
+                partitionTracker.stopTrackingAndReleasePartitions(jobPartitions);
+                Collection<ResultPartitionID> clusterPartitions =
+                        partitionTracker.getAllTrackedClusterPartitions().stream()
+                                .map(d -> d.getShuffleDescriptor().getResultPartitionID())
+                                .collect(Collectors.toList());
+                partitionPromoteFuture =
+                        partitionTracker.stopTrackingAndPromotePartitions(clusterPartitions);
+            } else {
+                Collection<ResultPartitionID> allTracked =
+                        partitionTracker.getAllTrackedPartitions().stream()
+                                .map(d -> d.getShuffleDescriptor().getResultPartitionID())
+                                .collect(Collectors.toList());
+                partitionTracker.stopTrackingAndReleasePartitions(allTracked);
+                partitionPromoteFuture = CompletableFuture.completedFuture(null);
+            }
 
             final ExecutionGraphInfo executionGraphInfo = schedulerNG.requestJob();
+
             futureExecutor.execute(
-                    () -> jobCompletionActions.jobReachedGloballyTerminalState(executionGraphInfo));
+                    () -> {
+                        try {
+                            partitionPromoteFuture.get();
+                        } catch (Throwable e) {
+                            // We do not want to fail the job in case of partition releasing and
+                            // promoting fail. The TaskExecutors will release the partitions
+                            // eventually when they find out the JobMaster is closed.
+                            log.warn("Fail to release or promote partitions", e);
+                        }
+                        jobCompletionActions.jobReachedGloballyTerminalState(executionGraphInfo);
+                    });
         }
     }
 

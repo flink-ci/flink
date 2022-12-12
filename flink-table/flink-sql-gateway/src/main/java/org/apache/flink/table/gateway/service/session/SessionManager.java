@@ -19,14 +19,13 @@
 package org.apache.flink.table.gateway.service.session;
 
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.gateway.api.session.SessionEnvironment;
 import org.apache.flink.table.gateway.api.session.SessionHandle;
 import org.apache.flink.table.gateway.api.utils.SqlGatewayException;
+import org.apache.flink.table.gateway.api.utils.ThreadUtils;
 import org.apache.flink.table.gateway.service.context.DefaultContext;
 import org.apache.flink.table.gateway.service.context.SessionContext;
-import org.apache.flink.table.gateway.service.utils.ThreadUtils;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -149,11 +148,8 @@ public class SessionManager {
 
         SessionContext sessionContext =
                 SessionContext.create(
-                        defaultContext,
-                        sessionId,
-                        environment.getSessionEndpointVersion(),
-                        Configuration.fromMap(environment.getSessionConfig()),
-                        operationExecutorService);
+                        defaultContext, sessionId, environment, operationExecutorService);
+
         session = new Session(sessionContext);
         sessions.put(sessionId, session);
 
@@ -209,7 +205,7 @@ public class SessionManager {
     }
 
     @VisibleForTesting
-    int currentSessionCount() {
+    public int currentSessionCount() {
         return sessions.size();
     }
 

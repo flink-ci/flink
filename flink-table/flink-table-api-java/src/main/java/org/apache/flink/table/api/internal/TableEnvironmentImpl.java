@@ -22,9 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.dag.Pipeline;
 import org.apache.flink.api.dag.Transformation;
-import org.apache.flink.configuration.ConfigUtils;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.table.api.CompiledPlan;
 import org.apache.flink.table.api.DataTypes;
@@ -46,6 +44,7 @@ import org.apache.flink.table.api.config.TableConfigOptions;
 import org.apache.flink.table.catalog.Catalog;
 import org.apache.flink.table.catalog.CatalogBaseTable;
 import org.apache.flink.table.catalog.CatalogFunction;
+import org.apache.flink.table.catalog.CatalogFunctionImpl;
 import org.apache.flink.table.catalog.CatalogManager;
 import org.apache.flink.table.catalog.CatalogPartition;
 import org.apache.flink.table.catalog.CatalogPartitionSpec;
@@ -55,6 +54,7 @@ import org.apache.flink.table.catalog.Column;
 import org.apache.flink.table.catalog.ConnectorCatalogTable;
 import org.apache.flink.table.catalog.ContextResolvedTable;
 import org.apache.flink.table.catalog.FunctionCatalog;
+import org.apache.flink.table.catalog.FunctionLanguage;
 import org.apache.flink.table.catalog.GenericInMemoryCatalog;
 import org.apache.flink.table.catalog.ObjectIdentifier;
 import org.apache.flink.table.catalog.ObjectPath;
@@ -73,6 +73,7 @@ import org.apache.flink.table.catalog.exceptions.TableAlreadyExistException;
 import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.table.delegation.Executor;
 import org.apache.flink.table.delegation.ExecutorFactory;
+import org.apache.flink.table.delegation.ExtendedOperationExecutor;
 import org.apache.flink.table.delegation.InternalPlan;
 import org.apache.flink.table.delegation.Parser;
 import org.apache.flink.table.delegation.Planner;
@@ -89,6 +90,7 @@ import org.apache.flink.table.module.ModuleEntry;
 import org.apache.flink.table.module.ModuleManager;
 import org.apache.flink.table.operations.CollectModifyOperation;
 import org.apache.flink.table.operations.CompileAndExecutePlanOperation;
+import org.apache.flink.table.operations.CreateTableASOperation;
 import org.apache.flink.table.operations.DescribeTableOperation;
 import org.apache.flink.table.operations.ExplainOperation;
 import org.apache.flink.table.operations.LoadModuleOperation;
@@ -116,7 +118,9 @@ import org.apache.flink.table.operations.UnloadModuleOperation;
 import org.apache.flink.table.operations.UseCatalogOperation;
 import org.apache.flink.table.operations.UseDatabaseOperation;
 import org.apache.flink.table.operations.UseModulesOperation;
+import org.apache.flink.table.operations.command.AddJarOperation;
 import org.apache.flink.table.operations.command.ExecutePlanOperation;
+import org.apache.flink.table.operations.command.ShowJarsOperation;
 import org.apache.flink.table.operations.ddl.AddPartitionsOperation;
 import org.apache.flink.table.operations.ddl.AlterCatalogFunctionOperation;
 import org.apache.flink.table.operations.ddl.AlterDatabaseOperation;
@@ -131,11 +135,11 @@ import org.apache.flink.table.operations.ddl.AlterViewAsOperation;
 import org.apache.flink.table.operations.ddl.AlterViewOperation;
 import org.apache.flink.table.operations.ddl.AlterViewPropertiesOperation;
 import org.apache.flink.table.operations.ddl.AlterViewRenameOperation;
+import org.apache.flink.table.operations.ddl.AnalyzeTableOperation;
 import org.apache.flink.table.operations.ddl.CompilePlanOperation;
 import org.apache.flink.table.operations.ddl.CreateCatalogFunctionOperation;
 import org.apache.flink.table.operations.ddl.CreateCatalogOperation;
 import org.apache.flink.table.operations.ddl.CreateDatabaseOperation;
-import org.apache.flink.table.operations.ddl.CreateTableASOperation;
 import org.apache.flink.table.operations.ddl.CreateTableOperation;
 import org.apache.flink.table.operations.ddl.CreateTempSystemFunctionOperation;
 import org.apache.flink.table.operations.ddl.CreateViewOperation;
@@ -148,6 +152,8 @@ import org.apache.flink.table.operations.ddl.DropTempSystemFunctionOperation;
 import org.apache.flink.table.operations.ddl.DropViewOperation;
 import org.apache.flink.table.operations.utils.OperationTreeBuilder;
 import org.apache.flink.table.resource.ResourceManager;
+import org.apache.flink.table.resource.ResourceType;
+import org.apache.flink.table.resource.ResourceUri;
 import org.apache.flink.table.sinks.TableSink;
 import org.apache.flink.table.sources.TableSource;
 import org.apache.flink.table.sources.TableSourceValidation;
@@ -173,7 +179,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
@@ -193,7 +198,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     private static final boolean IS_STREAM_TABLE = true;
     private final CatalogManager catalogManager;
     private final ModuleManager moduleManager;
-    private final ResourceManager resourceManager;
+    protected final ResourceManager resourceManager;
     private final OperationTreeBuilder operationTreeBuilder;
 
     protected final TableConfig tableConfig;
@@ -201,6 +206,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     protected final FunctionCatalog functionCatalog;
     protected final Planner planner;
     private final boolean isStreamingMode;
+
     private static final String UNSUPPORTED_QUERY_IN_EXECUTE_SQL_MSG =
             "Unsupported SQL query! executeSql() only accepts a single SQL statement of type "
                     + "CREATE TABLE, DROP TABLE, ALTER TABLE, CREATE DATABASE, DROP DATABASE, ALTER DATABASE, "
@@ -257,7 +263,6 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                         },
                         getParser()::parseSqlExpression,
                         isStreamingMode);
-
         catalogManager.initSchemaResolver(
                 isStreamingMode, operationTreeBuilder.getResolverBuilder());
     }
@@ -415,6 +420,12 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     }
 
     @Override
+    public void createTemporarySystemFunction(
+            String name, String className, List<ResourceUri> resourceUris) {
+        functionCatalog.registerTemporarySystemFunction(name, className, resourceUris);
+    }
+
+    @Override
     public boolean dropTemporarySystemFunction(String name) {
         return functionCatalog.dropTemporarySystemFunction(name, true);
     }
@@ -432,6 +443,19 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
         final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         functionCatalog.registerCatalogFunction(
                 unresolvedIdentifier, functionClass, ignoreIfExists);
+    }
+
+    @Override
+    public void createFunction(String path, String className, List<ResourceUri> resourceUris) {
+        createFunction(path, className, resourceUris, false);
+    }
+
+    @Override
+    public void createFunction(
+            String path, String className, List<ResourceUri> resourceUris, boolean ignoreIfExists) {
+        final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
+        functionCatalog.registerCatalogFunction(
+                unresolvedIdentifier, className, resourceUris, ignoreIfExists);
     }
 
     @Override
@@ -456,9 +480,39 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     }
 
     @Override
+    public void createTemporaryFunction(
+            String path, String className, List<ResourceUri> resourceUris) {
+        final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
+        final CatalogFunction catalogFunction =
+                new CatalogFunctionImpl(className, FunctionLanguage.JAVA, resourceUris);
+        functionCatalog.registerTemporaryCatalogFunction(
+                unresolvedIdentifier, catalogFunction, false);
+    }
+
+    @Override
     public boolean dropTemporaryFunction(String path) {
         final UnresolvedIdentifier unresolvedIdentifier = getParser().parseIdentifier(path);
         return functionCatalog.dropTemporaryCatalogFunction(unresolvedIdentifier, true);
+    }
+
+    // TODO: Maybe we should expose addJar as tEnv's API later.
+    private TableResultInternal addJar(AddJarOperation addJarOperation) {
+        ResourceUri resourceUri = new ResourceUri(ResourceType.JAR, addJarOperation.getPath());
+        try {
+            resourceManager.registerJarResources(Collections.singletonList(resourceUri));
+            return TableResultImpl.TABLE_RESULT_OK;
+        } catch (IOException e) {
+            throw new TableException(
+                    String.format("Could not register the specified resource [%s].", resourceUri),
+                    e);
+        }
+    }
+
+    // TODO: Maybe we should expose listJars as tEnv's API later.
+    private String[] listJars() {
+        return resourceManager.getResources().keySet().stream()
+                .map(ResourceUri::getUri)
+                .toArray(String[]::new);
     }
 
     @Override
@@ -703,7 +757,8 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
             throw new TableException(UNSUPPORTED_QUERY_IN_EXECUTE_SQL_MSG);
         }
 
-        return executeInternal(operations.get(0));
+        Operation operation = operations.get(0);
+        return executeInternal(operation);
     }
 
     @Override
@@ -724,7 +779,9 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     public CompiledPlan compilePlanSql(String stmt) {
         List<Operation> operations = getParser().parse(stmt);
 
-        if (operations.size() != 1 || !(operations.get(0) instanceof ModifyOperation)) {
+        if (operations.size() != 1
+                || !(operations.get(0) instanceof ModifyOperation)
+                || operations.get(0) instanceof CreateTableASOperation) {
             throw new TableException(UNSUPPORTED_QUERY_IN_COMPILE_PLAN_SQL_MSG);
         }
 
@@ -784,8 +841,20 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public TableResultInternal executeInternal(List<ModifyOperation> operations) {
-        List<Transformation<?>> transformations = translate(operations);
-        List<String> sinkIdentifierNames = extractSinkIdentifierNames(operations);
+        List<ModifyOperation> mapOperations = new ArrayList<>();
+        for (ModifyOperation modify : operations) {
+            // execute CREATE TABLE first for CTAS statements
+            if (modify instanceof CreateTableASOperation) {
+                CreateTableASOperation ctasOperation = (CreateTableASOperation) modify;
+                executeInternal(ctasOperation.getCreateTableOperation());
+                mapOperations.add(ctasOperation.toSinkModifyOperation(catalogManager));
+            } else {
+                mapOperations.add(modify);
+            }
+        }
+
+        List<Transformation<?>> transformations = translate(mapOperations);
+        List<String> sinkIdentifierNames = extractSinkIdentifierNames(mapOperations);
         TableResultInternal result = executeInternal(transformations, sinkIdentifierNames);
         if (tableConfig.get(TABLE_DML_SYNC)) {
             try {
@@ -802,9 +871,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
             List<Transformation<?>> transformations, List<String> sinkIdentifierNames) {
         final String defaultJobName = "insert-into_" + String.join(",", sinkIdentifierNames);
 
-        // Merge user jars to table configuration
-        mergePipelineJarsToConfig(
-                resourceManager.getLocalJarResources(), tableConfig.getConfiguration());
+        resourceManager.addJarConfiguration(tableConfig);
 
         // We pass only the configuration to avoid reconfiguration with the rootConfiguration
         Pipeline pipeline =
@@ -838,9 +905,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                 translate(Collections.singletonList(sinkOperation));
         final String defaultJobName = "collect";
 
-        // Merge user jars to table configuration
-        mergePipelineJarsToConfig(
-                resourceManager.getLocalJarResources(), tableConfig.getConfiguration());
+        resourceManager.addJarConfiguration(tableConfig);
 
         // We pass only the configuration to avoid reconfiguration with the rootConfiguration
         Pipeline pipeline =
@@ -872,6 +937,14 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     @Override
     public TableResultInternal executeInternal(Operation operation) {
+        // try to use extended operation executor to execute the operation
+        Optional<TableResultInternal> tableResult =
+                getExtendedOperationExecutor().executeOperation(operation);
+        // if the extended operation executor return non-empty result, return it
+        if (tableResult.isPresent()) {
+            return tableResult.get();
+        }
+        // otherwise, fall back to internal implementation
         if (operation instanceof ModifyOperation) {
             return executeInternal(Collections.singletonList((ModifyOperation) operation));
         } else if (operation instanceof StatementSetOperation) {
@@ -1122,6 +1195,10 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
             return dropSystemFunction((DropTempSystemFunctionOperation) operation);
         } else if (operation instanceof AlterCatalogFunctionOperation) {
             return alterCatalogFunction((AlterCatalogFunctionOperation) operation);
+        } else if (operation instanceof AddJarOperation) {
+            return addJar((AddJarOperation) operation);
+        } else if (operation instanceof ShowJarsOperation) {
+            return buildShowResult("jars", listJars());
         } else if (operation instanceof CreateCatalogOperation) {
             return createCatalog((CreateCatalogOperation) operation);
         } else if (operation instanceof DropCatalogOperation) {
@@ -1287,7 +1364,11 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                     List<String> partitionKVs = new ArrayList<>(spec.getPartitionSpec().size());
                     for (Map.Entry<String, String> partitionKV :
                             spec.getPartitionSpec().entrySet()) {
-                        partitionKVs.add(partitionKV.getKey() + "=" + partitionKV.getValue());
+                        String partitionValue =
+                                partitionKV.getValue() == null
+                                        ? showPartitionsOperation.getDefaultPartitionName()
+                                        : partitionKV.getValue();
+                        partitionKVs.add(partitionKV.getKey() + "=" + partitionValue);
                     }
                     partitionNames.add(String.join("/", partitionKVs));
                 }
@@ -1330,10 +1411,6 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
             }
         } else if (operation instanceof QueryOperation) {
             return executeQueryOperation((QueryOperation) operation);
-        } else if (operation instanceof CreateTableASOperation) {
-            CreateTableASOperation createTableASOperation = (CreateTableASOperation) operation;
-            executeInternal(createTableASOperation.getCreateTableOperation());
-            return executeInternal(createTableASOperation.toSinkModifyOperation(catalogManager));
         } else if (operation instanceof ExecutePlanOperation) {
             ExecutePlanOperation executePlanOperation = (ExecutePlanOperation) operation;
             return (TableResultInternal)
@@ -1354,6 +1431,15 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                             true,
                             compileAndExecutePlanOperation.getOperation());
             return (TableResultInternal) compiledPlan.execute();
+        } else if (operation instanceof AnalyzeTableOperation) {
+            if (isStreamingMode) {
+                throw new TableException("ANALYZE TABLE is not supported for streaming mode now");
+            }
+            try {
+                return AnalyzeTableUtil.analyzeTable(this, (AnalyzeTableOperation) operation);
+            } catch (Exception e) {
+                throw new TableException("Failed to execute ANALYZE TABLE command", e);
+            }
         } else if (operation instanceof NopOperation) {
             return TableResultImpl.TABLE_RESULT_OK;
         } else {
@@ -1639,6 +1725,10 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
         return getPlanner().getParser();
     }
 
+    public ExtendedOperationExecutor getExtendedOperationExecutor() {
+        return getPlanner().getExtendedOperationExecutor();
+    }
+
     @Override
     public CatalogManager getCatalogManager() {
         return catalogManager;
@@ -1847,6 +1937,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
 
     private TableResultInternal createSystemFunction(CreateTempSystemFunctionOperation operation) {
         String exMsg = getDDLOpExecuteErrorMsg(operation.asSummaryString());
+
         try {
             functionCatalog.registerTemporarySystemFunction(
                     operation.getFunctionName(),
@@ -1870,15 +1961,6 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
         } catch (Exception e) {
             throw new TableException(getDDLOpExecuteErrorMsg(operation.asSummaryString()), e);
         }
-    }
-
-    private void mergePipelineJarsToConfig(Set<URL> jarUrls, Configuration configuration) {
-        ConfigUtils.mergeCollectionsToConfig(
-                configuration,
-                PipelineOptions.JARS,
-                jarUrls.stream().map(URL::toString).collect(Collectors.toSet()),
-                String::toString,
-                String::toString);
     }
 
     @VisibleForTesting

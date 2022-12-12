@@ -88,8 +88,11 @@ public class KafkaSourceReaderTest extends SourceReaderTestBase<KafkaPartitionSp
     public static void setup() throws Throwable {
         KafkaSourceTestEnv.setup();
         try (AdminClient adminClient = KafkaSourceTestEnv.getAdminClient()) {
-            adminClient.createTopics(
-                    Collections.singleton(new NewTopic(TOPIC, NUM_PARTITIONS, (short) 1)));
+            adminClient
+                    .createTopics(
+                            Collections.singleton(new NewTopic(TOPIC, NUM_PARTITIONS, (short) 1)))
+                    .all()
+                    .get();
             // Use the admin client to trigger the creation of internal __consumer_offsets topic.
             // This makes sure that we won't see unavailable coordinator in the tests.
             waitUtil(
@@ -427,6 +430,52 @@ public class KafkaSourceReaderTest extends SourceReaderTestBase<KafkaPartitionSp
             assertThat(reader.getNumAliveFetchers()).isEqualTo(0);
             assertThat(finishedSplits)
                     .containsExactly(emptySplit0.splitId(), emptySplit1.splitId());
+        }
+    }
+
+    @Test
+    public void testSupportsPausingOrResumingSplits() throws Exception {
+        final Set<String> finishedSplits = new HashSet<>();
+
+        try (final KafkaSourceReader<Integer> reader =
+                (KafkaSourceReader<Integer>)
+                        createReader(
+                                Boundedness.BOUNDED,
+                                "groupId",
+                                new TestingReaderContext(),
+                                finishedSplits::addAll)) {
+            KafkaPartitionSplit split1 =
+                    new KafkaPartitionSplit(new TopicPartition(TOPIC, 0), 0, NUM_RECORDS_PER_SPLIT);
+            KafkaPartitionSplit split2 =
+                    new KafkaPartitionSplit(new TopicPartition(TOPIC, 1), 0, NUM_RECORDS_PER_SPLIT);
+            reader.addSplits(Arrays.asList(split1, split2));
+
+            TestingReaderOutput<Integer> output = new TestingReaderOutput<>();
+
+            reader.pauseOrResumeSplits(
+                    Collections.singleton(split1.splitId()), Collections.emptyList());
+
+            pollUntil(
+                    reader,
+                    output,
+                    () ->
+                            finishedSplits.contains(split2.splitId())
+                                    && output.getEmittedRecords().size() == NUM_RECORDS_PER_SPLIT,
+                    "The split fetcher did not exit before timeout.");
+
+            reader.pauseOrResumeSplits(
+                    Collections.emptyList(), Collections.singleton(split1.splitId()));
+
+            pollUntil(
+                    reader,
+                    output,
+                    () ->
+                            finishedSplits.contains(split1.splitId())
+                                    && output.getEmittedRecords().size()
+                                            == NUM_RECORDS_PER_SPLIT * 2,
+                    "The split fetcher did not exit before timeout.");
+
+            assertThat(finishedSplits).containsExactly(split1.splitId(), split2.splitId());
         }
     }
 

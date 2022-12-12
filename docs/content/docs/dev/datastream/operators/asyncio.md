@@ -140,8 +140,8 @@ DataStream<Tuple2<String, String>> resultStream =
 // create an async retry strategy via utility class or a user defined strategy
 AsyncRetryStrategy asyncRetryStrategy =
 	new AsyncRetryStrategies.FixedDelayRetryStrategyBuilder(3, 100L) // maxAttempts=3, fixedDelay=100ms
-		.retryIfResult(RetryPredicates.EMPTY_RESULT_PREDICATE)
-		.retryIfException(RetryPredicates.HAS_EXCEPTION_PREDICATE)
+		.ifResult(RetryPredicates.EMPTY_RESULT_PREDICATE)
+		.ifException(RetryPredicates.HAS_EXCEPTION_PREDICATE)
 		.build();
 
 // apply the async I/O transformation with retry
@@ -185,7 +185,11 @@ val resultStream: DataStream[(String, String)] =
 
 // apply the async I/O transformation with retry
 // create an AsyncRetryStrategy
-val asyncRetryStrategy: AsyncRetryStrategy[OUT] = ...
+val asyncRetryStrategy: AsyncRetryStrategy[String] =
+  new AsyncRetryStrategies.FixedDelayRetryStrategyBuilder(3, 100L) // maxAttempts=3, fixedDelay=100ms
+    .ifResult(RetryPredicates.EMPTY_RESULT_PREDICATE)
+    .ifException(RetryPredicates.HAS_EXCEPTION_PREDICATE)
+    .build();
 
 // apply the async I/O transformation with retry
 val resultStream: DataStream[(String, String)] =
@@ -279,7 +283,7 @@ The retry support introduces a built-in mechanism for async operator which being
 
 ### Implementation Tips
 
-For implementations with *Futures* that have an *Executor* (or *ExecutionContext* in Scala) for callbacks, we suggests to use a `DirectExecutor`, because the
+For implementations with *Futures* that have an *Executor* (or *ExecutionContext* in Scala) for callbacks, we suggest using a `DirectExecutor`, because the
 callback typically does minimal work, and a `DirectExecutor` avoids an additional thread-to-thread handover overhead. The callback typically only hands
 the result to the `ResultFuture`, which adds it to the output buffer. From there, the heavy logic that includes record emission and interaction
 with the checkpoint bookkeeping happens in a dedicated thread-pool anyways.

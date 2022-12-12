@@ -17,6 +17,9 @@
 
 package org.apache.flink.formats.json;
 
+import org.apache.flink.connector.testutils.formats.DummyInitializationContext;
+import org.apache.flink.util.jackson.JacksonMapperFactory;
+
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -27,16 +30,18 @@ import java.io.IOException;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for the {@link JsonNodeDeserializationSchema}. */
+@SuppressWarnings("deprecation")
 class JsonNodeDeserializationSchemaTest {
 
     @Test
     void testDeserialize() throws IOException {
-        ObjectMapper mapper = new ObjectMapper();
+        ObjectMapper mapper = JacksonMapperFactory.createObjectMapper();
         ObjectNode initialValue = mapper.createObjectNode();
         initialValue.put("key", 4).put("value", "world");
         byte[] serializedValue = mapper.writeValueAsBytes(initialValue);
 
         JsonNodeDeserializationSchema schema = new JsonNodeDeserializationSchema();
+        schema.open(new DummyInitializationContext());
         ObjectNode deserializedValue = schema.deserialize(serializedValue);
 
         assertThat(deserializedValue.get("key").asInt()).isEqualTo(4);

@@ -32,7 +32,7 @@ FlinkCEP是在Flink上层实现的复杂事件处理库。
 
 本页讲述了Flink CEP中可用的API，我们首先讲述[模式API](#模式api)，它可以让你指定想在数据流中检测的模式，然后讲述如何[检测匹配的事件序列并进行处理](#检测模式)。
 再然后我们讲述Flink在按照事件时间[处理迟到事件](#按照事件时间处理迟到事件)时的假设，
-以及如何从旧版本的Flink向1.3之后的版本[迁移作业](#从旧版本迁移13之前)。
+以及如何从旧版本的Flink向1.13之后的版本[迁移作业](#从旧版本迁移13之前)。
 
 
 
@@ -66,28 +66,13 @@ FlinkCEP 不是二进制发布包的一部分。在集群上执行如何链接�
 ```java
 DataStream<Event> input = ...;
 
-Pattern<Event, ?> pattern = Pattern.<Event>begin("start").where(
-        new SimpleCondition<Event>() {
-            @Override
-            public boolean filter(Event event) {
-                return event.getId() == 42;
-            }
-        }
-    ).next("middle").subtype(SubEvent.class).where(
-        new SimpleCondition<SubEvent>() {
-            @Override
-            public boolean filter(SubEvent subEvent) {
-                return subEvent.getVolume() >= 10.0;
-            }
-        }
-    ).followedBy("end").where(
-         new SimpleCondition<Event>() {
-            @Override
-            public boolean filter(Event event) {
-                return event.getName().equals("end");
-            }
-         }
-    );
+Pattern<Event, ?> pattern = Pattern.<Event>begin("start")
+    .where(SimpleCondition.of(event -> event.getId() == 42))
+    .next("middle")
+    .subtype(SubEvent.class)
+    .where(SimpleCondition.of(subEvent -> subEvent.getVolume() >= 10.0))
+    .followedBy("end")
+    .where(SimpleCondition.of(event -> event.getName().equals("end")));
 
 PatternStream<Event> patternStream = CEP.pattern(input, pattern);
 
@@ -314,12 +299,7 @@ middle.oneOrMore()
 {{< tabs "20073e8b-3772-4faf-894c-e1bf2cbff15e" >}}
 {{< tab "Java" >}}
 ```java
-start.where(new SimpleCondition<Event>() {
-    @Override
-    public boolean filter(Event value) {
-        return value.getName().startsWith("foo");
-    }
-});
+start.where(SimpleCondition.of(value -> value.getName().startsWith("foo")));
 ```
 {{< /tab >}}
 {{< tab "Scala" >}}
@@ -334,12 +314,8 @@ start.where(event => event.getName.startsWith("foo"))
 {{< tabs "5011129d-6c43-4fb7-84ae-3000d2296f28" >}}
 {{< tab "Java" >}}
 ```java
-start.subtype(SubEvent.class).where(new SimpleCondition<SubEvent>() {
-    @Override
-    public boolean filter(SubEvent value) {
-        return ...; // 一些判断条件
-    }
-});
+start.subtype(SubEvent.class)
+    .where(SimpleCondition.of(value -> ... /*一些判断条件*/));
 ```
 {{< /tab >}}
 {{< tab "Scala" >}}
@@ -355,17 +331,9 @@ start.subtype(classOf[SubEvent]).where(subEvent => ... /* 一些判断条件 */)
 {{< tabs "ba6bc50b-c9f6-4534-aff8-b2957ada791b" >}}
 {{< tab "Java" >}}
 ```java
-pattern.where(new SimpleCondition<Event>() {
-    @Override
-    public boolean filter(Event value) {
-        return ...; // 一些判断条件
-    }
-}).or(new SimpleCondition<Event>() {
-    @Override
-    public boolean filter(Event value) {
-        return ...; // 一些判断条件
-    }
-});
+pattern
+    .where(SimpleCondition.of(value -> ... /*一些判断条件*/))
+    .or(SimpleCondition.of(value -> ... /*一些判断条件*/));
 ```
 {{< /tab >}}
 {{< tab "Scala" >}}
@@ -708,17 +676,11 @@ next.within(Time.seconds(10))
 {{< tab "Java" >}}
 ```java
 Pattern.<Event>begin("start")
-    .next("middle").where(new SimpleCondition<Event>() {
-    @Override
-    public boolean filter(Event value) throws Exception {
-        return value.getName().equals("a");
-    }
-}).notFollowedBy("end").where(new SimpleCondition<Event>() {
-    @Override
-    public boolean filter(Event value) throws Exception {
-        return value.getName().equals("b");
-    }
-}).within(Time.seconds(10));
+    .next("middle")
+    .where(SimpleCondition.of(value -> value.getName().equals("a")))
+    .notFollowedBy("end")
+    .where(SimpleCondition.of(value -> value.getName().equals("b")))
+    .within(Time.seconds(10));
 ```
 {{< /tab >}}
 {{< tab "Scala" >}}
@@ -737,7 +699,7 @@ Pattern.begin("start").where(_.getName().equals("a"))
 用这个例子来说明上面所说的连续性，一个模式序列`"a b+ c"`（`"a"`后面跟着一个或者多个（不确定连续的）`"b"`，然后跟着一个`"c"`）
 输入为`"a"，"b1"，"d1"，"b2"，"d2"，"b3"，"c"`，输出结果如下：
 
- 1. **严格连续**: `{a b3 c}` -- `"b1"`之后的`"d1"`导致`"b1"`被丢弃，同样`"b2"`因为`"d2"`被丢弃。
+ 1. **严格连续**: `{a b1 c}`, `{a b2 c}`, `{a b3 c}` - 没有相邻的 `"b"` 。
 
  2. **松散连续**: `{a b1 c}`，`{a b1 b2 c}`，`{a b1 b2 b3 c}`，`{a b2 c}`，`{a b2 b3 c}`，`{a b3 c}` - `"d"`都被忽略了。
 
@@ -766,24 +728,14 @@ Pattern.begin("start").where(_.getName().equals("a"))
 
               <p>例如，一个如下的模式：</p>
 ```java
-Pattern.<Event>begin("start").where(new SimpleCondition<Event>() {
-  @Override
-  public boolean filter(Event value) throws Exception {
-    return value.getName().equals("c");
-  }
-})
-.followedBy("middle").where(new SimpleCondition<Event>() {
-  @Override
-  public boolean filter(Event value) throws Exception {
-    return value.getName().equals("a");
-  }
-}).oneOrMore().consecutive()
-.followedBy("end1").where(new SimpleCondition<Event>() {
-  @Override
-  public boolean filter(Event value) throws Exception {
-    return value.getName().equals("b");
-  }
-});
+Pattern.<Event>begin("start")
+    .where(SimpleCondition.of(value -> value.getName().equals("c")))
+    .followedBy("middle")
+    .where(SimpleCondition.of(value -> value.getName().equals("a")))
+    .oneOrMore()
+    .consecutive()
+    .followedBy("end1")
+    .where(SimpleCondition.of(value -> value.getName().equals("b")));
 ```
               <p>输入：C D A1 A2 A3 D A4 B，会产生下面的输出：</p>
 
@@ -800,24 +752,14 @@ Pattern.<Event>begin("start").where(new SimpleCondition<Event>() {
 
               <p>例如，一个如下的模式：</p>
 ```java
-Pattern.<Event>begin("start").where(new SimpleCondition<Event>() {
-  @Override
-  public boolean filter(Event value) throws Exception {
-    return value.getName().equals("c");
-  }
-})
-.followedBy("middle").where(new SimpleCondition<Event>() {
-  @Override
-  public boolean filter(Event value) throws Exception {
-    return value.getName().equals("a");
-  }
-}).oneOrMore().allowCombinations()
-.followedBy("end1").where(new SimpleCondition<Event>() {
-  @Override
-  public boolean filter(Event value) throws Exception {
-    return value.getName().equals("b");
-  }
-});
+Pattern.<Event>begin("start")
+    .where(SimpleCondition.of(value -> value.getName().equals("c")))
+    .followedBy("middle")
+    .where(SimpleCondition.of(value -> value.getName().equals("a")))
+    .oneOrMore()
+    .allowCombinations()
+    .followedBy("end1")
+    .where(SimpleCondition.of(value -> value.getName().equals("b")));
 ```
                <p>输入：C D A1 A2 A3 D A4 B，会产生如下的输出：</p>
 
@@ -1361,7 +1303,7 @@ Pattern.begin("patternName", skipStrategy)
 {{< /tabs >}}
 
 {{< hint info >}}
-使用SKIP_TO_FIRST/LAST时，有两个选项可以用来处理没有事件可以映射到对应的变量名上的情况。
+使用SKIP_TO_FIRST/LAST时，有两个选项可以用来处理没有事件可以映射到对应模式名上的情况。
 默认情况下会使用NO_SKIP策略，另外一个选项是抛出异常。
 可以使用如下的选项：
 {{< /hint >}}
@@ -1609,7 +1551,7 @@ public interface TimeContext {
 
 用于配置 Flink CEP 的 `SharedBuffer` 缓存容量的选项。它可以加快 CEP 算子的处理速度，并限制内存中缓存的元素数量。
 
-<span class="label label-info">Note</span> 仅当 `state.backend` 设置为 `rocksdb` 时限制内存使用才有效，这会将超过缓存数量的元素传输到 `rocksdb` 状态存储而不是内存状态存储。当 `state.backend` 设置为 `rocksdb` 时，这些配置项有助于限制内存。相比之下，当 `state.backend` 设置为非 `rocksdb` 时，缓存会导致性能下降。与使用 `Map` 实现的旧缓存相比，状态部分将包含更多从 `guava-cache` 换出的元素，这将使得 `copy on write` 时的状态处理增加一些开销。
+<span class="label label-info">Note</span> 仅当 `state.backend.type` 设置为 `rocksdb` 时限制内存使用才有效，这会将超过缓存数量的元素传输到 `rocksdb` 状态存储而不是内存状态存储。当 `state.backend.type` 设置为 `rocksdb` 时，这些配置项有助于限制内存。相比之下，当 `state.backend` 设置为非 `rocksdb` 时，缓存会导致性能下降。与使用 `Map` 实现的旧缓存相比，状态部分将包含更多从 `guava-cache` 换出的元素，这将使得 `copy on write` 时的状态处理增加一些开销。
 
 {{< generated/cep_cache_configuration >}}
 
@@ -1633,17 +1575,11 @@ DataStream<Event> partitionedInput = input.keyBy(new KeySelector<Event, Integer>
 });
 
 Pattern<Event, ?> pattern = Pattern.<Event>begin("start")
-	.next("middle").where(new SimpleCondition<Event>() {
-		@Override
-		public boolean filter(Event value) throws Exception {
-			return value.getName().equals("error");
-		}
-	}).followedBy("end").where(new SimpleCondition<Event>() {
-		@Override
-		public boolean filter(Event value) throws Exception {
-			return value.getName().equals("critical");
-		}
-	}).within(Time.seconds(10));
+    .next("middle")
+    .where(SimpleCondition.of(value -> value.getName().equals("error")))
+    .followedBy("end")
+    .where(SimpleCondition.of(value -> value.getName().equals("critical")))
+    .within(Time.seconds(10));
 
 PatternStream<Event> patternStream = CEP.pattern(partitionedInput, pattern);
 

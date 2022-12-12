@@ -85,32 +85,6 @@ public class FunctionITCase extends BatchTestBase {
     }
 
     @Test
-    public void testCreateCatalogFunctionByUsingJar() {
-        String ddl =
-                String.format(
-                        "CREATE FUNCTION default_database.f11 AS '%s' USING JAR '%s'",
-                        udfClassName, jarPath);
-        tEnv().executeSql(ddl);
-        assertThat(Arrays.asList(tEnv().listFunctions())).contains("f11");
-
-        tEnv().executeSql("DROP FUNCTION default_database.f11");
-        assertThat(Arrays.asList(tEnv().listFunctions())).doesNotContain("f11");
-    }
-
-    @Test
-    public void testCreateTemporaryCatalogFunctionByUsingJar() {
-        String ddl =
-                String.format(
-                        "CREATE TEMPORARY FUNCTION default_database.f12 AS '%s' USING JAR '%s'",
-                        udfClassName, jarPath);
-        tEnv().executeSql(ddl);
-        assertThat(Arrays.asList(tEnv().listFunctions())).contains("f12");
-
-        tEnv().executeSql("DROP TEMPORARY FUNCTION default_database.f12");
-        assertThat(Arrays.asList(tEnv().listFunctions())).doesNotContain("f12");
-    }
-
-    @Test
     public void testUserDefinedTemporarySystemFunctionByUsingJar() throws Exception {
         String functionDDL =
                 String.format(
@@ -118,27 +92,6 @@ public class FunctionITCase extends BatchTestBase {
                         udfClassName, jarPath);
 
         String dropFunctionDDL = "drop temporary system function lowerUdf";
-        testUserDefinedFunctionByUsingJar(functionDDL, dropFunctionDDL);
-    }
-
-    @Test
-    public void testUserDefinedRegularCatalogFunctionByUsingJar() throws Exception {
-        String functionDDL =
-                String.format(
-                        "create function lowerUdf as '%s' using jar '%s'", udfClassName, jarPath);
-
-        String dropFunctionDDL = "drop function lowerUdf";
-        testUserDefinedFunctionByUsingJar(functionDDL, dropFunctionDDL);
-    }
-
-    @Test
-    public void testUserDefinedTemporaryCatalogFunctionByUsingJar() throws Exception {
-        String functionDDL =
-                String.format(
-                        "create temporary function lowerUdf as '%s' using jar '%s'",
-                        udfClassName, jarPath);
-
-        String dropFunctionDDL = "drop temporary function lowerUdf";
         testUserDefinedFunctionByUsingJar(functionDDL, dropFunctionDDL);
     }
 
@@ -178,6 +131,7 @@ public class FunctionITCase extends BatchTestBase {
 
         tEnv().executeSql("drop table t1");
         tEnv().executeSql("drop table t2");
+
         // delete the function
         tEnv().executeSql(dropFunctionDDL);
     }

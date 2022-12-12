@@ -18,9 +18,9 @@
 
 package org.apache.flink.runtime.security.token;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.Configuration;
-import org.apache.flink.runtime.security.SecurityConfiguration;
 import org.apache.flink.util.FlinkRuntimeException;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 
@@ -58,6 +58,7 @@ import static org.apache.flink.util.Preconditions.checkState;
  * with user-provided credentials, and contacts all the configured secure services to obtain
  * delegation tokens to be distributed to the rest of the application.
  */
+@Internal
 public class KerberosDelegationTokenManager implements DelegationTokenManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(KerberosDelegationTokenManager.class);
@@ -70,7 +71,7 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
 
     private final KerberosLoginProvider kerberosLoginProvider;
 
-    @VisibleForTesting final Map<String, DelegationTokenProvider> delegationTokenProviders;
+    @VisibleForTesting final Map<String, HadoopDelegationTokenProvider> delegationTokenProviders;
 
     @Nullable private final ScheduledExecutor scheduledExecutor;
 
@@ -83,6 +84,8 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
     @GuardedBy("tokensUpdateFutureLock")
     @Nullable
     private ScheduledFuture<?> tokensUpdateFuture;
+
+    @Nullable private DelegationTokenListener delegationTokenListener;
 
     public KerberosDelegationTokenManager(
             Configuration configuration,
@@ -101,7 +104,6 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
             @Nullable ExecutorService ioExecutor,
             KerberosLoginProvider kerberosLoginProvider) {
         this.configuration = checkNotNull(configuration, "Flink configuration must not be null");
-        SecurityConfiguration securityConfiguration = new SecurityConfiguration(configuration);
         this.tokensRenewalTimeRatio = configuration.get(KERBEROS_TOKENS_RENEWAL_TIME_RATIO);
         this.renewalRetryBackoffPeriod =
                 configuration.get(KERBEROS_TOKENS_RENEWAL_RETRY_BACKOFF).toMillis();
@@ -111,14 +113,14 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
         this.ioExecutor = ioExecutor;
     }
 
-    private Map<String, DelegationTokenProvider> loadProviders() {
+    private Map<String, HadoopDelegationTokenProvider> loadProviders() {
         LOG.info("Loading delegation token providers");
 
-        ServiceLoader<DelegationTokenProvider> serviceLoader =
-                ServiceLoader.load(DelegationTokenProvider.class);
+        ServiceLoader<HadoopDelegationTokenProvider> serviceLoader =
+                ServiceLoader.load(HadoopDelegationTokenProvider.class);
 
-        Map<String, DelegationTokenProvider> providers = new HashMap<>();
-        for (DelegationTokenProvider provider : serviceLoader) {
+        Map<String, HadoopDelegationTokenProvider> providers = new HashMap<>();
+        for (HadoopDelegationTokenProvider provider : serviceLoader) {
             try {
                 if (isProviderEnabled(provider.serviceName())) {
                     provider.init(configuration);
@@ -168,7 +170,7 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
         // Delegation tokens can only be obtained if the real user has Kerberos credentials, so
         // skip creation when those are not available.
         if (kerberosLoginProvider.isLoginPossible()) {
-            UserGroupInformation freshUGI = kerberosLoginProvider.doLogin();
+            UserGroupInformation freshUGI = kerberosLoginProvider.doLoginAndReturnUGI();
             freshUGI.doAs(
                     (PrivilegedExceptionAction<Void>)
                             () -> {
@@ -213,14 +215,7 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
                         .flatMap(nr -> nr.map(Stream::of).orElseGet(Stream::empty))
                         .min(Long::compare);
 
-        credentials
-                .getAllTokens()
-                .forEach(
-                        token ->
-                                LOG.debug(
-                                        "Token Service:{} Identifier:{}",
-                                        token.getService(),
-                                        token.getIdentifier()));
+        DelegationTokenUpdater.dumpAllTokens(credentials);
 
         return nextRenewal;
     }
@@ -230,9 +225,11 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
      * task managers.
      */
     @Override
-    public void start() throws Exception {
+    public void start(DelegationTokenListener delegationTokenListener) throws Exception {
         checkNotNull(scheduledExecutor, "Scheduled executor must not be null");
         checkNotNull(ioExecutor, "IO executor must not be null");
+        this.delegationTokenListener =
+                checkNotNull(delegationTokenListener, "Delegation token listener must not be null");
         synchronized (tokensUpdateFutureLock) {
             checkState(
                     tgtRenewalFuture == null && tokensUpdateFuture == null,
@@ -295,11 +292,24 @@ public class KerberosDelegationTokenManager implements DelegationTokenManager {
         try {
             LOG.info("Starting tokens update task");
             Credentials credentials = new Credentials();
-            UserGroupInformation freshUGI = kerberosLoginProvider.doLogin();
+            UserGroupInformation freshUGI = kerberosLoginProvider.doLoginAndReturnUGI();
             Optional<Long> nextRenewal =
                     freshUGI.doAs(
                             (PrivilegedExceptionAction<Optional<Long>>)
                                     () -> obtainDelegationTokensAndGetNextRenewal(credentials));
+
+            if (credentials.numberOfTokens() > 0) {
+                byte[] credentialsBytes = DelegationTokenConverter.serialize(credentials);
+
+                DelegationTokenUpdater.addCurrentUserCredentials(credentialsBytes);
+
+                LOG.info("Notifying listener about new tokens");
+                delegationTokenListener.onNewTokensObtained(credentialsBytes);
+                LOG.info("Listener notified successfully");
+            } else {
+                LOG.warn("No tokens obtained so skipping listener notification");
+            }
+
             if (nextRenewal.isPresent()) {
                 long renewalDelay =
                         calculateRenewalDelay(Clock.systemDefaultZone(), nextRenewal.get());

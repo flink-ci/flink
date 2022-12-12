@@ -18,7 +18,7 @@
 
 package org.apache.flink.sql.parser;
 
-import org.apache.flink.sql.parser.ddl.SqlCreateTable;
+import org.apache.flink.sql.parser.ddl.SqlCreateTableLike;
 import org.apache.flink.sql.parser.ddl.SqlTableLike;
 import org.apache.flink.sql.parser.ddl.SqlTableLike.FeatureOption;
 import org.apache.flink.sql.parser.ddl.SqlTableLike.MergingStrategy;
@@ -204,6 +204,7 @@ class CreateTableLikeTest {
                                 + "    <BRACKET_QUOTED_IDENTIFIER> ...\n"
                                 + "    <QUOTED_IDENTIFIER> ...\n"
                                 + "    <BACK_QUOTED_IDENTIFIER> ...\n"
+                                + "    <BIG_QUERY_BACK_QUOTED_IDENTIFIER> ...\n"
                                 + "    <HYPHENATED_IDENTIFIER> ...\n"
                                 + "    <IDENTIFIER> ...\n"
                                 + "    <UNICODE_QUOTED_IDENTIFIER> ...\n");
@@ -251,21 +252,20 @@ class CreateTableLikeTest {
 
             @Override
             protected SqlTableLike featureValueOf(SqlNode actual) {
-                if (!(actual instanceof SqlCreateTable)) {
+                if (!(actual instanceof SqlCreateTableLike)) {
                     throw new AssertionError("Node is not a CREATE TABLE stmt.");
                 }
-                return ((SqlCreateTable) actual).getTableLike().orElse(null);
+                return ((SqlCreateTableLike) actual).getTableLike();
             }
         };
     }
 
     private SqlParser createFlinkParser(String expr) {
         SqlParser.Config parserConfig =
-                SqlParser.configBuilder()
-                        .setParserFactory(FlinkSqlParserImpl.FACTORY)
-                        .setLex(Lex.JAVA)
-                        .setIdentifierMaxLength(256)
-                        .build();
+                SqlParser.config()
+                        .withParserFactory(FlinkSqlParserImpl.FACTORY)
+                        .withLex(Lex.JAVA)
+                        .withIdentifierMaxLength(256);
 
         return SqlParser.create(expr, parserConfig);
     }

@@ -59,6 +59,7 @@ import org.apache.flink.runtime.state.CheckpointStorage;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.util.OptionalFailure;
 import org.apache.flink.util.SerializedValue;
+import org.apache.flink.util.TernaryBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -172,6 +173,9 @@ class StateTrackingMockExecutionGraph implements ExecutionGraph {
     }
 
     @Override
+    public void setJsonPlan(String jsonPlan) {}
+
+    @Override
     public JobID getJobID() {
         return jobId;
     }
@@ -218,6 +222,11 @@ class StateTrackingMockExecutionGraph implements ExecutionGraph {
     @Override
     public Optional<String> getCheckpointStorageName() {
         return Optional.empty();
+    }
+
+    @Override
+    public TernaryBoolean isChangelogStateBackendEnabled() {
+        return TernaryBoolean.fromBoolean(false);
     }
 
     @Override
@@ -276,11 +285,6 @@ class StateTrackingMockExecutionGraph implements ExecutionGraph {
 
     @Override
     public KvStateLocationRegistry getKvStateLocationRegistry() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public void setJsonPlan(String jsonPlan) {
         throw new UnsupportedOperationException();
     }
 

@@ -21,18 +21,23 @@ package org.apache.flink.table.client.gateway.context;
 import org.apache.flink.client.cli.DefaultCLI;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.ReadableConfig;
+import org.apache.flink.table.api.TableEnvironment;
+import org.apache.flink.types.Row;
+import org.apache.flink.util.CollectionUtil;
 import org.apache.flink.util.UserClassLoaderJarTestUtils;
 
-import org.junit.Before;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.Test;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -49,31 +54,31 @@ import static org.assertj.core.api.Assertions.fail;
 import static org.assertj.core.api.HamcrestCondition.matching;
 
 /** Test {@link SessionContext}. */
-public class SessionContextTest {
+class SessionContextTest {
 
-    @ClassRule public static TemporaryFolder tempFolder = new TemporaryFolder();
+    @TempDir private static Path tempFolder;
 
     private static File udfJar;
 
     private SessionContext sessionContext;
 
-    @BeforeClass
-    public static void prepare() throws Exception {
+    @BeforeAll
+    static void prepare() throws Exception {
         udfJar =
                 UserClassLoaderJarTestUtils.createJarFile(
-                        tempFolder.newFolder("test-jar"),
+                        Files.createTempDirectory(tempFolder, "test-jar").toFile(),
                         "test-classloader-udf.jar",
                         GENERATED_LOWER_UDF_CLASS,
                         String.format(GENERATED_LOWER_UDF_CODE, GENERATED_LOWER_UDF_CLASS));
     }
 
-    @Before
-    public void setup() {
+    @BeforeEach
+    void setup() {
         sessionContext = createSessionContext();
     }
 
     @Test
-    public void testSetAndResetOption() {
+    void testSetAndResetOption() {
         // table config option
         sessionContext.set(TABLE_SQL_DIALECT.key(), "hive");
         // runtime config option
@@ -98,7 +103,7 @@ public class SessionContextTest {
     }
 
     @Test
-    public void testSetAndResetKeyInConfigOptions() {
+    void testSetAndResetKeyInConfigOptions() {
         // table config option
         sessionContext.set(TABLE_SQL_DIALECT.key(), "hive");
         // runtime config option
@@ -127,67 +132,44 @@ public class SessionContextTest {
     }
 
     @Test
-    public void testSetAndResetArbitraryKey() {
+    void testSetAndResetArbitraryKey() {
         // other property not in flink-conf
         sessionContext.set("aa", "11");
         sessionContext.set("bb", "22");
 
-        assertThat(getConfigurationMap().get("aa")).isEqualTo("11");
-        assertThat(getConfigurationMap().get("bb")).isEqualTo("22");
+        assertThat(getConfigurationMap()).containsEntry("aa", "11").containsEntry("bb", "22");
 
         sessionContext.reset("aa");
-        assertThat(getConfigurationMap().get("aa")).isNull();
-        assertThat(getConfigurationMap().get("bb")).isEqualTo("22");
+        assertThat(getConfigurationMap()).doesNotContainKey("aa").containsEntry("bb", "22");
 
         sessionContext.reset("bb");
-        assertThat(getConfigurationMap().get("bb")).isNull();
+        assertThat(getConfigurationMap()).doesNotContainKey("bb");
     }
 
     @Test
-    public void testAddJarWithFullPath() throws IOException {
-        validateAddJar(udfJar.getPath());
-    }
-
-    @Test
-    public void testAddJarWithRelativePath() throws IOException {
-        validateAddJar(
-                new File(".").getCanonicalFile().toPath().relativize(udfJar.toPath()).toString());
-    }
-
-    @Test
-    public void testAddIllegalJar() {
-        validateAddJarWithException("/path/to/illegal.jar", "JAR file does not exist");
-    }
-
-    @Test
-    public void testAddRemoteJar() {
-        validateAddJarWithException(
-                "hdfs://remote:10080/remote.jar", "SQL Client only supports to add local jars.");
-    }
-
-    @Test
-    public void testRemoveJarWithFullPath() {
+    void testRemoveJarWithFullPath() {
         validateRemoveJar(udfJar.getPath());
     }
 
     @Test
-    public void testRemoveJarWithRelativePath() throws IOException {
+    void testRemoveJarWithRelativePath() throws IOException {
         validateRemoveJar(
                 new File(".").getCanonicalFile().toPath().relativize(udfJar.toPath()).toString());
     }
 
     @Test
-    public void testRemoveIllegalJar() {
-        validateRemoveJarWithException("/path/to/illegal.jar", "JAR file does not exist");
+    void testRemoveIllegalJar() {
+        validateRemoveJarWithException(
+                "/path/to/illegal.jar", "Failed to unregister the jar resource");
     }
 
     @Test
-    public void testRemoveRemoteJar() {
+    void testRemoveRemoteJar() {
         Configuration innerConfig = (Configuration) sessionContext.getReadableConfig();
         innerConfig.set(JARS, Collections.singletonList("hdfs://remote:10080/remote.jar"));
 
         validateRemoveJarWithException(
-                "hdfs://remote:10080/remote.jar", "SQL Client only supports to remove local jars.");
+                "hdfs://remote:10080/remote.jar", "Failed to unregister the jar resource");
     }
 
     // --------------------------------------------------------------------------------------------
@@ -217,32 +199,21 @@ public class SessionContextTest {
         return sessionContext.getExecutionContext().getTableEnvironment().getConfig();
     }
 
-    private void validateAddJar(String jarPath) {
-        sessionContext.addJar(jarPath);
-        assertThat(sessionContext.listJars()).containsExactly(udfJar.getPath());
-        // reset to the default
-        sessionContext.reset();
-        assertThat(sessionContext.listJars()).containsExactly(udfJar.getPath());
-    }
-
     private void validateRemoveJar(String jarPath) {
-        sessionContext.addJar(jarPath);
-        assertThat(sessionContext.listJars()).containsExactly(udfJar.getPath());
+        TableEnvironment tableEnvironment =
+                sessionContext.getExecutionContext().getTableEnvironment();
+        tableEnvironment.executeSql(String.format("ADD JAR '%s'", jarPath));
+
+        List<Row> jars =
+                CollectionUtil.iteratorToList(tableEnvironment.executeSql("SHOW JARS").collect());
+        assertThat(jars).containsExactly(Row.of(udfJar.getPath()));
 
         sessionContext.removeJar(jarPath);
-        assertThat(sessionContext.listJars()).isEmpty();
-    }
 
-    private void validateAddJarWithException(String jarPath, String errorMessages) {
-        Set<URL> originDependencies = sessionContext.getDependencies();
-        try {
-            sessionContext.addJar(jarPath);
-            fail("Should fail.");
-        } catch (Exception e) {
-            assertThat(e).satisfies(matching(containsMessage(errorMessages)));
-            // Keep dependencies as same as before if fail to add jar
-            assertThat(sessionContext.getDependencies()).isEqualTo(originDependencies);
-        }
+        assertThat(
+                        CollectionUtil.iteratorToList(
+                                tableEnvironment.executeSql("SHOW JARS").collect()))
+                .isEmpty();
     }
 
     private void validateRemoveJarWithException(String jarPath, String errorMessages) {

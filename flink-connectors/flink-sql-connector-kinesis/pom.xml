@@ -26,7 +26,7 @@ under the License.
 	<parent>
 		<artifactId>flink-connectors</artifactId>
 		<groupId>org.apache.flink</groupId>
-		<version>1.16-SNAPSHOT</version>
+		<version>1.17-SNAPSHOT</version>
 	</parent>
 
 	<artifactId>flink-sql-connector-kinesis</artifactId>
@@ -34,11 +34,21 @@ under the License.
 
 	<packaging>jar</packaging>
 
+	<properties>
+		<japicmp.skip>true</japicmp.skip>
+	</properties>
+
 	<dependencies>
 		<dependency>
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-connector-kinesis</artifactId>
 			<version>${project.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.flink</groupId>
+			<artifactId>flink-test-utils</artifactId>
+			<version>${project.version}</version>
+			<scope>test</scope>
 		</dependency>
 	</dependencies>
 
@@ -57,21 +67,17 @@ under the License.
 						<configuration>
 							<artifactSet>
 								<includes>
-									<include>org.apache.flink:flink-connector-base</include>
-									<include>org.apache.flink:flink-connector-kinesis</include>
-									<include>com.fasterxml.jackson.core:jackson-core</include>
-									<include>com.fasterxml.jackson.core:jackson-databind</include>
-									<include>com.fasterxml.jackson.core:jackson-annotations</include>
-									<include>com.fasterxml.jackson.dataformat:jackson-dataformat-cbor</include>
-									<include>joda-time:joda-time</include>
-									<include>commons-codec:commons-codec</include>
-									<include>commons-io:commons-io</include>
-									<include>commons-lang:commons-lang</include>
-									<include>commons-logging:commons-logging</include>
-									<include>org.apache.commons:commons-lang3</include>
-									<include>com.google.guava:guava</include>
-									<include>com.google.guava:failureaccess</include>
+									<include>*:*</include>
 								</includes>
+								<excludes>
+									<!-- Exclude unnecessary dependencies.
+									     This is done here to not change the user-facing dependencies
+									     of flink-connector-kinesis. -->
+									<exclude>com.google.guava:listenablefuture</exclude>
+									<exclude>org.checkerframework:checker-qual</exclude>
+									<exclude>com.google.errorprone:error_prone_annotations</exclude>
+									<exclude>com.google.j2objc:j2objc-annotations</exclude>
+								</excludes>
 							</artifactSet>
 							<filters>
 								<filter>
@@ -85,10 +91,6 @@ under the License.
 								</filter>
 							</filters>
 							<relocations>
-								<relocation>
-									<pattern>com.fasterxml.jackson</pattern>
-									<shadedPattern>org.apache.flink.kinesis.shaded.com.fasterxml.jackson</shadedPattern>
-								</relocation>
 								<relocation>
 									<pattern>org.apache.commons</pattern>
 									<shadedPattern>org.apache.flink.kinesis.shaded.org.apache.commons</shadedPattern>

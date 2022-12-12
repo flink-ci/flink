@@ -21,7 +21,7 @@ package org.apache.flink.streaming.api.operators.python;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.python.env.PythonEnvironmentManager;
-import org.apache.flink.python.metric.FlinkMetricContainer;
+import org.apache.flink.python.metric.process.FlinkMetricContainer;
 import org.apache.flink.runtime.state.KeyedStateBackend;
 import org.apache.flink.streaming.api.operators.AbstractStreamOperator;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
@@ -29,7 +29,6 @@ import org.apache.flink.streaming.api.operators.InternalTimeServiceManager;
 import org.apache.flink.streaming.api.operators.sorted.state.BatchExecutionInternalTimeServiceManager;
 import org.apache.flink.streaming.api.operators.sorted.state.BatchExecutionKeyedStateBackend;
 import org.apache.flink.streaming.api.watermark.Watermark;
-import org.apache.flink.table.functions.python.PythonEnv;
 import org.apache.flink.util.Preconditions;
 import org.apache.flink.util.WrappingRuntimeException;
 
@@ -41,6 +40,7 @@ import java.util.concurrent.ScheduledFuture;
 import static org.apache.flink.python.PythonOptions.MAX_BUNDLE_SIZE;
 import static org.apache.flink.python.PythonOptions.MAX_BUNDLE_TIME_MILLS;
 import static org.apache.flink.python.PythonOptions.PYTHON_METRIC_ENABLED;
+import static org.apache.flink.python.PythonOptions.PYTHON_SYSTEMENV_ENABLED;
 import static org.apache.flink.streaming.api.utils.ClassLeakCleaner.cleanUpLeakingClasses;
 import static org.apache.flink.streaming.api.utils.PythonOperatorUtils.inBatchExecutionMode;
 
@@ -51,6 +51,8 @@ public abstract class AbstractPythonFunctionOperator<OUT> extends AbstractStream
     private static final long serialVersionUID = 1L;
 
     protected final Configuration config;
+
+    protected transient boolean systemEnvEnabled;
 
     /** Max number of elements to include in a bundle. */
     protected transient int maxBundleSize;
@@ -78,6 +80,7 @@ public abstract class AbstractPythonFunctionOperator<OUT> extends AbstractStream
     @Override
     public void open() throws Exception {
         try {
+            this.systemEnvEnabled = config.get(PYTHON_SYSTEMENV_ENABLED);
             this.maxBundleSize = config.get(MAX_BUNDLE_SIZE);
             if (this.maxBundleSize <= 0) {
                 this.maxBundleSize = MAX_BUNDLE_SIZE.defaultValue();
@@ -261,9 +264,6 @@ public abstract class AbstractPythonFunctionOperator<OUT> extends AbstractStream
     public Configuration getConfiguration() {
         return config;
     }
-
-    /** Returns the {@link PythonEnv} used to create PythonEnvironmentManager.. */
-    public abstract PythonEnv getPythonEnv();
 
     protected abstract void invokeFinishBundle() throws Exception;
 

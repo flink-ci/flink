@@ -18,12 +18,18 @@
 
 package org.apache.flink.connectors.hive;
 
+import org.apache.flink.api.common.functions.FilterFunction;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.api.java.typeutils.MapTypeInfo;
+import org.apache.flink.api.java.typeutils.RowTypeInfo;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.core.testutils.CommonTestUtils;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.util.FiniteTestSource;
 import org.apache.flink.table.HiveVersionTestUtil;
 import org.apache.flink.table.api.EnvironmentSettings;
 import org.apache.flink.table.api.SqlDialect;
@@ -45,6 +51,8 @@ import org.apache.flink.table.connector.ProviderContext;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.factories.DynamicTableFactory;
 import org.apache.flink.table.factories.TableSourceFactory;
+import org.apache.flink.table.module.CoreModuleFactory;
+import org.apache.flink.table.module.hive.HiveModule;
 import org.apache.flink.table.planner.delegation.PlannerBase;
 import org.apache.flink.table.planner.plan.nodes.exec.ExecNode;
 import org.apache.flink.table.planner.runtime.utils.BatchAbstractTestBase;
@@ -71,6 +79,8 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -156,6 +166,30 @@ public class HiveTableSourceITCase extends BatchAbstractTestBase {
         assertThat(rows.get(0).getField(2)).isEqualTo(Row.of(struct[0], struct[1]));
     }
 
+    @Test
+    public void testReadParquetComplexDataType() throws Exception {
+        batchTableEnv.executeSql(
+                "create table parquet_complex_type_test("
+                        + "a array<int>, m map<int,string>, s struct<f1:int,f2:bigint>) stored as parquet");
+        String[] modules = batchTableEnv.listModules();
+        // load hive module so that we can use array,map, named_struct function
+        // for convenient writing complex data
+        batchTableEnv.loadModule("hive", new HiveModule());
+        batchTableEnv.useModules("hive", CoreModuleFactory.IDENTIFIER);
+
+        batchTableEnv
+                .executeSql(
+                        "insert into parquet_complex_type_test"
+                                + " select array(1, 2), map(1, 'val1', 2, 'val2'),"
+                                + " named_struct('f1', 1,  'f2', 2)")
+                .await();
+
+        Table src = batchTableEnv.sqlQuery("select * from parquet_complex_type_test");
+        List<Row> rows = CollectionUtil.iteratorToList(src.execute().collect());
+        assertThat(rows.toString()).isEqualTo("[+I[[1, 2], {1=val1, 2=val2}, +I[1, 2]]]");
+        batchTableEnv.unloadModule("hive");
+    }
+
     /**
      * Test to read from partition table.
      *
@@ -218,6 +252,22 @@ public class HiveTableSourceITCase extends BatchAbstractTestBase {
         assertThat(rows).hasSize(2);
         Object[] rowStrings = rows.stream().map(Row::toString).sorted().toArray();
         assertThat(rowStrings).isEqualTo(new String[] {"+I[2014, 3, 0]", "+I[2014, 4, 0]"});
+
+        // test the case that prune partition with reading partition from catalog without filter and
+        // there exists default partition
+        // insert null value for the partition column which will fall into the default partition
+        batchTableEnv
+                .executeSql(
+                        "insert into source_db.test_table_pt_1 values ('2014', 1, null), ('2015', 2, null)")
+                .await();
+        // currently, the expression "is null" is not supported HiveCatalog#listPartitionsByFilter,
+        // then the planer will list all partitions and then prue the partitions.
+        // the test is to cover such case
+        src =
+                batchTableEnv.sqlQuery(
+                        "select * from hive.source_db.test_table_pt_1 where pt is null");
+        rows = CollectionUtil.iteratorToList(src.execute().collect());
+        assertThat(rows.toString()).isEqualTo("[+I[2014, 1, null], +I[2015, 2, null]]");
     }
 
     @Test
@@ -477,7 +527,7 @@ public class HiveTableSourceITCase extends BatchAbstractTestBase {
         PlannerBase planner = (PlannerBase) ((TableEnvironmentImpl) tEnv).getPlanner();
         RelNode relNode = planner.optimize(TableTestUtil.toRelNode(table));
         ExecNode<?> execNode =
-                planner.translateToExecNodeGraph(toScala(Collections.singletonList(relNode)))
+                planner.translateToExecNodeGraph(toScala(Collections.singletonList(relNode)), false)
                         .getRootNodes()
                         .get(0);
         Transformation<?> transformation = execNode.translateToPlan(planner);
@@ -508,7 +558,7 @@ public class HiveTableSourceITCase extends BatchAbstractTestBase {
         PlannerBase planner = (PlannerBase) ((TableEnvironmentImpl) tEnv).getPlanner();
         RelNode relNode = planner.optimize(TableTestUtil.toRelNode(table));
         ExecNode<?> execNode =
-                planner.translateToExecNodeGraph(toScala(Collections.singletonList(relNode)))
+                planner.translateToExecNodeGraph(toScala(Collections.singletonList(relNode)), false)
                         .getRootNodes()
                         .get(0);
         Transformation<?> transformation =
@@ -542,7 +592,7 @@ public class HiveTableSourceITCase extends BatchAbstractTestBase {
         PlannerBase planner = (PlannerBase) ((TableEnvironmentImpl) tEnv).getPlanner();
         RelNode relNode = planner.optimize(TableTestUtil.toRelNode(table));
         ExecNode<?> execNode =
-                planner.translateToExecNodeGraph(toScala(Collections.singletonList(relNode)))
+                planner.translateToExecNodeGraph(toScala(Collections.singletonList(relNode)), false)
                         .getRootNodes()
                         .get(0);
         Transformation<?> transformation =
@@ -919,6 +969,117 @@ public class HiveTableSourceITCase extends BatchAbstractTestBase {
         }
 
         result.getJobClient().get().cancel();
+    }
+
+    @Test(timeout = 120000)
+    public void testReadParquetWithNullableComplexType() throws Exception {
+        final String catalogName = "hive";
+        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(3);
+        env.enableCheckpointing(100);
+        StreamTableEnvironment tEnv =
+                HiveTestUtils.createTableEnvInStreamingMode(env, SqlDialect.HIVE);
+        tEnv.registerCatalog(catalogName, hiveCatalog);
+        tEnv.useCatalog(catalogName);
+
+        List<Row> rows = generateRows();
+        List<Row> expectedRows = generateExpectedRows(rows);
+        DataStream<Row> stream =
+                env.addSource(
+                                new FiniteTestSource<>(rows),
+                                new RowTypeInfo(
+                                        new TypeInformation[] {
+                                            Types.INT,
+                                            Types.STRING,
+                                            new RowTypeInfo(
+                                                    new TypeInformation[] {
+                                                        Types.STRING, Types.INT, Types.INT
+                                                    },
+                                                    new String[] {"c1", "c2", "c3"}),
+                                            new MapTypeInfo<>(Types.STRING, Types.STRING),
+                                            Types.OBJECT_ARRAY(Types.STRING),
+                                            Types.STRING
+                                        },
+                                        new String[] {"a", "b", "c", "d", "e", "f"}))
+                        .filter((FilterFunction<Row>) value -> true)
+                        .setParallelism(3); // to parallel tasks
+
+        tEnv.createTemporaryView("my_table", stream);
+        assertResults(executeAndGetResult(tEnv), expectedRows);
+    }
+
+    private static List<Row> generateRows() {
+        List<Row> rows = new ArrayList<>();
+        for (int i = 0; i < 10000; i++) {
+            Map<String, String> e = new HashMap<>();
+            e.put(i + "", i % 2 == 0 ? null : i + "");
+            String[] f = new String[2];
+            f[0] = i % 3 == 0 ? null : i + "";
+            f[1] = i % 3 == 2 ? null : i + "";
+            rows.add(
+                    Row.of(
+                            i,
+                            String.valueOf(i % 10),
+                            Row.of(
+                                    i % 2 == 0 ? null : String.valueOf(i % 10),
+                                    i % 3 == 0 ? null : i % 10,
+                                    i % 5 == 0 ? null : i % 10),
+                            e,
+                            f,
+                            String.valueOf(i % 10)));
+        }
+        return rows;
+    }
+
+    private static List<Row> generateExpectedRows(List<Row> rows) {
+        List<Row> sortedRows = new ArrayList<>();
+        sortedRows.addAll(rows);
+        sortedRows.addAll(rows);
+        sortedRows.sort(Comparator.comparingInt(o -> (Integer) o.getField(0)));
+
+        List<Row> expectedRows = new ArrayList<>();
+        for (int i = 0; i < sortedRows.size(); i++) {
+            Row rowExpect = Row.copy(sortedRows.get(i));
+            Row nestedRow = (Row) rowExpect.getField(2);
+            if (nestedRow.getField(0) == null
+                    && nestedRow.getField(1) == null
+                    && nestedRow.getField(2) == null) {
+                rowExpect.setField(2, null);
+            }
+            expectedRows.add(rowExpect);
+        }
+        return expectedRows;
+    }
+
+    private static CloseableIterator<Row> executeAndGetResult(StreamTableEnvironment tEnv)
+            throws Exception {
+        tEnv.getConfig().setSqlDialect(SqlDialect.HIVE);
+        tEnv.executeSql(
+                "CREATE TABLE sink_table (a int, b string,"
+                        + "c struct<c1:string, c2:int, c3:int>,"
+                        + "d map<string, string>, e array<string>, f string "
+                        + ") "
+                        + " stored as parquet"
+                        + " TBLPROPERTIES ("
+                        + "'sink.partition-commit.policy.kind'='metastore,success-file',"
+                        + "'auto-compaction'='true',"
+                        + "'compaction.file-size' = '128MB',"
+                        + "'sink.rolling-policy.file-size' = '1b'"
+                        + ")");
+        tEnv.getConfig().setSqlDialect(SqlDialect.DEFAULT);
+        String sql =
+                "insert into sink_table /*+ OPTIONS('sink.parallelism' = '3') */"
+                        + " select * from my_table";
+        tEnv.executeSql(sql).await();
+        return tEnv.executeSql("select * from sink_table").collect();
+    }
+
+    private static void assertResults(CloseableIterator<Row> iterator, List<Row> expectedRows)
+            throws Exception {
+        List<Row> result = CollectionUtil.iteratorToList(iterator);
+        iterator.close();
+        result.sort(Comparator.comparingInt(o -> (Integer) o.getField(0)));
+        assertThat(result).isEqualTo(expectedRows);
     }
 
     private static TableEnvironment createTableEnv() {

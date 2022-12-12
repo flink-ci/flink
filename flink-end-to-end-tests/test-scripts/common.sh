@@ -114,22 +114,6 @@ function revert_flink_dir() {
     CURL_SSL_ARGS=""
 }
 
-function setup_flink_shaded_zookeeper() {
-  local version=$1
-  # if it is already in lib we don't have to do anything
-  if ! [ -e "${FLINK_DIR}"/lib/flink-shaded-zookeeper-${version}* ]; then
-    if ! [ -e "${FLINK_DIR}"/opt/flink-shaded-zookeeper-${version}* ]; then
-      echo "Could not find ZK ${version} in opt or lib."
-      exit 1
-    else
-      # contents of 'opt' must not be changed since it is not backed up in common.sh#backup_flink_dir
-      # it is fine to delete jars from 'lib' since it is backed up and will be restored after the test
-      rm "${FLINK_DIR}"/lib/flink-shaded-zookeeper-*
-      cp "${FLINK_DIR}"/opt/flink-shaded-zookeeper-${version}* "${FLINK_DIR}/lib"
-    fi
-  fi
-}
-
 function add_optional_lib() {
     local lib_name=$1
     cp "$FLINK_DIR/opt/flink-${lib_name}"*".jar" "$FLINK_DIR/lib"
@@ -198,7 +182,7 @@ function create_ha_config() {
     # High Availability
     #==============================================================================
 
-    high-availability: zookeeper
+    high-availability.type: zookeeper
     high-availability.zookeeper.storageDir: file://${TEST_DATA_DIR}/recovery/
     high-availability.zookeeper.quorum: localhost:2181
     high-availability.zookeeper.path.root: /flink
@@ -390,7 +374,6 @@ function check_logs_for_errors {
       | grep -v "java.lang.NoClassDefFoundError: org/apache/hadoop/conf/Configuration" \
       | grep -v "org.apache.commons.beanutils.FluentPropertyBeanIntrospector.*Error when creating PropertyDescriptor.*org.apache.commons.configuration2.AbstractConfiguration.setProperty(java.lang.String,java.lang.Object)! Ignoring this property." \
       | grep -v "Error while loading kafka-version.properties :null" \
-      | grep -v "Failed Elasticsearch item request" \
       | grep -v "[Terror] modules" \
       | grep -v "HeapDumpOnOutOfMemoryError" \
       | grep -v "error_prone_annotations" \
@@ -432,12 +415,12 @@ function check_logs_for_exceptions {
    | grep -v "Caused by: java.lang.Exception: JobManager is shutting down" \
    | grep -v "java.lang.Exception: Artificial failure" \
    | grep -v "org.apache.flink.runtime.checkpoint.CheckpointException" \
-   | grep -v "org.elasticsearch.ElasticsearchException" \
-   | grep -v "Elasticsearch exception" \
    | grep -v "org.apache.flink.runtime.JobException: Recovery is suppressed" \
    | grep -v "WARN  akka.remote.ReliableDeliverySupervisor" \
    | grep -v "RecipientUnreachableException" \
    | grep -v "SerializedCheckpointException.unwrap" \
+   | grep -v "ExecutionGraphException: The execution attempt" \
+   | grep -v "Cannot find task to fail for execution" \
    | grep -ic "exception" || true)
   if [[ ${exception_count} -gt 0 ]]; then
     echo "Found exception in log files; printing first 500 lines; see full logs for details:"

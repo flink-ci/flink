@@ -128,6 +128,7 @@ export interface CheckpointConfig {
     delete_on_cancellation: boolean;
   };
   state_backend: string;
+  state_changelog_enabled: boolean;
   checkpoint_storage: string;
   unaligned_checkpoints: boolean;
   tolerable_failed_checkpoints: number;
@@ -141,6 +142,7 @@ export interface CheckpointDetail {
   id: number;
   status: string;
   is_savepoint: boolean;
+  savepointFormat: string;
   trigger_timestamp: number;
   latest_ack_timestamp: number;
   state_size: number;

@@ -19,6 +19,7 @@
 package org.apache.flink.runtime.io.network.partition.hybrid;
 
 import org.apache.flink.runtime.io.network.partition.hybrid.HsSpillingInfoProvider.ConsumeStatus;
+import org.apache.flink.runtime.io.network.partition.hybrid.HsSpillingInfoProvider.ConsumeStatusWithId;
 import org.apache.flink.runtime.io.network.partition.hybrid.HsSpillingInfoProvider.SpillStatus;
 
 import java.util.Deque;
@@ -45,14 +46,14 @@ public class HsSelectiveSpillingStrategy implements HsSpillingStrategy {
     // For the case of buffer finished, there is no need to take action for
     // HsSelectiveSpillingStrategy.
     @Override
-    public Optional<Decision> onBufferFinished(int numTotalUnSpillBuffers) {
+    public Optional<Decision> onBufferFinished(int numTotalUnSpillBuffers, int currentPoolSize) {
         return Optional.of(Decision.NO_ACTION);
     }
 
     // For the case of buffer consumed, this buffer need release. The control of the buffer is taken
     // over by the downstream task.
     @Override
-    public Optional<Decision> onBufferConsumed(BufferWithIdentity consumedBuffer) {
+    public Optional<Decision> onBufferConsumed(BufferIndexAndChannel consumedBuffer) {
         return Optional.of(Decision.builder().addBufferToRelease(consumedBuffer).build());
     }
 
@@ -80,28 +81,53 @@ public class HsSelectiveSpillingStrategy implements HsSpillingStrategy {
 
         int spillNum = (int) (spillingInfoProvider.getPoolSize() * spillBufferRatio);
 
-        TreeMap<Integer, Deque<BufferWithIdentity>> subpartitionToBuffers = new TreeMap<>();
+        TreeMap<Integer, Deque<BufferIndexAndChannel>> subpartitionToBuffers = new TreeMap<>();
         for (int channel = 0; channel < spillingInfoProvider.getNumSubpartitions(); channel++) {
             subpartitionToBuffers.put(
                     channel,
                     spillingInfoProvider.getBuffersInOrder(
-                            channel, SpillStatus.NOT_SPILL, ConsumeStatus.NOT_CONSUMED));
+                            channel,
+                            SpillStatus.NOT_SPILL,
+                            // selective spilling strategy does not support multiple consumer.
+                            ConsumeStatusWithId.fromStatusAndConsumerId(
+                                    ConsumeStatus.NOT_CONSUMED, HsConsumerId.DEFAULT)));
         }
 
-        TreeMap<Integer, List<BufferWithIdentity>> subpartitionToHighPriorityBuffers =
+        TreeMap<Integer, List<BufferIndexAndChannel>> subpartitionToHighPriorityBuffers =
                 getBuffersByConsumptionPriorityInOrder(
-                        spillingInfoProvider.getNextBufferIndexToConsume(),
+                        // selective spilling strategy does not support multiple consumer.
+                        spillingInfoProvider.getNextBufferIndexToConsume(HsConsumerId.DEFAULT),
                         subpartitionToBuffers,
                         spillNum);
 
         Decision.Builder builder = Decision.builder();
-        subpartitionToHighPriorityBuffers
-                .values()
-                .forEach(
-                        buffers -> {
-                            builder.addBufferToSpill(buffers);
-                            builder.addBufferToRelease(buffers);
-                        });
+        subpartitionToHighPriorityBuffers.forEach(
+                (subpartitionId, buffers) -> {
+                    builder.addBufferToSpill(subpartitionId, buffers);
+                    builder.addBufferToRelease(subpartitionId, buffers);
+                });
+        return builder.build();
+    }
+
+    @Override
+    public Decision onResultPartitionClosed(HsSpillingInfoProvider spillingInfoProvider) {
+        Decision.Builder builder = Decision.builder();
+        for (int subpartitionId = 0;
+                subpartitionId < spillingInfoProvider.getNumSubpartitions();
+                subpartitionId++) {
+            builder.addBufferToSpill(
+                            subpartitionId,
+                            // get all not start spilling buffers.
+                            spillingInfoProvider.getBuffersInOrder(
+                                    subpartitionId,
+                                    SpillStatus.NOT_SPILL,
+                                    ConsumeStatusWithId.ALL_ANY))
+                    .addBufferToRelease(
+                            subpartitionId,
+                            // get all not released buffers.
+                            spillingInfoProvider.getBuffersInOrder(
+                                    subpartitionId, SpillStatus.ALL, ConsumeStatusWithId.ALL_ANY));
+        }
         return builder.build();
     }
 }

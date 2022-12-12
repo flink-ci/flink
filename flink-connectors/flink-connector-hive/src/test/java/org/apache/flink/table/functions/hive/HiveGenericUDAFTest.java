@@ -22,7 +22,11 @@ import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.catalog.hive.client.HiveShimLoader;
 import org.apache.flink.table.types.DataType;
 import org.apache.flink.table.types.inference.utils.CallContextMock;
+import org.apache.flink.types.Row;
 
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFCollectList;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFCollectSet;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFContextNGrams;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFCount;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFMin;
@@ -38,6 +42,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 
 /** Test for {@link HiveGenericUDAF}. */
 public class HiveGenericUDAFTest {
@@ -47,7 +52,7 @@ public class HiveGenericUDAFTest {
 
         DataType[] argTypes = new DataType[] {DataTypes.BIGINT()};
 
-        HiveGenericUDAF udf = init(GenericUDAFMin.class, constantArgs, argTypes);
+        HiveGenericUDAF udf = init(GenericUDAFMin.class, constantArgs, argTypes, false, true);
 
         GenericUDAFEvaluator.AggregationBuffer acc = udf.createAccumulator();
 
@@ -66,7 +71,7 @@ public class HiveGenericUDAFTest {
 
         DataType[] argTypes = new DataType[] {DataTypes.DOUBLE()};
 
-        HiveGenericUDAF udf = init(GenericUDAFSum.class, constantArgs, argTypes);
+        HiveGenericUDAF udf = init(GenericUDAFSum.class, constantArgs, argTypes, false, true);
 
         GenericUDAFEvaluator.AggregationBuffer acc = udf.createAccumulator();
 
@@ -82,7 +87,7 @@ public class HiveGenericUDAFTest {
 
         argTypes = new DataType[] {DataTypes.DECIMAL(5, 3)};
 
-        udf = init(GenericUDAFSum.class, constantArgs, argTypes);
+        udf = init(GenericUDAFSum.class, constantArgs, argTypes, false, true);
 
         acc = udf.createAccumulator();
 
@@ -101,7 +106,7 @@ public class HiveGenericUDAFTest {
 
         DataType[] argTypes = new DataType[] {DataTypes.DOUBLE()};
 
-        HiveGenericUDAF udf = init(GenericUDAFCount.class, constantArgs, argTypes);
+        HiveGenericUDAF udf = init(GenericUDAFCount.class, constantArgs, argTypes, false, true);
 
         GenericUDAFEvaluator.AggregationBuffer acc = udf.createAccumulator();
 
@@ -114,8 +119,69 @@ public class HiveGenericUDAFTest {
         assertThat(udf.getValue(acc)).isEqualTo(3L);
     }
 
+    @Test
+    public void testUDAFResolver() throws Exception {
+        // test the Hive's UDAF that implement deprecated GenericUDAFResolver interface
+        Object[] constantArgs = new Object[] {null, null, null};
+        DataType[] argTypes =
+                new DataType[] {
+                    DataTypes.ARRAY(DataTypes.STRING()),
+                    DataTypes.ARRAY(DataTypes.STRING()),
+                    DataTypes.INT()
+                };
+
+        HiveGenericUDAF udaf =
+                init(GenericUDAFContextNGrams.class, constantArgs, argTypes, false, false);
+
+        GenericUDAFEvaluator.AggregationBuffer acc = udaf.createAccumulator();
+
+        udaf.accumulate(
+                acc, new Object[] {"what", "i", "think"}, new Object[] {"what", "i", null}, 1);
+
+        udaf.merge(acc, Collections.emptyList());
+        assertThat(Arrays.toString((Row[]) udaf.getValue(acc))).isEqualTo("[+I[[think], 1.0]]");
+    }
+
+    @Test
+    public void testUDAFWithSingleArrayAsParameter() throws Exception {
+        Object[] constantArgs = new Object[] {null};
+
+        DataType[] argTypes = new DataType[] {DataTypes.ARRAY(DataTypes.INT().notNull())};
+
+        // test CollectList
+        HiveGenericUDAF udf =
+                init(GenericUDAFCollectList.class, constantArgs, argTypes, false, false);
+        GenericUDAFEvaluator.AggregationBuffer acc = udf.createAccumulator();
+
+        udf.accumulate(acc, new Integer[] {1, 2});
+        udf.accumulate(acc, new Integer[] {2, 3});
+
+        udf.merge(acc, Collections.emptyList());
+
+        Integer[][] expectedResult = new Integer[][] {new Integer[] {1, 2}, new Integer[] {2, 3}};
+        assertArrayEquals(expectedResult, (Integer[][]) udf.getValue(acc));
+
+        // test CollectSet
+        udf = init(GenericUDAFCollectSet.class, constantArgs, argTypes, false, false);
+        acc = udf.createAccumulator();
+
+        udf.accumulate(acc, new Integer[] {1, 2});
+        udf.accumulate(acc, new Integer[] {2, 3});
+        udf.accumulate(acc, new Integer[] {1, 2});
+
+        udf.merge(acc, Collections.emptySet());
+
+        expectedResult = new Integer[][] {new Integer[] {1, 2}, new Integer[] {2, 3}};
+        assertArrayEquals(expectedResult, (Integer[][]) udf.getValue(acc));
+    }
+
     private static HiveGenericUDAF init(
-            Class<?> hiveUdfClass, Object[] constantArgs, DataType[] argTypes) throws Exception {
+            Class<?> hiveUdfClass,
+            Object[] constantArgs,
+            DataType[] argTypes,
+            boolean isUDAFBridgeRequired,
+            boolean isUDAFResolve2)
+            throws Exception {
         HiveFunctionWrapper<GenericUDAFResolver> wrapper = new HiveFunctionWrapper<>(hiveUdfClass);
 
         CallContextMock callContext = new CallContextMock();
@@ -127,7 +193,10 @@ public class HiveGenericUDAFTest {
 
         HiveGenericUDAF udf =
                 new HiveGenericUDAF(
-                        wrapper, HiveShimLoader.loadHiveShim(HiveShimLoader.getHiveVersion()));
+                        wrapper,
+                        isUDAFBridgeRequired,
+                        isUDAFResolve2,
+                        HiveShimLoader.loadHiveShim(HiveShimLoader.getHiveVersion()));
 
         udf.setArguments(callContext);
         udf.inferReturnType();

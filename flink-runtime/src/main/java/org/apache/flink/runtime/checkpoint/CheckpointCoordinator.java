@@ -21,7 +21,9 @@ package org.apache.flink.runtime.checkpoint;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.core.execution.CheckpointType;
 import org.apache.flink.core.execution.SavepointFormatType;
+import org.apache.flink.runtime.checkpoint.FinishedTaskStateProvider.PartialFinishingNotSupportedByStateException;
 import org.apache.flink.runtime.checkpoint.hooks.MasterHooks;
 import org.apache.flink.runtime.executiongraph.Execution;
 import org.apache.flink.runtime.executiongraph.ExecutionAttemptID;
@@ -84,6 +86,8 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 import static java.util.stream.Collectors.toMap;
+import static org.apache.flink.runtime.checkpoint.CheckpointType.CHECKPOINT;
+import static org.apache.flink.runtime.checkpoint.CheckpointType.FULL_CHECKPOINT;
 import static org.apache.flink.util.ExceptionUtils.findThrowable;
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
@@ -510,6 +514,47 @@ public class CheckpointCoordinator {
         return triggerCheckpointFromCheckpointThread(checkpointProperties, null, isPeriodic);
     }
 
+    /**
+     * Triggers one new checkpoint with the given checkpointType. The returned future completes when
+     * the triggered checkpoint finishes or an error occurred.
+     *
+     * @param checkpointType specifies the back up type of the checkpoint to trigger.
+     * @return a future to the completed checkpoint.
+     */
+    public CompletableFuture<CompletedCheckpoint> triggerCheckpoint(CheckpointType checkpointType) {
+
+        if (checkpointType == null) {
+            throw new IllegalArgumentException("checkpointType cannot be null");
+        }
+
+        final SnapshotType snapshotType;
+        switch (checkpointType) {
+            case CONFIGURED:
+                snapshotType = checkpointProperties.getCheckpointType();
+                break;
+            case FULL:
+                snapshotType = FULL_CHECKPOINT;
+                break;
+            case INCREMENTAL:
+                snapshotType = CHECKPOINT;
+                break;
+            default:
+                throw new IllegalArgumentException("unknown checkpointType: " + checkpointType);
+        }
+
+        final CheckpointProperties properties =
+                new CheckpointProperties(
+                        checkpointProperties.forceCheckpoint(),
+                        snapshotType,
+                        checkpointProperties.discardOnSubsumed(),
+                        checkpointProperties.discardOnJobFinished(),
+                        checkpointProperties.discardOnJobCancelled(),
+                        checkpointProperties.discardOnJobFailed(),
+                        checkpointProperties.discardOnJobSuspended(),
+                        checkpointProperties.isUnclaimed());
+        return triggerCheckpointFromCheckpointThread(properties, null, false);
+    }
+
     @VisibleForTesting
     CompletableFuture<CompletedCheckpoint> triggerCheckpoint(
             CheckpointProperties props,
@@ -717,8 +762,6 @@ public class CheckpointCoordinator {
                                 return null;
                             });
 
-            coordinatorsToCheckpoint.forEach(
-                    (ctx) -> ctx.afterSourceBarrierInjection(checkpoint.getCheckpointID()));
             // It is possible that the tasks has finished
             // checkpointing at this point.
             // So we need to complete this pending checkpoint.
@@ -735,7 +778,7 @@ public class CheckpointCoordinator {
 
         final SnapshotType type;
         if (this.forceFullSnapshot && !request.props.isSavepoint()) {
-            type = CheckpointType.FULL_CHECKPOINT;
+            type = FULL_CHECKPOINT;
         } else {
             type = request.props.getCheckpointType();
         }
@@ -863,7 +906,7 @@ public class CheckpointCoordinator {
             return CompletableFuture.completedFuture(null);
         }
 
-        final long checkpointID = checkpoint.getCheckpointId();
+        final long checkpointID = checkpoint.getCheckpointID();
         final long timestamp = checkpoint.getCheckpointTimestamp();
 
         final CompletableFuture<Void> masterStateCompletableFuture = new CompletableFuture<>();
@@ -1367,18 +1410,21 @@ public class CheckpointCoordinator {
         } catch (Exception e1) {
             // abort the current pending checkpoint if we fails to finalize the pending
             // checkpoint.
+            final CheckpointFailureReason failureReason =
+                    e1 instanceof PartialFinishingNotSupportedByStateException
+                            ? CheckpointFailureReason.CHECKPOINT_DECLINED_TASK_CLOSING
+                            : CheckpointFailureReason.FINALIZE_CHECKPOINT_FAILURE;
+
             if (!pendingCheckpoint.isDisposed()) {
                 abortPendingCheckpoint(
-                        pendingCheckpoint,
-                        new CheckpointException(
-                                CheckpointFailureReason.FINALIZE_CHECKPOINT_FAILURE, e1));
+                        pendingCheckpoint, new CheckpointException(failureReason, e1));
             }
 
             throw new CheckpointException(
                     "Could not finalize the pending checkpoint "
                             + pendingCheckpoint.getCheckpointID()
                             + '.',
-                    CheckpointFailureReason.FINALIZE_CHECKPOINT_FAILURE,
+                    failureReason,
                     e1);
         }
     }
@@ -1521,7 +1567,7 @@ public class CheckpointCoordinator {
     private void dropSubsumedCheckpoints(long checkpointId) {
         abortPendingCheckpoints(
                 checkpoint ->
-                        checkpoint.getCheckpointId() < checkpointId && checkpoint.canBeSubsumed(),
+                        checkpoint.getCheckpointID() < checkpointId && checkpoint.canBeSubsumed(),
                 new CheckpointException(CheckpointFailureReason.CHECKPOINT_SUBSUMED));
     }
 
@@ -1799,8 +1845,7 @@ public class CheckpointCoordinator {
                         checkpointLocation,
                         userClassLoader,
                         allowNonRestored,
-                        checkpointProperties,
-                        restoreSettings.getRestoreMode());
+                        checkpointProperties);
 
         // register shared state - even before adding the checkpoint to the store
         // because the latter might trigger subsumption so the ref counts must be up-to-date
@@ -2111,10 +2156,10 @@ public class CheckpointCoordinator {
             } finally {
                 sendAbortedMessages(
                         pendingCheckpoint.getCheckpointPlan().getTasksToCommitTo(),
-                        pendingCheckpoint.getCheckpointId(),
+                        pendingCheckpoint.getCheckpointID(),
                         pendingCheckpoint.getCheckpointTimestamp());
-                pendingCheckpoints.remove(pendingCheckpoint.getCheckpointId());
-                rememberRecentCheckpointId(pendingCheckpoint.getCheckpointId());
+                pendingCheckpoints.remove(pendingCheckpoint.getCheckpointID());
+                rememberRecentCheckpointId(pendingCheckpoint.getCheckpointID());
                 scheduleTriggerRequest();
             }
         }
@@ -2158,7 +2203,7 @@ public class CheckpointCoordinator {
                 if (!pendingCheckpoint.isDisposed()) {
                     LOG.info(
                             "Checkpoint {} of job {} expired before completing.",
-                            pendingCheckpoint.getCheckpointId(),
+                            pendingCheckpoint.getCheckpointID(),
                             job);
 
                     abortPendingCheckpoint(

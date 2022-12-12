@@ -52,7 +52,6 @@ import org.apache.flink.api.java.typeutils.PojoTypeInfo;
 import org.apache.flink.api.java.typeutils.ResultTypeQueryable;
 import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.configuration.ConfigOption;
-import org.apache.flink.configuration.ConfigUtils;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.CoreOptions;
 import org.apache.flink.configuration.DeploymentOptions;
@@ -62,7 +61,7 @@ import org.apache.flink.configuration.PipelineOptions;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.configuration.RestOptions;
 import org.apache.flink.configuration.StateChangelogOptions;
-import org.apache.flink.configuration.UnmodifiableConfiguration;
+import org.apache.flink.core.execution.CacheSupportedPipelineExecutor;
 import org.apache.flink.core.execution.DefaultExecutorServiceLoader;
 import org.apache.flink.core.execution.DetachedJobExecutionResult;
 import org.apache.flink.core.execution.JobClient;
@@ -72,6 +71,7 @@ import org.apache.flink.core.execution.PipelineExecutorFactory;
 import org.apache.flink.core.execution.PipelineExecutorServiceLoader;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.scheduler.ClusterDatasetCorruptedException;
 import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.StateBackendLoader;
@@ -97,6 +97,9 @@ import org.apache.flink.streaming.api.functions.source.TimestampedFileInputSplit
 import org.apache.flink.streaming.api.graph.StreamGraph;
 import org.apache.flink.streaming.api.graph.StreamGraphGenerator;
 import org.apache.flink.streaming.api.operators.StreamSource;
+import org.apache.flink.streaming.api.operators.collect.CollectResultIterator;
+import org.apache.flink.streaming.api.transformations.CacheTransformation;
+import org.apache.flink.util.AbstractID;
 import org.apache.flink.util.DynamicCodeLoadingException;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.FlinkException;
@@ -123,8 +126,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -141,7 +146,14 @@ import static org.apache.flink.util.Preconditions.checkNotNull;
  * @see org.apache.flink.streaming.api.environment.RemoteStreamEnvironment
  */
 @Public
-public class StreamExecutionEnvironment {
+public class StreamExecutionEnvironment implements AutoCloseable {
+
+    private static final List<CollectResultIterator<?>> collectIterators = new ArrayList<>();
+
+    @Internal
+    public void registerCollectIterator(CollectResultIterator<?> iterator) {
+        collectIterators.add(iterator);
+    }
 
     /**
      * The default name to use for a streaming job if no other name has been specified.
@@ -176,6 +188,8 @@ public class StreamExecutionEnvironment {
     protected final CheckpointConfig checkpointCfg = new CheckpointConfig();
 
     protected final List<Transformation<?>> transformations = new ArrayList<>();
+
+    private final Map<AbstractID, CacheTransformation<?>> cachedTransformations = new HashMap<>();
 
     private long bufferTimeout = ExecutionOptions.BUFFER_TIMEOUT.defaultValue().toMillis();
 
@@ -1025,18 +1039,9 @@ public class StreamExecutionEnvironment {
                                                 .ENABLE_CHECKPOINTS_AFTER_TASKS_FINISH,
                                         flag));
 
-        // merge PipelineOptions.JARS, user maybe set this option in high level such as table
-        // module, so here need to merge the jars from both configuration object
         configuration
                 .getOptional(PipelineOptions.JARS)
-                .ifPresent(
-                        jars ->
-                                ConfigUtils.mergeCollectionsToConfig(
-                                        this.configuration,
-                                        PipelineOptions.JARS,
-                                        Collections.unmodifiableCollection(jars),
-                                        String::toString,
-                                        String::toString));
+                .ifPresent(jars -> this.configuration.set(PipelineOptions.JARS, jars));
 
         config.configure(configuration, classLoader);
         checkpointCfg.configure(configuration);
@@ -2019,7 +2024,7 @@ public class StreamExecutionEnvironment {
      * @throws Exception which occurs during job execution.
      */
     public JobExecutionResult execute() throws Exception {
-        return execute(getStreamGraph());
+        return execute((String) null);
     }
 
     /**
@@ -2034,10 +2039,26 @@ public class StreamExecutionEnvironment {
      * @throws Exception which occurs during job execution.
      */
     public JobExecutionResult execute(String jobName) throws Exception {
-        Preconditions.checkNotNull(jobName, "Streaming Job name should not be null.");
-        final StreamGraph streamGraph = getStreamGraph();
-        streamGraph.setJobName(jobName);
-        return execute(streamGraph);
+        final List<Transformation<?>> originalTransformations = new ArrayList<>(transformations);
+        StreamGraph streamGraph = getStreamGraph();
+        if (jobName != null) {
+            streamGraph.setJobName(jobName);
+        }
+
+        try {
+            return execute(streamGraph);
+        } catch (Throwable t) {
+            Optional<ClusterDatasetCorruptedException> clusterDatasetCorruptedException =
+                    ExceptionUtils.findThrowable(t, ClusterDatasetCorruptedException.class);
+            if (!clusterDatasetCorruptedException.isPresent()) {
+                throw t;
+            }
+
+            // Retry without cache if it is caused by corrupted cluster dataset.
+            invalidateCacheTransformations(originalTransformations);
+            streamGraph = getStreamGraph(originalTransformations);
+            return execute(streamGraph);
+        }
     }
 
     /**
@@ -2080,6 +2101,19 @@ public class StreamExecutionEnvironment {
 
             // never reached, only make javac happy
             return null;
+        }
+    }
+
+    private void invalidateCacheTransformations(List<Transformation<?>> transformations)
+            throws Exception {
+        for (Transformation<?> transformation : transformations) {
+            if (transformation == null) {
+                continue;
+            }
+            if (transformation instanceof CacheTransformation) {
+                invalidateClusterDataset(((CacheTransformation<?>) transformation).getDatasetId());
+            }
+            invalidateCacheTransformations(transformation.getInputs());
         }
     }
 
@@ -2148,26 +2182,16 @@ public class StreamExecutionEnvironment {
     @Internal
     public JobClient executeAsync(StreamGraph streamGraph) throws Exception {
         checkNotNull(streamGraph, "StreamGraph cannot be null.");
-        checkNotNull(
-                configuration.get(DeploymentOptions.TARGET),
-                "No execution.target specified in your configuration file.");
-
-        final PipelineExecutorFactory executorFactory =
-                executorServiceLoader.getExecutorFactory(configuration);
-
-        checkNotNull(
-                executorFactory,
-                "Cannot find compatible factory for specified execution.target (=%s)",
-                configuration.get(DeploymentOptions.TARGET));
+        final PipelineExecutor executor = getPipelineExecutor();
 
         CompletableFuture<JobClient> jobClientFuture =
-                executorFactory
-                        .getExecutor(configuration)
-                        .execute(streamGraph, configuration, userClassloader);
+                executor.execute(streamGraph, configuration, userClassloader);
 
         try {
             JobClient jobClient = jobClientFuture.get();
             jobListeners.forEach(jobListener -> jobListener.onJobSubmitted(jobClient, null));
+            collectIterators.forEach(iterator -> iterator.setJobClient(jobClient));
+            collectIterators.clear();
             return jobClient;
         } catch (ExecutionException executionException) {
             final Throwable strippedException =
@@ -2203,11 +2227,30 @@ public class StreamExecutionEnvironment {
      */
     @Internal
     public StreamGraph getStreamGraph(boolean clearTransformations) {
-        final StreamGraph streamGraph = getStreamGraphGenerator(transformations).generate();
+        final StreamGraph streamGraph = getStreamGraph(transformations);
         if (clearTransformations) {
             transformations.clear();
         }
         return streamGraph;
+    }
+
+    private StreamGraph getStreamGraph(List<Transformation<?>> transformations) {
+        synchronizeClusterDatasetStatus();
+        return getStreamGraphGenerator(transformations).generate();
+    }
+
+    private void synchronizeClusterDatasetStatus() {
+        if (cachedTransformations.isEmpty()) {
+            return;
+        }
+        Set<AbstractID> completedClusterDatasets =
+                listCompletedClusterDatasets().stream()
+                        .map(AbstractID::new)
+                        .collect(Collectors.toSet());
+        cachedTransformations.forEach(
+                (id, transformation) -> {
+                    transformation.setCached(completedClusterDatasets.contains(id));
+                });
     }
 
     /**
@@ -2297,7 +2340,22 @@ public class StreamExecutionEnvironment {
      */
     @Internal
     public ReadableConfig getConfiguration() {
-        return new UnmodifiableConfiguration(configuration);
+        // Note to implementers:
+        // In theory, you can cast the return value of this method to Configuration and perform
+        // mutations. In practice, this could cause side effects. A better approach is to implement
+        // the ReadableConfig interface and create a layered configuration.
+        // For example:
+        //   TableConfig implements ReadableConfig {
+        //     underlyingLayer ReadableConfig
+        //     thisConfigLayer Configuration
+        //
+        //     get(configOption) {
+        //        return thisConfigLayer
+        //          .getOptional(configOption)
+        //          .orElseGet(underlyingLayer.get(configOption))
+        //     }
+        //   }
+        return configuration;
     }
 
     // --------------------------------------------------------------------------------------------
@@ -2590,5 +2648,70 @@ public class StreamExecutionEnvironment {
     @Internal
     public List<Transformation<?>> getTransformations() {
         return transformations;
+    }
+
+    @Internal
+    public <T> void registerCacheTransformation(
+            AbstractID intermediateDataSetID, CacheTransformation<T> t) {
+        cachedTransformations.put(intermediateDataSetID, t);
+    }
+
+    @Internal
+    public void invalidateClusterDataset(AbstractID datasetId) throws Exception {
+        if (!cachedTransformations.containsKey(datasetId)) {
+            throw new RuntimeException(
+                    String.format("IntermediateDataset %s is not found", datasetId));
+        }
+        final PipelineExecutor executor = getPipelineExecutor();
+
+        if (!(executor instanceof CacheSupportedPipelineExecutor)) {
+            return;
+        }
+
+        ((CacheSupportedPipelineExecutor) executor)
+                .invalidateClusterDataset(datasetId, configuration, userClassloader)
+                .get();
+        cachedTransformations.get(datasetId).setCached(false);
+    }
+
+    protected Set<AbstractID> listCompletedClusterDatasets() {
+        try {
+            final PipelineExecutor executor = getPipelineExecutor();
+            if (!(executor instanceof CacheSupportedPipelineExecutor)) {
+                return Collections.emptySet();
+            }
+            return ((CacheSupportedPipelineExecutor) executor)
+                    .listCompletedClusterDatasetIds(configuration, userClassloader)
+                    .get();
+        } catch (Throwable e) {
+            return Collections.emptySet();
+        }
+    }
+
+    /**
+     * Close and clean up the execution environment. All the cached intermediate results will be
+     * released physically.
+     */
+    @Override
+    public void close() throws Exception {
+        for (AbstractID id : cachedTransformations.keySet()) {
+            invalidateClusterDataset(id);
+        }
+    }
+
+    private PipelineExecutor getPipelineExecutor() throws Exception {
+        checkNotNull(
+                configuration.get(DeploymentOptions.TARGET),
+                "No execution.target specified in your configuration file.");
+
+        final PipelineExecutorFactory executorFactory =
+                executorServiceLoader.getExecutorFactory(configuration);
+
+        checkNotNull(
+                executorFactory,
+                "Cannot find compatible factory for specified execution.target (=%s)",
+                configuration.get(DeploymentOptions.TARGET));
+
+        return executorFactory.getExecutor(configuration);
     }
 }

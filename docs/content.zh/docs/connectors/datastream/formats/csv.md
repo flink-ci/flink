@@ -60,8 +60,8 @@ Note: you might need to add `@JsonPropertyOrder({field1, field2, ...})` annotati
 If you need more fine-grained control over the CSV schema or the parsing options, use the more low-level `forSchema` static factory method of `CsvReaderFormat`:
 
 ```java
-CsvReaderFormat<T> forSchema(CsvMapper mapper, 
-                             CsvSchema schema, 
+CsvReaderFormat<T> forSchema(Supplier<CsvMapper> mapperFactory, 
+                             Function<CsvMapper, CsvSchema> schemaGenerator, 
                              TypeInformation<T> typeInformation) 
 ```
 Below is an example of reading a POJO with a custom columns' separator:
@@ -80,15 +80,14 @@ Below is an example of reading a POJO with a custom columns' separator:
     public long population;
 }
 
-CsvMapper mapper = new CsvMapper();
-CsvSchema schema =
+Function<CsvMapper, CsvSchema> schemaGenerator = mapper ->
         mapper.schemaFor(CityPojo.class).withoutQuoteChar().withColumnSeparator('|');
 
 CsvReaderFormat<CityPojo> csvFormat =
-        CsvReaderFormat.forSchema(mapper, schema, TypeInformation.of(CityPojo.class));
+        CsvReaderFormat.forSchema(() -> new CsvMapper(), schemaGenerator, TypeInformation.of(CityPojo.class));
 
 FileSource<CityPojo> source =
-        FileSource.forRecordStreamFormat(csvFormat,Path.fromLocalFile(...)).build();
+        FileSource.forRecordStreamFormat(csvFormat, Path.fromLocalFile(...)).build();
 ```
 The corresponding CSV file:
 ```
@@ -105,7 +104,6 @@ public static class ComplexPojo {
 
 CsvReaderFormat<ComplexPojo> csvFormat =
         CsvReaderFormat.forSchema(
-                new CsvMapper(),
                 CsvSchema.builder()
                         .addColumn(
                                 new CsvSchema.Column(0, "id", CsvSchema.ColumnType.NUMBER))
@@ -139,3 +137,18 @@ The corresponding CSV file:
 ```
 
 Similarly to the `TextLineInputFormat`, `CsvReaderFormat` can be used in both continues and batch modes (see [TextLineInputFormat]({{< ref "docs/connectors/datastream/formats/text_files" >}})  for examples).
+
+For PyFlink users, `CsvBulkWriters` could be used to create `BulkWriterFactory` to write records to files in CSV format.
+
+```python
+schema = CsvSchema.builder() \
+    .add_number_column('id', number_type=DataTypes.BIGINT()) \
+    .add_array_column('array', separator='#', element_type=DataTypes.INT()) \
+    .set_column_separator(',') \
+    .build()
+
+sink = FileSink.for_bulk_format(
+    OUTPUT_DIR, CsvBulkWriters.for_schema(schema)).build()
+
+ds.sink_to(sink)
+```

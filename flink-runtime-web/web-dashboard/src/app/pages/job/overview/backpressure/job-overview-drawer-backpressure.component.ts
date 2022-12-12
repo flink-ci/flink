@@ -16,11 +16,19 @@
  * limitations under the License.
  */
 
+import { NgForOf, NgIf } from '@angular/common';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Inject, OnDestroy, OnInit, Type } from '@angular/core';
 import { of, Subject } from 'rxjs';
 import { catchError, mergeMap, takeUntil, tap } from 'rxjs/operators';
 
-import { JobBackpressure, JobBackpressureSubtask, NodesItemCorrect } from '@flink-runtime-web/interfaces';
+import { DynamicHostComponent } from '@flink-runtime-web/components/dynamic/dynamic-host.component';
+import { HumanizeDurationPipe } from '@flink-runtime-web/components/humanize-duration.pipe';
+import {
+  JobBackpressure,
+  JobBackpressureSubtask,
+  JobBackpressureSubtaskData,
+  NodesItemCorrect
+} from '@flink-runtime-web/interfaces';
 import {
   JOB_OVERVIEW_MODULE_CONFIG,
   JOB_OVERVIEW_MODULE_DEFAULT_CONFIG,
@@ -28,25 +36,33 @@ import {
 } from '@flink-runtime-web/pages/job/overview/job-overview.config';
 import { JobService } from '@flink-runtime-web/services';
 import { typeDefinition } from '@flink-runtime-web/utils/strong-type';
+import { NzDividerModule } from 'ng-zorro-antd/divider';
+import { NzTableModule } from 'ng-zorro-antd/table';
 
 import { JobLocalService } from '../../job-local.service';
 
 @Component({
   selector: 'flink-job-overview-drawer-backpressure',
   templateUrl: './job-overview-drawer-backpressure.component.html',
+  styleUrls: ['./job-overview-drawer-backpressure.component.less'],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  styleUrls: ['./job-overview-drawer-backpressure.component.less']
+  imports: [NzTableModule, NgIf, HumanizeDurationPipe, NzDividerModule, DynamicHostComponent, NgForOf],
+  standalone: true
 })
 export class JobOverviewDrawerBackpressureComponent implements OnInit, OnDestroy {
-  public readonly trackBySubtask = (_: number, node: JobBackpressureSubtask): number => node.subtask;
+  readonly trackBySubtask = (_: number, node: JobBackpressureSubtask): number => node.subtask;
+  readonly trackBySubtaskAttempt = (_: number, node: JobBackpressureSubtaskData): string =>
+    `${node.subtask}-${node['attempt-number']}`;
 
-  public isLoading = true;
-  public now = Date.now();
-  public selectedVertex: NodesItemCorrect | null;
-  public backpressure = {} as JobBackpressure;
-  public listOfSubTaskBackpressure: JobBackpressureSubtask[] = [];
-  public stateBadgeComponent: Type<unknown>;
-  public readonly narrowLogData = typeDefinition<JobBackpressureSubtask>();
+  expandSet = new Set<number>();
+  isLoading = true;
+  now = Date.now();
+  selectedVertex: NodesItemCorrect | null;
+  backpressure = {} as JobBackpressure;
+  listOfSubTaskBackpressure: JobBackpressureSubtask[] = [];
+  stateBadgeComponent: Type<unknown>;
+
+  readonly narrowType = typeDefinition<JobBackpressureSubtask>();
 
   private readonly destroy$ = new Subject<void>();
 
@@ -61,7 +77,7 @@ export class JobOverviewDrawerBackpressureComponent implements OnInit, OnDestroy
       JOB_OVERVIEW_MODULE_DEFAULT_CONFIG.customComponents.backpressureBadgeComponent;
   }
 
-  public ngOnInit(): void {
+  ngOnInit(): void {
     this.jobLocalService
       .jobWithVertexChanges()
       .pipe(
@@ -87,12 +103,26 @@ export class JobOverviewDrawerBackpressureComponent implements OnInit, OnDestroy
       });
   }
 
-  public ngOnDestroy(): void {
+  ngOnDestroy(): void {
     this.destroy$.next();
     this.destroy$.complete();
   }
 
-  public prettyPrint(value: number): string {
+  collapseAll(): void {
+    this.expandSet.clear();
+    this.cdr.markForCheck();
+  }
+
+  onExpandChange(subtask: JobBackpressureSubtask, checked: boolean): void {
+    if (checked) {
+      this.expandSet.add(subtask.subtask);
+    } else {
+      this.expandSet.delete(subtask.subtask);
+    }
+    this.cdr.markForCheck();
+  }
+
+  prettyPrint(value: number): string {
     if (isNaN(value)) {
       return 'N/A';
     } else {

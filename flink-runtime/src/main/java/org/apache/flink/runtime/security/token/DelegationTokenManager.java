@@ -18,6 +18,8 @@
 
 package org.apache.flink.runtime.security.token;
 
+import org.apache.flink.annotation.Internal;
+
 import org.apache.hadoop.security.Credentials;
 
 /**
@@ -27,6 +29,7 @@ import org.apache.hadoop.security.Credentials;
  * run without interruption while accessing secured services. It must contact all the configured
  * secure services to obtain delegation tokens to be distributed to the rest of the application.
  */
+@Internal
 public interface DelegationTokenManager {
 
     /**
@@ -38,7 +41,7 @@ public interface DelegationTokenManager {
      * Creates a re-occurring task which obtains new tokens and automatically distributes them to
      * task managers.
      */
-    void start() throws Exception;
+    void start(DelegationTokenListener delegationTokenListener) throws Exception;
 
     /** Stops re-occurring token obtain task. */
     void stop();

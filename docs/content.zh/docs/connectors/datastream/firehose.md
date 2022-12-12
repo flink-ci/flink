@@ -2,6 +2,7 @@
 title: Firehose
 weight: 5
 type: docs
+  - /zh/dev/connectors/firehose.html
 ---
 <!--
 Licensed to the Apache Software Foundation (ASF) under one
@@ -32,6 +33,8 @@ to setup a Kinesis Data Firehose delivery stream.
 To use the connector, add the following Maven dependency to your project:
 
 {{< artifact flink-connector-aws-kinesis-firehose >}}
+
+{{< py_download_link "aws-kinesis-firehose" >}}
 
 The `KinesisFirehoseSink` uses [AWS v2 SDK for Java](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/home.html) to write data from a Flink stream into a Firehose delivery stream.
 

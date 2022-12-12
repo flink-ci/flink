@@ -21,6 +21,7 @@ package org.apache.flink.connector.pulsar.source.config;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.connector.pulsar.common.config.PulsarConfigValidator;
 
+import org.apache.pulsar.client.api.BatchReceivePolicy;
 import org.apache.pulsar.client.api.Consumer;
 import org.apache.pulsar.client.api.ConsumerBuilder;
 import org.apache.pulsar.client.api.DeadLetterPolicy;
@@ -30,10 +31,10 @@ import org.apache.pulsar.client.api.Schema;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
-import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.apache.flink.connector.pulsar.common.config.PulsarOptions.PULSAR_ADMIN_URL;
 import static org.apache.flink.connector.pulsar.common.config.PulsarOptions.PULSAR_AUTH_PARAMS;
 import static org.apache.flink.connector.pulsar.common.config.PulsarOptions.PULSAR_AUTH_PARAM_MAP;
@@ -42,7 +43,6 @@ import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSA
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_ACK_RECEIPT_ENABLED;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_ACK_TIMEOUT_MILLIS;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_AUTO_ACK_OLDEST_CHUNKED_MESSAGE_ON_QUEUE_FULL;
-import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_AUTO_UPDATE_PARTITIONS_INTERVAL_SECONDS;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_CONSUMER_NAME;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_CONSUMER_PROPERTIES;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_CRYPTO_FAILURE_ACTION;
@@ -59,7 +59,6 @@ import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSA
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_REPLICATE_SUBSCRIPTION_STATE;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_RETRY_ENABLE;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_RETRY_LETTER_TOPIC;
-import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_SUBSCRIPTION_INITIAL_POSITION;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_SUBSCRIPTION_MODE;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_SUBSCRIPTION_NAME;
 import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSAR_SUBSCRIPTION_TYPE;
@@ -69,8 +68,14 @@ import static org.apache.flink.connector.pulsar.source.PulsarSourceOptions.PULSA
 @Internal
 public final class PulsarSourceConfigUtils {
 
+    private static final BatchReceivePolicy DISABLED_BATCH_RECEIVE_POLICY =
+            BatchReceivePolicy.builder()
+                    .timeout(0, TimeUnit.MILLISECONDS)
+                    .maxNumMessages(1)
+                    .build();
+
     private PulsarSourceConfigUtils() {
-        // No need to create instance.
+        // No need to create an instance.
     }
 
     public static final PulsarConfigValidator SOURCE_CONFIG_VALIDATOR =
@@ -84,7 +89,7 @@ public final class PulsarSourceConfigUtils {
     /** Create a pulsar consumer builder by using the given Configuration. */
     public static <T> ConsumerBuilder<T> createConsumerBuilder(
             PulsarClient client, Schema<T> schema, SourceConfiguration configuration) {
-        ConsumerBuilder<T> builder = client.newConsumer(schema);
+        ConsumerBuilder<T> builder = new PulsarConsumerBuilder<>(client, schema);
 
         configuration.useOption(PULSAR_SUBSCRIPTION_NAME, builder::subscriptionName);
         configuration.useOption(
@@ -113,12 +118,7 @@ public final class PulsarSourceConfigUtils {
                 builder::consumerName);
         configuration.useOption(PULSAR_READ_COMPACTED, builder::readCompacted);
         configuration.useOption(PULSAR_PRIORITY_LEVEL, builder::priorityLevel);
-        configuration.useOption(
-                PULSAR_SUBSCRIPTION_INITIAL_POSITION, builder::subscriptionInitialPosition);
         createDeadLetterPolicy(configuration).ifPresent(builder::deadLetterPolicy);
-        configuration.useOption(
-                PULSAR_AUTO_UPDATE_PARTITIONS_INTERVAL_SECONDS,
-                v -> builder.autoUpdatePartitionsInterval(v, SECONDS));
         configuration.useOption(PULSAR_RETRY_ENABLE, builder::enableRetry);
         configuration.useOption(
                 PULSAR_MAX_PENDING_CHUNKED_MESSAGE, builder::maxPendingChunkedMessage);
@@ -134,6 +134,10 @@ public final class PulsarSourceConfigUtils {
         if (!properties.isEmpty()) {
             builder.properties(properties);
         }
+
+        // Flink connector doesn't need any batch receiving behaviours.
+        // Disable the batch-receive timer for the Consumer instance.
+        builder.batchReceivePolicy(DISABLED_BATCH_RECEIVE_POLICY);
 
         return builder;
     }

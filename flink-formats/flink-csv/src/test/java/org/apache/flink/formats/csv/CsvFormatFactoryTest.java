@@ -20,7 +20,10 @@ package org.apache.flink.formats.csv;
 
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.common.serialization.SerializationSchema;
+import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ValidationException;
+import org.apache.flink.table.catalog.Column;
+import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.connector.Projection;
 import org.apache.flink.table.connector.format.ProjectableDecodingFormat;
 import org.apache.flink.table.connector.sink.DynamicTableSink;
@@ -37,6 +40,7 @@ import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -44,7 +48,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
+import static org.apache.flink.connector.testutils.formats.SchemaTestUtils.open;
 import static org.apache.flink.core.testutils.FlinkMatchers.containsCause;
+import static org.apache.flink.table.data.DecimalData.fromBigDecimal;
 import static org.apache.flink.table.data.StringData.fromString;
 import static org.apache.flink.table.factories.utils.FactoryMocks.PHYSICAL_DATA_TYPE;
 import static org.apache.flink.table.factories.utils.FactoryMocks.PHYSICAL_TYPE;
@@ -70,6 +76,7 @@ public class CsvFormatFactoryTest extends TestLogger {
                         .setEscapeCharacter('\\')
                         .setNullLiteral("n/a")
                         .build();
+        open(expectedDeser);
         final Map<String, String> options = getAllOptions();
         DeserializationSchema<RowData> actualDeser = createDeserializationSchema(options);
         assertThat(actualDeser).isEqualTo(expectedDeser);
@@ -210,6 +217,7 @@ public class CsvFormatFactoryTest extends TestLogger {
         DeserializationSchema<RowData> deserializationSchema =
                 sourceMock.valueFormat.createRuntimeDecoder(
                         ScanRuntimeProviderContext.INSTANCE, PHYSICAL_DATA_TYPE);
+        open(deserializationSchema);
         RowData expected = GenericRowData.of(fromString("abc"), 123, false);
         RowData actual = deserializationSchema.deserialize("abc\t123\tfalse".getBytes());
         assertThat(actual).isEqualTo(expected);
@@ -228,6 +236,60 @@ public class CsvFormatFactoryTest extends TestLogger {
                 getModifiedOptions(opts -> opts.put("csv.ignore-parse-errors", "abc"));
 
         createTableSink(SCHEMA, options);
+    }
+
+    @Test
+    public void testSerializationWithWriteBigDecimalInScientificNotation() {
+        final Map<String, String> options =
+                getModifiedOptions(
+                        opts -> opts.put("csv.write-bigdecimal-in-scientific-notation", "true"));
+
+        ResolvedSchema schema =
+                ResolvedSchema.of(
+                        Column.physical("a", DataTypes.STRING()),
+                        Column.physical("b", DataTypes.DECIMAL(10, 3)),
+                        Column.physical("c", DataTypes.BOOLEAN()));
+        final DynamicTableSink actualSink = createTableSink(schema, options);
+        assertThat(actualSink).isInstanceOf(TestDynamicTableFactory.DynamicTableSinkMock.class);
+        TestDynamicTableFactory.DynamicTableSinkMock sinkMock =
+                (TestDynamicTableFactory.DynamicTableSinkMock) actualSink;
+
+        SerializationSchema<RowData> runtimeEncoder =
+                sinkMock.valueFormat.createRuntimeEncoder(null, schema.toPhysicalRowDataType());
+        open(runtimeEncoder);
+
+        RowData rowData =
+                GenericRowData.of(
+                        fromString("abc"), fromBigDecimal(new BigDecimal("100000"), 10, 3), false);
+        byte[] bytes = runtimeEncoder.serialize(rowData);
+        assertThat(new String(bytes)).isEqualTo("abc;'1E+5';false");
+    }
+
+    @Test
+    public void testSerializationWithNotWriteBigDecimalInScientificNotation() {
+        final Map<String, String> options =
+                getModifiedOptions(
+                        opts -> opts.put("csv.write-bigdecimal-in-scientific-notation", "false"));
+
+        ResolvedSchema schema =
+                ResolvedSchema.of(
+                        Column.physical("a", DataTypes.STRING()),
+                        Column.physical("b", DataTypes.DECIMAL(10, 3)),
+                        Column.physical("c", DataTypes.BOOLEAN()));
+        final DynamicTableSink actualSink = createTableSink(schema, options);
+        assertThat(actualSink).isInstanceOf(TestDynamicTableFactory.DynamicTableSinkMock.class);
+        TestDynamicTableFactory.DynamicTableSinkMock sinkMock =
+                (TestDynamicTableFactory.DynamicTableSinkMock) actualSink;
+
+        SerializationSchema<RowData> runtimeEncoder =
+                sinkMock.valueFormat.createRuntimeEncoder(null, schema.toPhysicalRowDataType());
+        open(runtimeEncoder);
+
+        RowData rowData =
+                GenericRowData.of(
+                        fromString("abc"), fromBigDecimal(new BigDecimal("100000"), 10, 3), false);
+        byte[] bytes = runtimeEncoder.serialize(rowData);
+        assertThat(new String(bytes)).isEqualTo("abc;'100000';false");
     }
 
     @Test
@@ -311,6 +373,7 @@ public class CsvFormatFactoryTest extends TestLogger {
         options.put("csv.array-element-delimiter", "|");
         options.put("csv.escape-character", "\\");
         options.put("csv.null-literal", "n/a");
+        options.put("csv.write-bigdecimal-in-scientific-notation", "true");
         return options;
     }
 
@@ -319,8 +382,11 @@ public class CsvFormatFactoryTest extends TestLogger {
         TestDynamicTableFactory.DynamicTableSourceMock sourceMock =
                 createDynamicTableSourceMock(options);
 
-        return sourceMock.valueFormat.createRuntimeDecoder(
-                ScanRuntimeProviderContext.INSTANCE, PHYSICAL_DATA_TYPE);
+        final DeserializationSchema<RowData> schema =
+                sourceMock.valueFormat.createRuntimeDecoder(
+                        ScanRuntimeProviderContext.INSTANCE, PHYSICAL_DATA_TYPE);
+        open(schema);
+        return schema;
     }
 
     private static DeserializationSchema<RowData> createDeserializationSchema(
@@ -331,8 +397,11 @@ public class CsvFormatFactoryTest extends TestLogger {
         ProjectableDecodingFormat<DeserializationSchema<RowData>> valueFormat =
                 (ProjectableDecodingFormat<DeserializationSchema<RowData>>) sourceMock.valueFormat;
 
-        return valueFormat.createRuntimeDecoder(
-                ScanRuntimeProviderContext.INSTANCE, PHYSICAL_DATA_TYPE, projections);
+        final DeserializationSchema<RowData> schema =
+                valueFormat.createRuntimeDecoder(
+                        ScanRuntimeProviderContext.INSTANCE, PHYSICAL_DATA_TYPE, projections);
+        open(schema);
+        return schema;
     }
 
     private static TestDynamicTableFactory.DynamicTableSourceMock createDynamicTableSourceMock(
@@ -349,6 +418,9 @@ public class CsvFormatFactoryTest extends TestLogger {
         TestDynamicTableFactory.DynamicTableSinkMock sinkMock =
                 (TestDynamicTableFactory.DynamicTableSinkMock) actualSink;
 
-        return sinkMock.valueFormat.createRuntimeEncoder(null, PHYSICAL_DATA_TYPE);
+        final SerializationSchema<RowData> schema =
+                sinkMock.valueFormat.createRuntimeEncoder(null, PHYSICAL_DATA_TYPE);
+        open(schema);
+        return schema;
     }
 }

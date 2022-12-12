@@ -23,6 +23,7 @@ import org.apache.flink.api.common.ExecutionConfig;
 import org.apache.flink.api.common.io.InputFormat;
 import org.apache.flink.api.common.typeinfo.BasicArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.api.common.typeinfo.LocalTimeTypeInfo;
 import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
 import org.apache.flink.api.common.typeinfo.SqlTimeTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -38,6 +39,9 @@ import org.apache.flink.api.common.typeutils.base.GenericArraySerializer;
 import org.apache.flink.api.common.typeutils.base.InstantSerializer;
 import org.apache.flink.api.common.typeutils.base.IntSerializer;
 import org.apache.flink.api.common.typeutils.base.ListSerializer;
+import org.apache.flink.api.common.typeutils.base.LocalDateSerializer;
+import org.apache.flink.api.common.typeutils.base.LocalDateTimeSerializer;
+import org.apache.flink.api.common.typeutils.base.LocalTimeSerializer;
 import org.apache.flink.api.common.typeutils.base.LongSerializer;
 import org.apache.flink.api.common.typeutils.base.MapSerializer;
 import org.apache.flink.api.common.typeutils.base.ShortSerializer;
@@ -62,6 +66,8 @@ import org.apache.flink.core.memory.ByteArrayInputStreamWithPos;
 import org.apache.flink.core.memory.DataInputViewStreamWrapper;
 import org.apache.flink.fnexecution.v1.FlinkFnApi;
 import org.apache.flink.streaming.api.typeinfo.python.PickledByteArrayTypeInfo;
+import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.util.DataFormatConverters;
 import org.apache.flink.table.runtime.typeutils.ExternalTypeInfo;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.runtime.typeutils.serializers.python.BigDecSerializer;
@@ -69,8 +75,15 @@ import org.apache.flink.table.runtime.typeutils.serializers.python.DateSerialize
 import org.apache.flink.table.runtime.typeutils.serializers.python.StringSerializer;
 import org.apache.flink.table.runtime.typeutils.serializers.python.TimeSerializer;
 import org.apache.flink.table.runtime.typeutils.serializers.python.TimestampSerializer;
-import org.apache.flink.table.types.logical.LogicalTypeRoot;
+import org.apache.flink.table.types.logical.ArrayType;
+import org.apache.flink.table.types.logical.FloatType;
+import org.apache.flink.table.types.logical.IntType;
+import org.apache.flink.table.types.logical.LogicalType;
+import org.apache.flink.table.types.logical.MapType;
 import org.apache.flink.table.types.logical.RowType;
+import org.apache.flink.table.types.logical.SmallIntType;
+import org.apache.flink.table.types.logical.TinyIntType;
+import org.apache.flink.table.types.logical.utils.LogicalTypeDefaultVisitor;
 import org.apache.flink.table.types.utils.LegacyTypeInfoDataTypeConverter;
 import org.apache.flink.table.types.utils.TypeConversions;
 import org.apache.flink.table.typeutils.TimeIntervalTypeInfo;
@@ -83,6 +96,7 @@ import org.apache.flink.shaded.guava30.com.google.common.collect.Sets;
 import javax.annotation.Nullable;
 
 import java.io.IOException;
+import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -97,6 +111,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -181,6 +196,10 @@ public class PythonTypeUtils {
                 return buildSqlTimeTypeProto((SqlTimeTypeInfo<?>) typeInformation);
             }
 
+            if (typeInformation instanceof LocalTimeTypeInfo) {
+                return buildLocalTimeTypeProto((LocalTimeTypeInfo<?>) typeInformation);
+            }
+
             if (typeInformation instanceof RowTypeInfo) {
                 return buildRowTypeProto((RowTypeInfo) typeInformation, userClassLoader);
             }
@@ -216,12 +235,8 @@ public class PythonTypeUtils {
             }
 
             if (typeInformation instanceof InternalTypeInfo) {
-                LogicalTypeRoot logicalTypeRoot =
-                        ((InternalTypeInfo<?>) typeInformation).toLogicalType().getTypeRoot();
-                if (logicalTypeRoot.equals(LogicalTypeRoot.ROW)) {
-                    return buildRowDataTypeProto(
-                            (InternalTypeInfo<?>) typeInformation, userClassLoader);
-                }
+                return buildInternalTypeProto(
+                        (InternalTypeInfo<?>) typeInformation, userClassLoader);
             }
 
             if (typeInformation
@@ -265,6 +280,12 @@ public class PythonTypeUtils {
                                 sqlTimeTypeInfo.toString()));
             }
 
+            return FlinkFnApi.TypeInfo.newBuilder().setTypeName(typeName).build();
+        }
+
+        private static FlinkFnApi.TypeInfo buildLocalTimeTypeProto(
+                LocalTimeTypeInfo<?> localTimeTypeInfo) {
+            FlinkFnApi.TypeInfo.TypeName typeName = getTypeName(localTimeTypeInfo);
             return FlinkFnApi.TypeInfo.newBuilder().setTypeName(typeName).build();
         }
 
@@ -334,34 +355,6 @@ public class PythonTypeUtils {
                     .build();
         }
 
-        private static FlinkFnApi.TypeInfo buildRowDataTypeProto(
-                InternalTypeInfo<?> internalTypeInfo, ClassLoader userClassLoader) {
-            RowType rowType = internalTypeInfo.toRowType();
-            FlinkFnApi.TypeInfo.RowTypeInfo.Builder rowTypeInfoBuilder =
-                    FlinkFnApi.TypeInfo.RowTypeInfo.newBuilder();
-
-            int arity = rowType.getFieldCount();
-            for (int index = 0; index < arity; index++) {
-                rowTypeInfoBuilder.addFields(
-                        FlinkFnApi.TypeInfo.RowTypeInfo.Field.newBuilder()
-                                .setFieldName(rowType.getFieldNames().get(index))
-                                .setFieldType(
-                                        toTypeInfoProto(
-                                                ExternalTypeInfo.of(
-                                                        TypeConversions.fromLogicalToDataType(
-                                                                rowType.getFields()
-                                                                        .get(index)
-                                                                        .getType())),
-                                                userClassLoader))
-                                .build());
-            }
-
-            return FlinkFnApi.TypeInfo.newBuilder()
-                    .setTypeName(FlinkFnApi.TypeInfo.TypeName.ROW)
-                    .setRowTypeInfo(rowTypeInfoBuilder.build())
-                    .build();
-        }
-
         private static FlinkFnApi.TypeInfo buildTupleTypeProto(
                 TupleTypeInfo<?> tupleTypeInfo, ClassLoader userClassLoader) {
             FlinkFnApi.TypeInfo.TupleTypeInfo.Builder tupleTypeInfoBuilder =
@@ -418,6 +411,138 @@ public class PythonTypeUtils {
                     .setAvroTypeInfo(
                             FlinkFnApi.TypeInfo.AvroTypeInfo.newBuilder().setSchema(schema).build())
                     .build();
+        }
+
+        private static FlinkFnApi.TypeInfo buildTableBinaryTypeProto() {
+            return FlinkFnApi.TypeInfo.newBuilder()
+                    .setTypeName(FlinkFnApi.TypeInfo.TypeName.PRIMITIVE_ARRAY)
+                    .setCollectionElementType(
+                            FlinkFnApi.TypeInfo.newBuilder()
+                                    .setTypeName(FlinkFnApi.TypeInfo.TypeName.BYTE)
+                                    .build())
+                    .build();
+        }
+
+        private static FlinkFnApi.TypeInfo buildTableArrayTypeProto(
+                InternalTypeInfo<?> internalTypeInfo, ClassLoader userClassLoader) {
+            ArrayType arrayType = (ArrayType) internalTypeInfo.toLogicalType();
+            return FlinkFnApi.TypeInfo.newBuilder()
+                    .setTypeName(FlinkFnApi.TypeInfo.TypeName.OBJECT_ARRAY)
+                    .setCollectionElementType(
+                            toTypeInfoProto(
+                                    InternalTypeInfo.of(arrayType.getElementType()),
+                                    userClassLoader))
+                    .build();
+        }
+
+        private static FlinkFnApi.TypeInfo buildTableMapTypeProto(
+                InternalTypeInfo<?> internalTypeInfo, ClassLoader userClassLoader) {
+            MapType mapType = (MapType) internalTypeInfo.toLogicalType();
+            FlinkFnApi.TypeInfo.MapTypeInfo.Builder mapTypeInfoBuilder =
+                    FlinkFnApi.TypeInfo.MapTypeInfo.newBuilder();
+            mapTypeInfoBuilder
+                    .setKeyType(
+                            toTypeInfoProto(
+                                    InternalTypeInfo.of(mapType.getKeyType()), userClassLoader))
+                    .setValueType(
+                            toTypeInfoProto(
+                                    InternalTypeInfo.of(mapType.getValueType()), userClassLoader));
+            return FlinkFnApi.TypeInfo.newBuilder()
+                    .setTypeName(FlinkFnApi.TypeInfo.TypeName.MAP)
+                    .setMapTypeInfo(mapTypeInfoBuilder.build())
+                    .build();
+        }
+
+        private static FlinkFnApi.TypeInfo buildTableRowTypeProto(
+                InternalTypeInfo<?> internalTypeInfo, ClassLoader userClassLoader) {
+            RowType rowType = internalTypeInfo.toRowType();
+            FlinkFnApi.TypeInfo.RowTypeInfo.Builder rowTypeInfoBuilder =
+                    FlinkFnApi.TypeInfo.RowTypeInfo.newBuilder();
+
+            int arity = rowType.getFieldCount();
+            for (int index = 0; index < arity; index++) {
+                rowTypeInfoBuilder.addFields(
+                        FlinkFnApi.TypeInfo.RowTypeInfo.Field.newBuilder()
+                                .setFieldName(rowType.getFieldNames().get(index))
+                                .setFieldType(
+                                        toTypeInfoProto(
+                                                InternalTypeInfo.of(
+                                                        rowType.getFields().get(index).getType()),
+                                                userClassLoader))
+                                .build());
+            }
+
+            return FlinkFnApi.TypeInfo.newBuilder()
+                    .setTypeName(FlinkFnApi.TypeInfo.TypeName.ROW)
+                    .setRowTypeInfo(rowTypeInfoBuilder.build())
+                    .build();
+        }
+
+        private static FlinkFnApi.TypeInfo buildInternalTypeProto(
+                InternalTypeInfo<?> internalTypeInfo, ClassLoader userClassLoader)
+                throws UnsupportedOperationException {
+            FlinkFnApi.TypeInfo.TypeName typeName;
+            switch (internalTypeInfo.toLogicalType().getTypeRoot()) {
+                case CHAR:
+                case VARCHAR:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.STRING;
+                    break;
+                case BOOLEAN:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.BOOLEAN;
+                    break;
+                case BINARY:
+                case VARBINARY:
+                    return buildTableBinaryTypeProto();
+                case DECIMAL:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.BIG_DEC;
+                    break;
+                case TINYINT:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.BYTE;
+                    break;
+                case SMALLINT:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.SHORT;
+                    break;
+                case INTEGER:
+                case INTERVAL_YEAR_MONTH:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.INT;
+                    break;
+                case BIGINT:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.BIG_INT;
+                    break;
+                case INTERVAL_DAY_TIME:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.LONG;
+                    break;
+                case FLOAT:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.FLOAT;
+                    break;
+                case DOUBLE:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.DOUBLE;
+                    break;
+                case DATE:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.SQL_DATE;
+                    break;
+                case TIME_WITHOUT_TIME_ZONE:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.SQL_TIME;
+                    break;
+                case TIMESTAMP_WITHOUT_TIME_ZONE:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.SQL_TIMESTAMP;
+                    break;
+                case TIMESTAMP_WITH_LOCAL_TIME_ZONE:
+                    typeName = FlinkFnApi.TypeInfo.TypeName.LOCAL_ZONED_TIMESTAMP;
+                    break;
+                case ARRAY:
+                    return buildTableArrayTypeProto(internalTypeInfo, userClassLoader);
+                case MAP:
+                    return buildTableMapTypeProto(internalTypeInfo, userClassLoader);
+                case ROW:
+                    return buildTableRowTypeProto(internalTypeInfo, userClassLoader);
+                default:
+                    throw new UnsupportedOperationException(
+                            String.format(
+                                    "InternalTypeInfo %s is still not supported in PyFlink",
+                                    internalTypeInfo));
+            }
+            return FlinkFnApi.TypeInfo.newBuilder().setTypeName(typeName).build();
         }
 
         private static FlinkFnApi.TypeInfo.TypeName getTypeName(TypeInformation<?> typeInfo) {
@@ -513,6 +638,18 @@ public class PythonTypeUtils {
                 return FlinkFnApi.TypeInfo.TypeName.SQL_TIMESTAMP;
             }
 
+            if (typeInfo.equals(LocalTimeTypeInfo.LOCAL_DATE)) {
+                return FlinkFnApi.TypeInfo.TypeName.LOCAL_DATE;
+            }
+
+            if (typeInfo.equals(LocalTimeTypeInfo.LOCAL_TIME)) {
+                return FlinkFnApi.TypeInfo.TypeName.LOCAL_TIME;
+            }
+
+            if (typeInfo.equals(LocalTimeTypeInfo.LOCAL_DATE_TIME)) {
+                return FlinkFnApi.TypeInfo.TypeName.LOCAL_DATETIME;
+            }
+
             throw new UnsupportedOperationException(
                     String.format(
                             "Type %s is still not supported in PyFlink.", typeInfo.toString()));
@@ -580,6 +717,14 @@ public class PythonTypeUtils {
                     SqlTimeTypeInfo.TIME.getTypeClass(), TimeSerializer.INSTANCE);
             typeInfoToSerializerMap.put(
                     SqlTimeTypeInfo.TIMESTAMP.getTypeClass(), new TimestampSerializer(3));
+
+            typeInfoToSerializerMap.put(
+                    LocalTimeTypeInfo.LOCAL_DATE.getTypeClass(), LocalDateSerializer.INSTANCE);
+            typeInfoToSerializerMap.put(
+                    LocalTimeTypeInfo.LOCAL_TIME.getTypeClass(), LocalTimeSerializer.INSTANCE);
+            typeInfoToSerializerMap.put(
+                    LocalTimeTypeInfo.LOCAL_DATE_TIME.getTypeClass(),
+                    LocalDateTimeSerializer.INSTANCE);
         }
 
         @SuppressWarnings("unchecked")
@@ -668,16 +813,9 @@ public class PythonTypeUtils {
                 }
 
                 if (typeInformation instanceof InternalTypeInfo) {
-                    LogicalTypeRoot logicalTypeRoot =
-                            ((InternalTypeInfo<?>) typeInformation)
-                                    .getDataType()
-                                    .getLogicalType()
-                                    .getTypeRoot();
-                    if (logicalTypeRoot.equals(LogicalTypeRoot.ROW)) {
-                        return org.apache.flink.table.runtime.typeutils.PythonTypeUtils
-                                .toInternalSerializer(
-                                        ((InternalTypeInfo<?>) typeInformation).toRowType());
-                    }
+                    InternalTypeInfo<?> internalTypeInfo = (InternalTypeInfo<?>) typeInformation;
+                    return org.apache.flink.table.runtime.typeutils.PythonTypeUtils
+                            .toInternalSerializer(internalTypeInfo.toLogicalType());
                 }
 
                 if (typeInformation
@@ -693,6 +831,674 @@ public class PythonTypeUtils {
                     String.format(
                             "Could not find type serializer for current type [%s].",
                             typeInformation.toString()));
+        }
+    }
+
+    /** Data Converter that converts the data to the format data which can be used in PemJa. */
+    public abstract static class DataConverter<IN, OUT> implements Serializable {
+
+        private static final long serialVersionUID = 1L;
+
+        public abstract IN toInternal(OUT value);
+
+        public abstract OUT toExternal(IN value);
+    }
+
+    /** Identity data converter. */
+    public static final class IdentityDataConverter<T> extends DataConverter<T, T> {
+
+        private static final long serialVersionUID = 1L;
+
+        public static final IdentityDataConverter INSTANCE = new IdentityDataConverter<>();
+
+        @Override
+        public T toInternal(T value) {
+            return value;
+        }
+
+        @Override
+        public T toExternal(T value) {
+            return value;
+        }
+    }
+
+    /**
+     * Python Long will be converted to Long in PemJa, so we need ByteDataConverter to convert Java
+     * Long to internal Byte.
+     */
+    public static final class ByteDataConverter extends DataConverter<Byte, Long> {
+
+        private static final long serialVersionUID = 1L;
+
+        public static final ByteDataConverter INSTANCE = new ByteDataConverter();
+
+        @Override
+        public Byte toInternal(Long value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.byteValue();
+        }
+
+        @Override
+        public Long toExternal(Byte value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.longValue();
+        }
+    }
+
+    /**
+     * Python Long will be converted to Long in PemJa, so we need ShortDataConverter to convert Java
+     * Long to internal Short.
+     */
+    public static final class ShortDataConverter extends DataConverter<Short, Long> {
+
+        private static final long serialVersionUID = 1L;
+
+        public static final ShortDataConverter INSTANCE = new ShortDataConverter();
+
+        @Override
+        public Short toInternal(Long value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.shortValue();
+        }
+
+        @Override
+        public Long toExternal(Short value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.longValue();
+        }
+    }
+
+    /**
+     * Python Long will be converted to Long in PemJa, so we need IntDataConverter to convert Java
+     * Long to internal Integer.
+     */
+    public static final class IntDataConverter extends DataConverter<Integer, Long> {
+
+        private static final long serialVersionUID = 1L;
+
+        public static final IntDataConverter INSTANCE = new IntDataConverter();
+
+        @Override
+        public Integer toInternal(Long value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.intValue();
+        }
+
+        @Override
+        public Long toExternal(Integer value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.longValue();
+        }
+    }
+
+    /**
+     * Python Float will be converted to Double in PemJa, so we need FloatDataConverter to convert
+     * Java Double to internal Float.
+     */
+    public static final class FloatDataConverter extends DataConverter<Float, Double> {
+
+        private static final long serialVersionUID = 1L;
+
+        public static final FloatDataConverter INSTANCE = new FloatDataConverter();
+
+        @Override
+        public Float toInternal(Double value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.floatValue();
+        }
+
+        @Override
+        public Double toExternal(Float value) {
+            if (value == null) {
+                return null;
+            }
+
+            return value.doubleValue();
+        }
+    }
+
+    /**
+     * Row Data will be converted to the Object Array [RowKind(as Long Object), Field Values(as
+     * Object Array)].
+     */
+    public static final class RowDataConverter extends DataConverter<Row, Object[]> {
+
+        private static final long serialVersionUID = 1L;
+
+        private final DataConverter[] fieldDataConverters;
+        private final Row reuseRow;
+        private final Object[] reuseExternalRow;
+        private final Object[] reuseExternalRowData;
+
+        RowDataConverter(DataConverter[] dataConverters) {
+            this.fieldDataConverters = dataConverters;
+            this.reuseRow = new Row(fieldDataConverters.length);
+            this.reuseExternalRowData = new Object[fieldDataConverters.length];
+            this.reuseExternalRow = new Object[2];
+            this.reuseExternalRow[1] = reuseExternalRowData;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Row toInternal(Object[] value) {
+            if (value == null) {
+                return null;
+            }
+
+            RowKind rowKind = RowKind.fromByteValue(((Long) value[0]).byteValue());
+            reuseRow.setKind(rowKind);
+            Object[] fieldValues = (Object[]) value[1];
+            for (int i = 0; i < fieldValues.length; i++) {
+                reuseRow.setField(i, fieldDataConverters[i].toInternal(fieldValues[i]));
+            }
+            return reuseRow;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Object[] toExternal(Row value) {
+            if (value == null) {
+                return null;
+            }
+
+            reuseExternalRow[0] = (long) value.getKind().toByteValue();
+            for (int i = 0; i < value.getArity(); i++) {
+                reuseExternalRowData[i] = fieldDataConverters[i].toExternal(value.getField(i));
+            }
+            return reuseExternalRow;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            final RowDataConverter other = (RowDataConverter) o;
+            if (other.fieldDataConverters.length != this.fieldDataConverters.length) {
+                return false;
+            }
+
+            for (int i = 0; i < other.fieldDataConverters.length; i++) {
+                if (!other.fieldDataConverters[i].equals(this.fieldDataConverters[i])) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
+    /**
+     * RowData Data will be converted to the Object Array [RowKind(as Long Object), Field Values(as
+     * Object Array)].
+     */
+    public static final class RowDataDataConverter extends DataConverter<RowData, Object[]> {
+
+        private final RowDataConverter dataConverter;
+
+        private final DataFormatConverters.DataFormatConverter<RowData, Row> dataFormatConverter;
+
+        RowDataDataConverter(
+                RowDataConverter dataConverter,
+                DataFormatConverters.DataFormatConverter<RowData, Row> dataFormatConverter) {
+            this.dataConverter = dataConverter;
+            this.dataFormatConverter = dataFormatConverter;
+        }
+
+        @Override
+        public RowData toInternal(Object[] value) {
+            return dataFormatConverter.toInternal(dataConverter.toInternal(value));
+        }
+
+        @Override
+        public Object[] toExternal(RowData value) {
+            return dataConverter.toExternal(dataFormatConverter.toExternal(value));
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            final RowDataDataConverter other = (RowDataDataConverter) o;
+            return this.dataConverter.equals(other.dataConverter);
+        }
+    }
+
+    /** Tuple Data will be converted to the Object Array. */
+    public static final class TupleDataConverter extends DataConverter<Tuple, Object[]> {
+
+        private final DataConverter[] fieldDataConverters;
+        private final Tuple reuseTuple;
+        private final Object[] reuseExternalTuple;
+
+        TupleDataConverter(DataConverter[] dataConverters) {
+            this.fieldDataConverters = dataConverters;
+            this.reuseTuple = Tuple.newInstance(dataConverters.length);
+            this.reuseExternalTuple = new Object[dataConverters.length];
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Tuple toInternal(Object[] value) {
+            if (value == null) {
+                return null;
+            }
+
+            for (int i = 0; i < value.length; i++) {
+                reuseTuple.setField(fieldDataConverters[i].toInternal(value[i]), i);
+            }
+            return reuseTuple;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Object[] toExternal(Tuple value) {
+            if (value == null) {
+                return null;
+            }
+
+            for (int i = 0; i < value.getArity(); i++) {
+                reuseExternalTuple[i] = fieldDataConverters[i].toExternal(value.getField(i));
+            }
+            return reuseExternalTuple;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            final TupleDataConverter other = (TupleDataConverter) o;
+            if (other.fieldDataConverters.length != this.fieldDataConverters.length) {
+                return false;
+            }
+
+            for (int i = 0; i < other.fieldDataConverters.length; i++) {
+                if (!other.fieldDataConverters[i].equals(this.fieldDataConverters[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    /**
+     * The element in the Object Array will be converted to the corresponding Data through element
+     * DataConverter.
+     */
+    public static final class ArrayDataConverter<T> extends DataConverter<T[], Object[]> {
+
+        private final DataConverter elementConverter;
+        private final Class<T> componentClass;
+
+        ArrayDataConverter(Class<T> componentClass, DataConverter elementConverter) {
+            this.componentClass = componentClass;
+            this.elementConverter = elementConverter;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public T[] toInternal(Object[] value) {
+            if (value == null) {
+                return null;
+            }
+
+            T[] array = (T[]) Array.newInstance(componentClass, value.length);
+
+            for (int i = 0; i < value.length; i++) {
+                array[i] = (T) elementConverter.toInternal(value[i]);
+            }
+
+            return array;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Object[] toExternal(T[] value) {
+            if (value == null) {
+                return null;
+            }
+
+            Object[] array = new Object[value.length];
+
+            for (int i = 0; i < value.length; i++) {
+                array[i] = elementConverter.toExternal(value[i]);
+            }
+
+            return array;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            final ArrayDataConverter other = (ArrayDataConverter) o;
+            return this.elementConverter.equals(other.elementConverter);
+        }
+    }
+
+    /**
+     * The element in the List will be converted to the corresponding Data through element
+     * DataConverter.
+     */
+    public static final class ListDataConverter extends DataConverter<List, List> {
+
+        private final DataConverter elementConverter;
+
+        ListDataConverter(DataConverter elementConverter) {
+            this.elementConverter = elementConverter;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public List toInternal(List value) {
+            if (value == null) {
+                return null;
+            }
+
+            List<Object> list = new LinkedList<>();
+
+            for (Object item : value) {
+                list.add(elementConverter.toInternal(item));
+            }
+            return list;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public List toExternal(List value) {
+            if (value == null) {
+                return null;
+            }
+
+            List<Object> list = new LinkedList<>();
+
+            for (Object item : value) {
+                list.add(elementConverter.toExternal(item));
+            }
+            return list;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            final ListDataConverter other = (ListDataConverter) o;
+            return this.elementConverter.equals(other.elementConverter);
+        }
+    }
+
+    /**
+     * The key/value in the Map will be converted to the corresponding Data through key/value
+     * DataConverter.
+     */
+    public static final class MapDataConverter extends DataConverter<Map<?, ?>, Map<?, ?>> {
+
+        private final DataConverter keyConverter;
+        private final DataConverter valueConverter;
+
+        MapDataConverter(DataConverter keyConverter, DataConverter valueConverter) {
+            this.keyConverter = keyConverter;
+            this.valueConverter = valueConverter;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Map<?, ?> toInternal(Map<?, ?> value) {
+            if (value == null) {
+                return null;
+            }
+
+            Map<Object, Object> map = new HashMap<>();
+
+            for (Map.Entry<?, ?> entry : value.entrySet()) {
+                map.put(
+                        keyConverter.toInternal(entry.getKey()),
+                        valueConverter.toInternal(entry.getValue()));
+            }
+
+            return map;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public Map<?, ?> toExternal(Map<?, ?> value) {
+            if (value == null) {
+                return null;
+            }
+
+            Map<Object, Object> map = new HashMap<>();
+
+            for (Map.Entry<?, ?> entry : value.entrySet()) {
+                map.put(
+                        keyConverter.toExternal(entry.getKey()),
+                        valueConverter.toExternal(entry.getValue()));
+            }
+            return map;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+
+            final MapDataConverter other = (MapDataConverter) o;
+            return this.keyConverter.equals(other.keyConverter)
+                    && this.valueConverter.equals(other.valueConverter);
+        }
+    }
+
+    /** Get DataConverter according to the given typeInformation. */
+    public static class TypeInfoToDataConverter {
+        private static final Map<Class, DataConverter> typeInfoToDataConverterMap = new HashMap<>();
+
+        static {
+            typeInfoToDataConverterMap.put(
+                    BasicTypeInfo.INT_TYPE_INFO.getTypeClass(), IntDataConverter.INSTANCE);
+            typeInfoToDataConverterMap.put(
+                    BasicTypeInfo.SHORT_TYPE_INFO.getTypeClass(), ShortDataConverter.INSTANCE);
+            typeInfoToDataConverterMap.put(
+                    BasicTypeInfo.FLOAT_TYPE_INFO.getTypeClass(), FloatDataConverter.INSTANCE);
+            typeInfoToDataConverterMap.put(
+                    BasicTypeInfo.BYTE_TYPE_INFO.getTypeClass(), ByteDataConverter.INSTANCE);
+        }
+
+        @SuppressWarnings("unchecked")
+        public static <IN, OUT> DataConverter<IN, OUT> typeInfoDataConverter(
+                TypeInformation<IN> typeInformation) {
+            DataConverter<IN, OUT> dataConverter =
+                    typeInfoToDataConverterMap.get(typeInformation.getTypeClass());
+
+            if (dataConverter != null) {
+                return dataConverter;
+            } else {
+                if (typeInformation instanceof PickledByteArrayTypeInfo) {
+                    return IdentityDataConverter.INSTANCE;
+                }
+
+                if (typeInformation instanceof RowTypeInfo) {
+                    DataConverter[] fieldDataConverters =
+                            Arrays.stream(((RowTypeInfo) typeInformation).getFieldTypes())
+                                    .map(TypeInfoToDataConverter::typeInfoDataConverter)
+                                    .toArray(DataConverter[]::new);
+                    return (DataConverter<IN, OUT>) new RowDataConverter(fieldDataConverters);
+                }
+
+                if (typeInformation instanceof TupleTypeInfo) {
+                    Object[] fieldDataConverters =
+                            Arrays.stream(((TupleTypeInfo) typeInformation).getFieldTypes())
+                                    .map(TypeInfoToDataConverter::typeInfoDataConverter)
+                                    .toArray(DataConverter[]::new);
+                    return (DataConverter<IN, OUT>)
+                            new TupleDataConverter((DataConverter[]) fieldDataConverters);
+                }
+
+                if (typeInformation instanceof BasicArrayTypeInfo) {
+                    return (DataConverter<IN, OUT>)
+                            new ArrayDataConverter(
+                                    ((BasicArrayTypeInfo) typeInformation).getComponentTypeClass(),
+                                    TypeInfoToDataConverter.typeInfoDataConverter(
+                                            ((BasicArrayTypeInfo) typeInformation)
+                                                    .getComponentInfo()));
+                }
+
+                if (typeInformation instanceof ObjectArrayTypeInfo) {
+                    return (DataConverter<IN, OUT>)
+                            new ArrayDataConverter(
+                                    ((ObjectArrayTypeInfo) typeInformation)
+                                            .getComponentInfo()
+                                            .getTypeClass(),
+                                    TypeInfoToDataConverter.typeInfoDataConverter(
+                                            ((ObjectArrayTypeInfo) typeInformation)
+                                                    .getComponentInfo()));
+                }
+
+                if (typeInformation instanceof ListTypeInfo) {
+                    return (DataConverter<IN, OUT>)
+                            new ListDataConverter(
+                                    TypeInfoToDataConverter.typeInfoDataConverter(
+                                            ((ListTypeInfo) typeInformation).getElementTypeInfo()));
+                }
+
+                if (typeInformation instanceof MapTypeInfo) {
+                    return (DataConverter<IN, OUT>)
+                            new MapDataConverter(
+                                    TypeInfoToDataConverter.typeInfoDataConverter(
+                                            ((MapTypeInfo) typeInformation).getKeyTypeInfo()),
+                                    TypeInfoToDataConverter.typeInfoDataConverter(
+                                            ((MapTypeInfo) typeInformation).getValueTypeInfo()));
+                }
+
+                if (typeInformation instanceof InternalTypeInfo) {
+
+                    return ((InternalTypeInfo<IN>) typeInformation)
+                            .toLogicalType()
+                            .accept(LogicalTypeToDataConverter.INSTANCE);
+                }
+
+                if (typeInformation instanceof ExternalTypeInfo) {
+                    return (DataConverter<IN, OUT>)
+                            TypeInfoToDataConverter.typeInfoDataConverter(
+                                    LegacyTypeInfoDataTypeConverter.toLegacyTypeInfo(
+                                            ((ExternalTypeInfo<?>) typeInformation).getDataType()));
+                }
+            }
+
+            return IdentityDataConverter.INSTANCE;
+        }
+    }
+
+    private static class LogicalTypeToDataConverter
+            extends LogicalTypeDefaultVisitor<DataConverter> {
+
+        public static final LogicalTypeToDataConverter INSTANCE = new LogicalTypeToDataConverter();
+
+        @Override
+        public DataConverter visit(IntType intType) {
+            return IntDataConverter.INSTANCE;
+        }
+
+        @Override
+        public DataConverter visit(TinyIntType tinyIntType) {
+            return ByteDataConverter.INSTANCE;
+        }
+
+        @Override
+        public DataConverter visit(SmallIntType smallIntType) {
+            return ShortDataConverter.INSTANCE;
+        }
+
+        @Override
+        public DataConverter visit(FloatType floatType) {
+            return FloatDataConverter.INSTANCE;
+        }
+
+        @Override
+        public DataConverter visit(ArrayType arrayType) {
+            LogicalType elementType = arrayType.getElementType();
+            return new ArrayDataConverter<>(
+                    elementType.getDefaultConversion(), elementType.accept(this));
+        }
+
+        @Override
+        public DataConverter visit(MapType mapType) {
+            return new MapDataConverter(
+                    mapType.getKeyType().accept(this), mapType.getValueType().accept(this));
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public DataConverter visit(RowType rowType) {
+            final DataConverter[] fieldTypeDataConverters =
+                    rowType.getFields().stream()
+                            .map(f -> f.getType().accept(this))
+                            .toArray(DataConverter[]::new);
+
+            DataFormatConverters.DataFormatConverter dataFormatConverter =
+                    DataFormatConverters.getConverterForDataType(
+                            TypeConversions.fromLogicalToDataType(rowType));
+
+            return new RowDataDataConverter(
+                    new RowDataConverter(fieldTypeDataConverters), dataFormatConverter);
+        }
+
+        @Override
+        protected DataConverter defaultMethod(LogicalType logicalType) {
+            return IdentityDataConverter.INSTANCE;
         }
     }
 

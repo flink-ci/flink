@@ -19,6 +19,7 @@
 package org.apache.flink.table.gateway.service.session;
 
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.table.gateway.api.endpoint.EndpointVersion;
 import org.apache.flink.table.gateway.api.session.SessionHandle;
 import org.apache.flink.table.gateway.service.context.SessionContext;
 import org.apache.flink.table.gateway.service.operation.OperationExecutor;
@@ -57,8 +58,16 @@ public class Session implements Closeable {
         return sessionContext.getConfigMap();
     }
 
+    public EndpointVersion getEndpointVersion() {
+        return sessionContext.getEndpointVersion();
+    }
+
     public OperationManager getOperationManager() {
         return sessionContext.getOperationManager();
+    }
+
+    public OperationExecutor createExecutor() {
+        return sessionContext.createOperationExecutor(new Configuration());
     }
 
     public OperationExecutor createExecutor(Configuration executionConfig) {

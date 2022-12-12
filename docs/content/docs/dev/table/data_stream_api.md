@@ -973,6 +973,7 @@ import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.Collector;
+import java.time.LocalDateTime;
 
 // setup DataStream API
 StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -1714,7 +1715,7 @@ table.printSchema();
 
 // data types can be extracted reflectively as above or explicitly defined
 
-Table table3 = tableEnv
+Table table = tableEnv
     .fromDataStream(
         dataStream,
         Schema.newBuilder()
@@ -1756,6 +1757,7 @@ The following code shows how to use `createTemporaryView` for different scenario
 ```java
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.table.api.Schema;
 
 // create some DataStream
 DataStream<Tuple2<Long, String>> dataStream = env.fromElements(
@@ -2014,6 +2016,8 @@ DataStream<Row> dataStream = tableEnv.toDataStream(table);
 
 DataStream<User> dataStream = tableEnv.toDataStream(table, User.class);
 
+// === EXAMPLE 3 ===
+
 // data types can be extracted reflectively as above or explicitly defined
 
 DataStream<User> dataStream =
@@ -2068,6 +2072,8 @@ val dataStream: DataStream[Row] = tableEnv.toDataStream(table)
 // metadata and watermarks are propagated
 
 val dataStream: DataStream[User] = tableEnv.toDataStream(table, classOf[User])
+
+// === EXAMPLE 3 ===
 
 // data types can be extracted reflectively as above or explicitly defined
 
@@ -2890,9 +2896,9 @@ env.execute()
 ```python
 from pyflink.common import Encoder
 from pyflink.datastream import StreamExecutionEnvironment
-from pyflink.datastream.connectors import FileSink
+from pyflink.datastream.connectors.file_system import FileSink
 from pyflink.table import StreamTableEnvironment, TableDescriptor, Schema, DataTypes
-    
+
 env = StreamExecutionEnvironment.get_execution_environment()
 table_env = StreamTableEnvironment.create(env)
 
@@ -2921,11 +2927,15 @@ data_stream = env.from_collection([1, 2, 3])
 table_from_stream = table_env.from_data_stream(data_stream)
 statement_set.add_insert(sink_descriptor, table_from_stream)
 
+# attach both pipelines to StreamExecutionEnvironment
+# (the statement set will be cleared after calling this method)
+statement_set.attach_as_datastream()
+
 # define other DataStream API parts
-env.from_collection([4, 5, 6])
-    .add_sink(FileSink
-              .for_row_format('/tmp/output', Encoder.simple_string_encoder())
-              .build())
+env.from_collection([4, 5, 6]) \
+   .add_sink(FileSink
+             .for_row_format('/tmp/output', Encoder.simple_string_encoder())
+             .build())
 
 # use DataStream API to submit the pipelines
 env.execute()

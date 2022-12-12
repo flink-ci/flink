@@ -106,11 +106,14 @@ public class TaskExecutorGatewayDecoratorBase implements TaskExecutorGateway {
     }
 
     @Override
-    public void releaseOrPromotePartitions(
-            JobID jobId,
-            Set<ResultPartitionID> partitionToRelease,
-            Set<ResultPartitionID> partitionsToPromote) {
-        originalGateway.releaseOrPromotePartitions(jobId, partitionToRelease, partitionsToPromote);
+    public void releasePartitions(JobID jobId, Set<ResultPartitionID> partitionIds) {
+        originalGateway.releasePartitions(jobId, partitionIds);
+    }
+
+    @Override
+    public CompletableFuture<Acknowledge> promotePartitions(
+            JobID jobId, Set<ResultPartitionID> partitionIds) {
+        return originalGateway.promotePartitions(jobId, partitionIds);
     }
 
     @Override
@@ -227,6 +230,12 @@ public class TaskExecutorGatewayDecoratorBase implements TaskExecutorGateway {
     @Override
     public CompletableFuture<ThreadDumpInfo> requestThreadDump(Time timeout) {
         return originalGateway.requestThreadDump(timeout);
+    }
+
+    @Override
+    public CompletableFuture<Acknowledge> updateDelegationTokens(
+            ResourceManagerId resourceManagerId, byte[] tokens) {
+        return originalGateway.updateDelegationTokens(resourceManagerId, tokens);
     }
 
     @Override

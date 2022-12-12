@@ -20,34 +20,35 @@ package org.apache.flink.table.gateway.api.results;
 
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.gateway.api.operation.OperationStatus;
-import org.apache.flink.table.gateway.api.operation.OperationType;
+import org.apache.flink.util.ExceptionUtils;
+
+import javax.annotation.Nullable;
 
 import java.util.Objects;
+import java.util.Optional;
 
 /** Information of the {@code Operation}. */
 @PublicEvolving
 public class OperationInfo {
 
     private final OperationStatus status;
-    private final boolean hasResults;
-    private final OperationType type;
+    @Nullable private final Exception exception;
 
-    public OperationInfo(OperationStatus status, OperationType type, boolean hasResults) {
+    public OperationInfo(OperationStatus status) {
+        this(status, null);
+    }
+
+    public OperationInfo(OperationStatus status, @Nullable Exception exception) {
         this.status = status;
-        this.type = type;
-        this.hasResults = hasResults;
-    }
-
-    public boolean isHasResults() {
-        return hasResults;
-    }
-
-    public OperationType getType() {
-        return type;
+        this.exception = exception;
     }
 
     public OperationStatus getStatus() {
         return status;
+    }
+
+    public Optional<Exception> getException() {
+        return Optional.ofNullable(exception);
     }
 
     @Override
@@ -59,11 +60,21 @@ public class OperationInfo {
             return false;
         }
         OperationInfo that = (OperationInfo) o;
-        return hasResults == that.hasResults && status == that.status && type == that.type;
+        return status == that.status && Objects.equals(exception, that.exception);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(status, hasResults, type);
+        return Objects.hash(status, exception);
+    }
+
+    @Override
+    public String toString() {
+        return "OperationInfo{"
+                + "status="
+                + status
+                + ", exception="
+                + (exception == null ? "null" : ExceptionUtils.stringifyException(exception))
+                + '}';
     }
 }

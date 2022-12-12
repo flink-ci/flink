@@ -79,7 +79,7 @@ public class SingleInputGateFactory {
 
     private final int floatingNetworkBuffersPerGate;
 
-    private final boolean blockingShuffleCompressionEnabled;
+    private final boolean batchShuffleCompressionEnabled;
 
     private final String compressionCodec;
 
@@ -101,8 +101,7 @@ public class SingleInputGateFactory {
                 NettyShuffleUtils.getNetworkBuffersPerInputChannel(
                         networkConfig.networkBuffersPerChannel());
         this.floatingNetworkBuffersPerGate = networkConfig.floatingNetworkBuffersPerGate();
-        this.blockingShuffleCompressionEnabled =
-                networkConfig.isBlockingShuffleCompressionEnabled();
+        this.batchShuffleCompressionEnabled = networkConfig.isBatchShuffleCompressionEnabled();
         this.compressionCodec = networkConfig.getCompressionCodec();
         this.networkBufferSize = networkConfig.networkBufferSize();
         this.connectionManager = connectionManager;
@@ -117,13 +116,14 @@ public class SingleInputGateFactory {
             @Nonnull ShuffleIOOwnerContext owner,
             int gateIndex,
             @Nonnull InputGateDeploymentDescriptor igdd,
-            @Nonnull PartitionProducerStateProvider partitionProducerStateProvider) {
+            @Nonnull PartitionProducerStateProvider partitionProducerStateProvider,
+            @Nonnull InputChannelMetrics metrics) {
         SupplierWithException<BufferPool, IOException> bufferPoolFactory =
                 createBufferPoolFactory(networkBufferPool, floatingNetworkBuffersPerGate);
 
         BufferDecompressor bufferDecompressor = null;
-        if (igdd.getConsumedPartitionType().isBlockingOrBlockingPersistentResultPartition()
-                && blockingShuffleCompressionEnabled) {
+        if (igdd.getConsumedPartitionType().supportCompression()
+                && batchShuffleCompressionEnabled) {
             bufferDecompressor = new BufferDecompressor(networkBufferSize, compressionCodec);
         }
 
@@ -149,8 +149,6 @@ public class SingleInputGateFactory {
                         maybeCreateBufferDebloater(
                                 owningTaskName, gateIndex, networkInputGroup.addGroup(gateIndex)));
 
-        InputChannelMetrics metrics =
-                new InputChannelMetrics(networkInputGroup, owner.getParentGroup());
         createInputChannels(owningTaskName, igdd, inputGate, subpartitionIndexRange, metrics);
         return inputGate;
     }

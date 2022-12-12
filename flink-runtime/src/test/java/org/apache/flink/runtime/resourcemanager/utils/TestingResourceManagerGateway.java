@@ -311,7 +311,8 @@ public class TestingResourceManagerGateway implements ResourceManagerGateway {
                     new TaskExecutorRegistrationSuccess(
                             new InstanceID(),
                             ownResourceId,
-                            new ClusterInformation("localhost", 1234)));
+                            new ClusterInformation("localhost", 1234),
+                            null));
         }
     }
 
@@ -405,7 +406,7 @@ public class TestingResourceManagerGateway implements ResourceManagerGateway {
     @Override
     public CompletableFuture<ResourceOverview> requestResourceOverview(Time timeout) {
         return CompletableFuture.completedFuture(
-                new ResourceOverview(1, 1, 1, ResourceProfile.ZERO, ResourceProfile.ZERO));
+                new ResourceOverview(1, 1, 1, 0, 0, ResourceProfile.ZERO, ResourceProfile.ZERO));
     }
 
     @Override

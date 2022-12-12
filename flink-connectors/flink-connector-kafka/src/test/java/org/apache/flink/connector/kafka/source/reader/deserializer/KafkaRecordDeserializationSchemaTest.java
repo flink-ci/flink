@@ -18,10 +18,12 @@
 
 package org.apache.flink.connector.kafka.source.reader.deserializer;
 
+import org.apache.flink.connector.testutils.formats.DummyInitializationContext;
 import org.apache.flink.connector.testutils.source.deserialization.TestingDeserializationContext;
-import org.apache.flink.formats.json.JsonNodeDeserializationSchema;
+import org.apache.flink.formats.json.JsonDeserializationSchema;
 import org.apache.flink.streaming.util.serialization.JSONKeyValueDeserializationSchema;
 import org.apache.flink.util.Collector;
+import org.apache.flink.util.jackson.JacksonMapperFactory;
 
 import org.apache.flink.shaded.guava30.com.google.common.collect.ImmutableMap;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
@@ -35,7 +37,6 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.Before;
 import org.junit.Test;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,6 +46,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Unit tests for KafkaRecordDeserializationSchema. */
 public class KafkaRecordDeserializationSchemaTest {
+
+    private static final ObjectMapper OBJECT_MAPPER = JacksonMapperFactory.createObjectMapper();
 
     private static Map<String, ?> configurableConfiguration;
     private static Map<String, ?> configuration;
@@ -58,10 +61,11 @@ public class KafkaRecordDeserializationSchemaTest {
     }
 
     @Test
-    public void testKafkaDeserializationSchemaWrapper() throws IOException {
+    public void testKafkaDeserializationSchemaWrapper() throws Exception {
         final ConsumerRecord<byte[], byte[]> consumerRecord = getConsumerRecord();
         KafkaRecordDeserializationSchema<ObjectNode> schema =
                 KafkaRecordDeserializationSchema.of(new JSONKeyValueDeserializationSchema(true));
+        schema.open(new DummyInitializationContext());
         SimpleCollector<ObjectNode> collector = new SimpleCollector<>();
         schema.deserialize(consumerRecord, collector);
 
@@ -76,10 +80,12 @@ public class KafkaRecordDeserializationSchemaTest {
     }
 
     @Test
-    public void testKafkaValueDeserializationSchemaWrapper() throws IOException {
+    public void testKafkaValueDeserializationSchemaWrapper() throws Exception {
         final ConsumerRecord<byte[], byte[]> consumerRecord = getConsumerRecord();
         KafkaRecordDeserializationSchema<ObjectNode> schema =
-                KafkaRecordDeserializationSchema.valueOnly(new JsonNodeDeserializationSchema());
+                KafkaRecordDeserializationSchema.valueOnly(
+                        new JsonDeserializationSchema<>(ObjectNode.class));
+        schema.open(new DummyInitializationContext());
         SimpleCollector<ObjectNode> collector = new SimpleCollector<>();
         schema.deserialize(consumerRecord, collector);
 
@@ -132,14 +138,13 @@ public class KafkaRecordDeserializationSchemaTest {
     }
 
     private ConsumerRecord<byte[], byte[]> getConsumerRecord() throws JsonProcessingException {
-        ObjectMapper mapper = new ObjectMapper();
-        ObjectNode initialKey = mapper.createObjectNode();
+        ObjectNode initialKey = OBJECT_MAPPER.createObjectNode();
         initialKey.put("index", 4);
-        byte[] serializedKey = mapper.writeValueAsBytes(initialKey);
+        byte[] serializedKey = OBJECT_MAPPER.writeValueAsBytes(initialKey);
 
-        ObjectNode initialValue = mapper.createObjectNode();
+        ObjectNode initialValue = OBJECT_MAPPER.createObjectNode();
         initialValue.put("word", "world");
-        byte[] serializedValue = mapper.writeValueAsBytes(initialValue);
+        byte[] serializedValue = OBJECT_MAPPER.writeValueAsBytes(initialValue);
 
         return new ConsumerRecord<>("topic#1", 3, 4L, serializedKey, serializedValue);
     }

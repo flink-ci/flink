@@ -168,12 +168,11 @@ public class SortMergeResultPartition extends ResultPartition {
         // input balance of the downstream tasks
         this.subpartitionOrder = getRandomSubpartitionOrder(numSubpartitions);
         this.readScheduler =
-                new SortMergeResultPartitionReadScheduler(
-                        numSubpartitions, readBufferPool, readIOExecutor, lock);
+                new SortMergeResultPartitionReadScheduler(readBufferPool, readIOExecutor, lock);
     }
 
     @Override
-    public void setup() throws IOException {
+    protected void setupInternal() throws IOException {
         synchronized (lock) {
             if (isReleased()) {
                 throw new IOException("Result partition has been released.");
@@ -189,8 +188,6 @@ public class SortMergeResultPartition extends ResultPartition {
 
         // initialize the buffer pool eagerly to avoid reporting errors such as OOM too late
         readBufferPool.initialize();
-        super.setup();
-
         LOG.info("Sort-merge partition {} initialized.", getPartitionId());
     }
 
@@ -200,20 +197,20 @@ public class SortMergeResultPartition extends ResultPartition {
             if (resultFile == null && fileWriter != null) {
                 fileWriter.releaseQuietly();
             }
-
-            // delete the produced file only when no reader is reading now
-            readScheduler
-                    .release()
-                    .thenRun(
-                            () -> {
-                                synchronized (lock) {
-                                    if (resultFile != null) {
-                                        resultFile.deleteQuietly();
-                                        resultFile = null;
-                                    }
-                                }
-                            });
         }
+
+        // delete the produced file only when no reader is reading now
+        readScheduler
+                .release()
+                .thenRun(
+                        () -> {
+                            synchronized (lock) {
+                                if (resultFile != null) {
+                                    resultFile.deleteQuietly();
+                                    resultFile = null;
+                                }
+                            }
+                        });
     }
 
     @Override

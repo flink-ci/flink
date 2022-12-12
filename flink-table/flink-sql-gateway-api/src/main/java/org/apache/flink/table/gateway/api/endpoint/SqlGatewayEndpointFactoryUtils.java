@@ -18,9 +18,8 @@
 
 package org.apache.flink.table.gateway.api.endpoint;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.PublicEvolving;
-import org.apache.flink.configuration.ConfigOption;
-import org.apache.flink.configuration.ConfigOptions;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.DelegatingConfiguration;
 import org.apache.flink.configuration.ReadableConfig;
@@ -36,19 +35,13 @@ import java.util.Map;
 import java.util.Set;
 
 import static org.apache.flink.table.factories.FactoryUtil.PROPERTY_VERSION;
+import static org.apache.flink.table.factories.FactoryUtil.SQL_GATEWAY_ENDPOINT_TYPE;
 
 /** Util to discover the {@link SqlGatewayEndpoint}. */
 @PublicEvolving
 public class SqlGatewayEndpointFactoryUtils {
 
-    private static final String GATEWAY_ENDPOINT_PREFIX = "sql-gateway.endpoint";
-
-    public static final ConfigOption<List<String>> SQL_GATEWAY_ENDPOINT_TYPE =
-            ConfigOptions.key(String.format("%s.type", GATEWAY_ENDPOINT_PREFIX))
-                    .stringType()
-                    .asList()
-                    .noDefaultValue()
-                    .withDescription("Specify the endpoints that are used.");
+    public static final String GATEWAY_ENDPOINT_PREFIX = "sql-gateway.endpoint";
 
     /**
      * Attempts to discover the appropriate endpoint factory and creates the instance of the
@@ -74,17 +67,24 @@ public class SqlGatewayEndpointFactoryUtils {
                             SqlGatewayEndpointFactory.class,
                             identifier);
 
-            Map<String, String> endpointConfig =
-                    new DelegatingConfiguration(
-                                    configuration,
-                                    String.format("%s.%s.", GATEWAY_ENDPOINT_PREFIX, identifier))
-                            .toMap();
             endpoints.add(
                     factory.createSqlGatewayEndpoint(
                             new DefaultEndpointFactoryContext(
-                                    service, configuration, endpointConfig)));
+                                    service,
+                                    configuration,
+                                    getEndpointConfig(configuration, identifier))));
         }
         return endpoints;
+    }
+
+    public static Map<String, String> getEndpointConfig(
+            Configuration flinkConf, String identifier) {
+        return new DelegatingConfiguration(flinkConf, getSqlGatewayOptionPrefix(identifier))
+                .toMap();
+    }
+
+    public static String getSqlGatewayOptionPrefix(String identifier) {
+        return String.format("%s.%s.", GATEWAY_ENDPOINT_PREFIX, identifier);
     }
 
     /**
@@ -105,6 +105,7 @@ public class SqlGatewayEndpointFactoryUtils {
      * @see #createEndpointFactoryHelper(SqlGatewayEndpointFactory,
      *     SqlGatewayEndpointFactory.Context)
      */
+    @PublicEvolving
     public static class EndpointFactoryHelper extends FactoryHelper<SqlGatewayEndpointFactory> {
 
         private EndpointFactoryHelper(
@@ -113,8 +114,9 @@ public class SqlGatewayEndpointFactoryUtils {
         }
     }
 
-    private static class DefaultEndpointFactoryContext
-            implements SqlGatewayEndpointFactory.Context {
+    /** The default context of {@link SqlGatewayEndpointFactory}. */
+    @Internal
+    public static class DefaultEndpointFactoryContext implements SqlGatewayEndpointFactory.Context {
 
         private final SqlGatewayService service;
         private final Configuration flinkConfiguration;

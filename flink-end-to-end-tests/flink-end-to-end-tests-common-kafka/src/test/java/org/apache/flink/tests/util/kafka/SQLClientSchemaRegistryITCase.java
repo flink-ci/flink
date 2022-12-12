@@ -21,8 +21,8 @@ package org.apache.flink.tests.util.kafka;
 import org.apache.flink.api.common.time.Deadline;
 import org.apache.flink.connector.testframe.container.FlinkContainers;
 import org.apache.flink.connector.testframe.container.TestcontainersSettings;
+import org.apache.flink.test.resources.ResourceTestUtils;
 import org.apache.flink.test.util.SQLJobSubmission;
-import org.apache.flink.tests.util.TestUtils;
 import org.apache.flink.tests.util.kafka.containers.SchemaRegistryContainer;
 import org.apache.flink.util.DockerImageVersions;
 
@@ -65,10 +65,13 @@ public class SQLClientSchemaRegistryITCase {
 
     public static final String INTER_CONTAINER_KAFKA_ALIAS = "kafka";
     public static final String INTER_CONTAINER_REGISTRY_ALIAS = "registry";
-    private static final Path sqlAvroJar = TestUtils.getResource(".*avro.jar");
-    private static final Path sqlAvroRegistryJar = TestUtils.getResource(".*avro-confluent.jar");
-    private static final Path sqlToolBoxJar = TestUtils.getResource(".*SqlToolbox.jar");
-    private final Path sqlConnectorKafkaJar = TestUtils.getResource(".*kafka.jar");
+    private static final Path sqlAvroJar = ResourceTestUtils.getResource(".*avro.jar");
+    private static final Path sqlAvroRegistryJar =
+            ResourceTestUtils.getResource(".*avro-confluent.jar");
+    private static final Path sqlToolBoxJar = ResourceTestUtils.getResource(".*SqlToolbox.jar");
+    private final Path sqlConnectorKafkaJar = ResourceTestUtils.getResource(".*kafka.jar");
+
+    private final Path guavaJar = ResourceTestUtils.getResource(".*guava.jar");
 
     @ClassRule public static final Network NETWORK = Network.newNetwork();
 
@@ -83,7 +86,7 @@ public class SQLClientSchemaRegistryITCase {
 
     @ClassRule
     public static final SchemaRegistryContainer REGISTRY =
-            new SchemaRegistryContainer("6.2.2")
+            new SchemaRegistryContainer(DockerImageName.parse(DockerImageVersions.SCHEMA_REGISTRY))
                     .withKafka(INTER_CONTAINER_KAFKA_ALIAS + ":9092")
                     .withNetwork(NETWORK)
                     .withNetworkAliases(INTER_CONTAINER_REGISTRY_ALIAS)
@@ -116,7 +119,7 @@ public class SQLClientSchemaRegistryITCase {
         String testResultsTopic = "test-results-" + UUID.randomUUID().toString();
         kafkaClient.createTopic(1, 1, testCategoryTopic);
         Schema categoryRecord =
-                SchemaBuilder.record("record")
+                SchemaBuilder.record("org.apache.flink.avro.generated.record")
                         .fields()
                         .requiredLong("category_id")
                         .optionalString("name")
@@ -253,7 +256,11 @@ public class SQLClientSchemaRegistryITCase {
         flink.submitSQLJob(
                 new SQLJobSubmission.SQLJobSubmissionBuilder(sqlLines)
                         .addJars(
-                                sqlAvroJar, sqlAvroRegistryJar, sqlConnectorKafkaJar, sqlToolBoxJar)
+                                sqlAvroJar,
+                                sqlAvroRegistryJar,
+                                sqlConnectorKafkaJar,
+                                sqlToolBoxJar,
+                                guavaJar)
                         .build());
     }
 }

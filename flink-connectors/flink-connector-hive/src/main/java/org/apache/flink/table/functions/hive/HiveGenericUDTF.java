@@ -39,11 +39,15 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.udf.generic.Collector;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDTF;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.objectinspector.StandardStructObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 
@@ -81,7 +85,10 @@ public class HiveGenericUDTF extends TableFunction<Row> implements HiveFunction<
                 });
 
         ObjectInspector[] argumentInspectors = HiveInspectors.getArgInspectors(hiveShim, arguments);
-        returnInspector = function.initialize(argumentInspectors);
+
+        StandardStructObjectInspector standardStructObjectInspector =
+                getStandardStructObjectInspector(argumentInspectors);
+        returnInspector = function.initialize(standardStructObjectInspector);
 
         isArgsSingleArray = HiveFunctionUtil.isSingleBoxedArray(arguments);
 
@@ -108,7 +115,7 @@ public class HiveGenericUDTF extends TableFunction<Row> implements HiveFunction<
 
         // When the parameter is (Integer, Array[Double]), Flink calls udf.eval(Integer,
         // Array[Double]), which is not a problem.
-        // But when the parameter is an single array, Flink calls udf.eval(Array[Double]),
+        // But when the parameter is a single array, Flink calls udf.eval(Array[Double]),
         // at this point java's var-args will cast Array[Double] to Array[Object] and let it be
         // Object... args, So we need wrap it.
         if (isArgsSingleArray) {
@@ -147,12 +154,27 @@ public class HiveGenericUDTF extends TableFunction<Row> implements HiveFunction<
                 "Getting result type of HiveGenericUDTF with {}",
                 hiveFunctionWrapper.getUDFClassName());
         ObjectInspector[] argumentInspectors = HiveInspectors.getArgInspectors(hiveShim, arguments);
+        StandardStructObjectInspector standardStructObjectInspector =
+                getStandardStructObjectInspector(argumentInspectors);
         return HiveTypeUtil.toFlinkType(
-                hiveFunctionWrapper.createFunction().initialize(argumentInspectors));
+                hiveFunctionWrapper.createFunction().initialize(standardStructObjectInspector));
     }
 
     @Override
     public HiveFunctionWrapper<GenericUDTF> getFunctionWrapper() {
         return hiveFunctionWrapper;
+    }
+
+    public static StandardStructObjectInspector getStandardStructObjectInspector(
+            ObjectInspector[] argumentInspectors) {
+        List<String> dummyStructFieldNames = new ArrayList<>();
+        for (int i = 0; i < argumentInspectors.length; i++) {
+            // dummy column name just for place holder
+            dummyStructFieldNames.add("dummy_col_" + i);
+        }
+        StandardStructObjectInspector standardStructObjectInspector =
+                ObjectInspectorFactory.getStandardStructObjectInspector(
+                        dummyStructFieldNames, Arrays.asList(argumentInspectors));
+        return standardStructObjectInspector;
     }
 }

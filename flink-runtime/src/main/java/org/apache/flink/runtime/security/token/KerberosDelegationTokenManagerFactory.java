@@ -18,6 +18,7 @@
 
 package org.apache.flink.runtime.security.token;
 
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.SecurityOptions;
 import org.apache.flink.runtime.hadoop.HadoopDependency;
@@ -28,9 +29,11 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.util.concurrent.ExecutorService;
 
 /** A factory for {@link KerberosDelegationTokenManager}. */
+@Internal
 public class KerberosDelegationTokenManagerFactory {
 
     private static final Logger LOG =
@@ -40,12 +43,21 @@ public class KerberosDelegationTokenManagerFactory {
             ClassLoader classLoader,
             Configuration configuration,
             @Nullable ScheduledExecutor scheduledExecutor,
-            @Nullable ExecutorService ioExecutor) {
+            @Nullable ExecutorService ioExecutor)
+            throws IOException {
 
         if (configuration.getBoolean(SecurityOptions.KERBEROS_FETCH_DELEGATION_TOKEN)) {
             if (HadoopDependency.isHadoopCommonOnClasspath(classLoader)) {
-                return new KerberosDelegationTokenManager(
-                        configuration, scheduledExecutor, ioExecutor);
+                KerberosLoginProvider kerberosLoginProvider =
+                        new KerberosLoginProvider(configuration);
+                if (kerberosLoginProvider.isLoginPossible()) {
+                    return new KerberosDelegationTokenManager(
+                            configuration, scheduledExecutor, ioExecutor);
+                } else {
+                    LOG.info(
+                            "Cannot use kerberos delegation token manager no valid kerberos credentials provided.");
+                    return new NoOpDelegationTokenManager();
+                }
             } else {
                 LOG.info(
                         "Cannot use kerberos delegation token manager because Hadoop cannot be found in the Classpath.");

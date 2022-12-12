@@ -72,7 +72,7 @@ public class ChangelogKeyedStateBackendTest {
         MockKeyedStateBackend<Integer> mock = createMock();
         ChangelogKeyedStateBackend<Integer> changelog = createChangelog(mock);
         try {
-            changelog.updateChangelogSnapshotState(
+            changelog.handleMaterializationResult(
                     SnapshotResult.empty(), materializationId, SequenceNumber.of(Long.MAX_VALUE));
             checkpoint(changelog, checkpointId).get().discardState();
 
@@ -91,7 +91,7 @@ public class ChangelogKeyedStateBackendTest {
                         IntSerializer.INSTANCE,
                         getClass().getClassLoader(),
                         1,
-                        KeyGroupRange.EMPTY_KEY_GROUP_RANGE,
+                        KeyGroupRange.of(0, 0),
                         new ExecutionConfig(),
                         TtlTimeProvider.DEFAULT,
                         LatencyTrackingStateConfig.disabled(),
