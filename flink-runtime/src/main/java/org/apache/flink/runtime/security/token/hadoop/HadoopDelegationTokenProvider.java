@@ -16,10 +16,11 @@
  * limitations under the License.
  */
 
-package org.apache.flink.runtime.security.token;
+package org.apache.flink.runtime.security.token.hadoop;
 
 import org.apache.flink.annotation.Experimental;
 import org.apache.flink.configuration.Configuration;
+import org.apache.flink.runtime.security.token.DelegationTokenManager;
 
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -31,9 +32,6 @@ import java.util.Optional;
  * {@link DelegationTokenManager} through service loader.
  *
  * <h2>Important Notes</h2>
- *
- * <p>"obtainDelegationTokens" function is running in "UserGroupInformation.doAs" context so
- * authentication is handled inside {@link DelegationTokenManager}
  *
  * <p>Tokens are stored in {@link UserGroupInformation}
  */
