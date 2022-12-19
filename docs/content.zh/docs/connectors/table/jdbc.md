@@ -673,12 +673,6 @@ Flink 支持连接到多个使用方言（dialect）的数据库，如 MySQL、O
       <td><code>DECIMAL(20, 0)</code></td>
     </tr>
     <tr>
-      <td><code>BIGINT</code></td>
-      <td></td>
-      <td><code>BIGINT</code></td>
-      <td><code>BIGINT</code></td>
-    </tr>
-    <tr>
       <td><code>FLOAT</code></td>
       <td>
         <code>BINARY_FLOAT</code></td>
