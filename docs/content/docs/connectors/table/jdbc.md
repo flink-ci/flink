@@ -655,10 +655,6 @@ Flink supports connect to several databases which uses dialect like MySQL, Oracl
       <td><code>DECIMAL(20, 0)</code></td>
     </tr>
     <tr>
-      <td><code>BIGINT</code></td>
-      <td></td>
-      <td><code>BIGINT</code></td>
-      <td><code>BIGINT</code></td>
     </tr>
     <tr>
       <td><code>FLOAT</code></td>
