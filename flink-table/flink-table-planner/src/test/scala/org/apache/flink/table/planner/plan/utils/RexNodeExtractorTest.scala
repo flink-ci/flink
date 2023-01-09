@@ -31,6 +31,7 @@ import org.apache.flink.table.planner.functions.sql.FlinkSqlOperatorTable
 import org.apache.flink.table.planner.functions.utils.ScalarSqlFunction
 import org.apache.flink.table.planner.utils.{DateTimeTestUtil, IntSumAggFunction}
 import org.apache.flink.table.resource.ResourceManager
+import org.apache.flink.table.types.logical.{DecimalType, DoubleType, IntType, VarCharType}
 import org.apache.flink.table.utils.CatalogManagerMocks
 
 import org.apache.calcite.rel.`type`.RelDataType
@@ -40,8 +41,8 @@ import org.apache.calcite.sql.SqlPostfixOperator
 import org.apache.calcite.sql.fun.{SqlStdOperatorTable, SqlTrimFunction}
 import org.apache.calcite.util.{DateString, TimestampString, TimeString}
 import org.hamcrest.CoreMatchers.is
+import org.junit.{Assert, Test}
 import org.junit.Assert.{assertArrayEquals, assertEquals, assertThat, assertTrue}
-import org.junit.Test
 
 import java.math.BigDecimal
 import java.net.URL
@@ -719,6 +720,70 @@ class RexNodeExtractorTest extends RexNodeTestBase {
 
       assertExpressionArrayEquals(expected, converted)
     }
+  }
+
+  @Test
+  def testExtractPartitionPredicateList(): Unit = {
+    val doubleType: RelDataType =
+      typeFactory.createFieldTypeFromLogicalType(new DoubleType(false))
+
+    val decimalType: RelDataType =
+      typeFactory.createFieldTypeFromLogicalType(new DecimalType(4, 3))
+
+    val rand =
+      rexBuilder.makeCall(FlinkSqlOperatorTable.RAND, rexBuilder.makeLiteral(321, doubleType, true))
+    val c1 = rexBuilder.makeCall(
+      SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+      rand,
+      rexBuilder.makeLiteral(new BigDecimal(0.001), decimalType, true))
+    val (p, nonP) = RexNodeExtractor.extractPartitionPredicateList(
+      c1,
+      -1,
+      Array("a", "b", "p"),
+      rexBuilder,
+      Array("p"))
+    Assert.assertTrue(p.isEmpty)
+    Assert.assertTrue(nonP.nonEmpty)
+  }
+
+  @Test
+  def testExtractPartitionPredicateList2(): Unit = {
+    val stringType = typeFactory.createFieldTypeFromLogicalType(new VarCharType())
+
+    val partition = rexBuilder.makeLiteral("1984")
+    val inputRef = rexBuilder.makeInputRef(stringType, 2)
+    val c1 = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, inputRef, partition)
+    val (p, nonP) = RexNodeExtractor.extractPartitionPredicateList(
+      c1,
+      -1,
+      Array("a", "b", "p"),
+      rexBuilder,
+      Array("p"))
+    Assert.assertTrue(p.nonEmpty)
+    Assert.assertTrue(nonP.isEmpty)
+  }
+
+  @Test
+  def testExtractPartitionPredicateList3(): Unit = {
+    val intType = typeFactory.createFieldTypeFromLogicalType(new IntType())
+    val decimalType: RelDataType =
+      typeFactory.createFieldTypeFromLogicalType(new DecimalType(4, 3))
+
+    val inputRef = rexBuilder.makeInputRef(intType, 2)
+    val rand =
+      rexBuilder.makeCall(FlinkSqlOperatorTable.RAND, inputRef)
+    val c1 = rexBuilder.makeCall(
+      SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
+      rand,
+      rexBuilder.makeLiteral(new BigDecimal(0.001), decimalType, true))
+    val (p, nonP) = RexNodeExtractor.extractPartitionPredicateList(
+      c1,
+      -1,
+      Array("a", "b", "p"),
+      rexBuilder,
+      Array("p"))
+    Assert.assertTrue(p.isEmpty)
+    Assert.assertTrue(nonP.isEmpty)
   }
 
   private def testExtractSinglePostfixCondition(

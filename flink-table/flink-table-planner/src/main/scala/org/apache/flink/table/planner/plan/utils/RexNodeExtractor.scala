@@ -19,7 +19,7 @@ package org.apache.flink.table.planner.plan.utils
 
 import org.apache.flink.annotation.VisibleForTesting
 import org.apache.flink.table.api.TableException
-import org.apache.flink.table.catalog.{CatalogManager, ContextResolvedFunction, FunctionCatalog, FunctionLookup, UnresolvedIdentifier}
+import org.apache.flink.table.catalog.{CatalogManager, ContextResolvedFunction, FunctionCatalog, UnresolvedIdentifier}
 import org.apache.flink.table.data.conversion.{DayTimeIntervalDurationConverter, YearMonthIntervalPeriodConverter}
 import org.apache.flink.table.data.util.DataFormatConverters.{LocalDateConverter, LocalTimeConverter}
 import org.apache.flink.table.expressions._
@@ -209,7 +209,7 @@ object RexNodeExtractor extends Logging {
 
     val (partitionPredicates, nonPartitionPredicates) =
       conjunctions.partition(isSupportedPartitionPredicate(_, partitionFieldNames, inputFieldNames))
-    (partitionPredicates, nonPartitionPredicates)
+    (partitionPredicates.filter(p => RexUtil.isDeterministic(p)), nonPartitionPredicates)
   }
 
   /**
@@ -271,6 +271,12 @@ object RexNodeExtractor extends Logging {
       }
     }
 
+    val inputRefFinder = new InputRefVisitor
+    predicate.accept(inputRefFinder)
+    // if no fields reached, it's not partition condition
+    if (inputRefFinder.getFields.length == 0) {
+      return false
+    }
     try {
       predicate.accept(visitor)
       true

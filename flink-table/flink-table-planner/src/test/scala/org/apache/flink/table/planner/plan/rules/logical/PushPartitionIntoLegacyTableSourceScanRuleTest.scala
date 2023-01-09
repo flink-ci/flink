@@ -18,6 +18,7 @@
 package org.apache.flink.table.planner.plan.rules.logical
 
 import org.apache.flink.table.api.{DataTypes, TableSchema}
+import org.apache.flink.table.functions.ScalarFunction
 import org.apache.flink.table.planner.expressions.utils.Func1
 import org.apache.flink.table.planner.plan.optimize.program.{FlinkBatchProgram, FlinkHepRuleSetProgramBuilder, HEP_RULES_EXECUTION_TYPE}
 import org.apache.flink.table.planner.utils.{BatchTableTestUtil, TableConfigUtils, TableTestBase, TestPartitionableSourceFactory}
@@ -177,6 +178,16 @@ class PushPartitionIntoLegacyTableSourceScanRuleTest(
   def testWithUdfAndVirtualColumn(): Unit = {
     util.addFunction("MyUdf", Func1)
     util.verifyRelPlan("SELECT * FROM VirtualTable WHERE id > 2 AND MyUdf(part2) < 3")
+  }
+
+  @Test
+  def testRandCondition(): Unit = {
+    util.verifyRelPlan("SELECT * FROM MyTable WHERE rand(1) < 0.001")
+  }
+
+  @Test
+  def testRandCondition2(): Unit = {
+    util.verifyRelPlan("SELECT * FROM MyTable WHERE rand(part2) < 0.001")
   }
 }
 
