@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.operations;
 
-
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.table.catalog.ResolvedSchema;
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory;
@@ -80,4 +79,3 @@ public class HivePlannerQueryOperation implements QueryOperation {
         return visitor.visit(this);
     }
 }
-

@@ -18,11 +18,11 @@
 
 package org.apache.flink.table.operations;
 
-import org.apache.calcite.rel.RelNode;
-
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.catalog.ResolvedSchema;
+
+import org.apache.calcite.rel.RelNode;
 
 import java.util.List;
 
@@ -51,8 +51,7 @@ public interface QueryOperation extends Operation {
     }
 
     default RelNode getCalciteTree() {
-        throw new UnsupportedOperationException(
-                "QueryOperations are not provide CalciteTree.");
+        throw new UnsupportedOperationException("QueryOperations are not provide CalciteTree.");
     }
 
     List<QueryOperation> getChildren();
