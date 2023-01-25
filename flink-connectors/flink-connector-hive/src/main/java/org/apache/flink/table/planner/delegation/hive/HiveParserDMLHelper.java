@@ -45,7 +45,7 @@ import org.apache.flink.table.planner.delegation.hive.copy.HiveParserQB;
 import org.apache.flink.table.planner.delegation.hive.copy.HiveParserSqlFunctionConverter;
 import org.apache.flink.table.planner.delegation.hive.copy.HiveParserTypeConverter;
 import org.apache.flink.table.planner.delegation.hive.parse.HiveParserDDLSemanticAnalyzer;
-import org.apache.flink.table.planner.operations.PlannerQueryOperation;
+import org.apache.flink.table.operations.HivePlannerQueryOperation;
 import org.apache.flink.table.planner.plan.nodes.hive.LogicalDistribution;
 import org.apache.flink.table.planner.plan.nodes.hive.LogicalScriptTransform;
 import org.apache.flink.table.types.DataType;
@@ -247,7 +247,7 @@ public class HiveParserDMLHelper {
 
         return Tuple4.of(
                 destTableIdentifier,
-                new PlannerQueryOperation(queryRelNode),
+                new HivePlannerQueryOperation(queryRelNode),
                 staticPartSpec,
                 overwrite);
     }
@@ -377,7 +377,7 @@ public class HiveParserDMLHelper {
         props.put("columns", colNames);
         props.put("columns.types", colTypes);
 
-        PlannerQueryOperation plannerQueryOperation = new PlannerQueryOperation(queryRelNode);
+        QueryOperation plannerQueryOperation = new HivePlannerQueryOperation(queryRelNode);
         return new SinkModifyOperation(
                 createDummyTableForInsertDirectory(
                         plannerQueryOperation.getResolvedSchema(), props),

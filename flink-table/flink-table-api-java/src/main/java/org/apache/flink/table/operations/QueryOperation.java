@@ -18,6 +18,8 @@
 
 package org.apache.flink.table.operations;
 
+import org.apache.calcite.rel.RelNode;
+
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.catalog.ResolvedSchema;
@@ -46,6 +48,11 @@ public interface QueryOperation extends Operation {
     default String asSerializableString() {
         throw new UnsupportedOperationException(
                 "QueryOperations are not string serializable for now.");
+    }
+
+    default RelNode getCalciteTree() {
+        throw new UnsupportedOperationException(
+                "QueryOperations are not provide CalciteTree.");
     }
 
     List<QueryOperation> getChildren();

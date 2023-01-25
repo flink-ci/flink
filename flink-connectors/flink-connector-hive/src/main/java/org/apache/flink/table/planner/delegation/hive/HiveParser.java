@@ -47,7 +47,7 @@ import org.apache.flink.table.planner.delegation.hive.parse.HiveASTParser;
 import org.apache.flink.table.planner.delegation.hive.parse.HiveParserCreateViewInfo;
 import org.apache.flink.table.planner.delegation.hive.parse.HiveParserDDLSemanticAnalyzer;
 import org.apache.flink.table.planner.delegation.hive.parse.HiveParserLoadSemanticAnalyzer;
-import org.apache.flink.table.planner.operations.PlannerQueryOperation;
+import org.apache.flink.table.operations.HivePlannerQueryOperation;
 import org.apache.flink.table.planner.parse.CalciteParser;
 import org.apache.flink.table.planner.plan.FlinkCalciteCatalogReader;
 import org.apache.flink.util.Preconditions;
@@ -487,7 +487,7 @@ public class HiveParser extends ParserImpl {
         if (!analyzer.getQB().getIsQuery()) {
             return dmlHelper.createInsertOperation(analyzer, relNode);
         } else {
-            return new PlannerQueryOperation(relNode);
+            return new HivePlannerQueryOperation(relNode);
         }
     }
 }

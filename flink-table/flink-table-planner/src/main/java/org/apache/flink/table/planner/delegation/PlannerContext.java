@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.planner.delegation;
 
-import org.apache.flink.annotation.Internal;
 import org.apache.flink.sql.parser.validate.FlinkSqlConformance;
 import org.apache.flink.table.api.SqlDialect;
 import org.apache.flink.table.api.TableConfig;
@@ -81,7 +80,6 @@ import static java.util.Collections.singletonList;
  * factory, type system etc. from a dynamic properties like e.g. default path to look for objects in
  * the schema.
  */
-@Internal
 public class PlannerContext {
 
     private final RelDataTypeSystem typeSystem;
