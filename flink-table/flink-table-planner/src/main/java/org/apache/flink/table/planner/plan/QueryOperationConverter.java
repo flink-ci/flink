@@ -442,7 +442,7 @@ public class QueryOperationConverter extends QueryOperationDefaultVisitor<RelNod
         @Override
         public RelNode visit(QueryOperation other) {
             if (other instanceof CalciteTree && other instanceof QueryOperation) {
-                return ((CalciteTree)other).getCalciteTree();
+                return ((CalciteTree) other).getCalciteTree();
             } else if (other instanceof InternalDataStreamQueryOperation) {
                 return convertToDataStreamScan((InternalDataStreamQueryOperation<?>) other);
             } else if (other instanceof ExternalQueryOperation) {

@@ -20,12 +20,11 @@ package org.apache.flink.table.planner.operations;
 
 import org.apache.calcite.rel.RelNode;
 
-/**
- * Interface for planner operations that needs access to Calcite RelNode.
- */
+/** Interface for planner operations that needs access to Calcite RelNode. */
 public interface CalciteTree {
     /**
      * Returns Calcite RelNode.
+     *
      * @return RelNode of QueryOperation.
      */
     RelNode getCalciteTree();
