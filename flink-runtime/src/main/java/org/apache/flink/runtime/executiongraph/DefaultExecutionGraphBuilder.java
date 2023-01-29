@@ -148,16 +148,6 @@ public class DefaultExecutionGraphBuilder {
             throw new JobException("Could not create the ExecutionGraph.", e);
         }
 
-        // set the basic properties
-
-        try {
-            executionGraph.setJsonPlan(JsonPlanGenerator.generatePlan(jobGraph));
-        } catch (Throwable t) {
-            log.warn("Cannot create JSON plan for job", t);
-            // give the graph an empty plan
-            executionGraph.setJsonPlan("{}");
-        }
-
         // initialize the vertices that have a master initialization hook
         // file output formats create directories here, input formats create splits
 

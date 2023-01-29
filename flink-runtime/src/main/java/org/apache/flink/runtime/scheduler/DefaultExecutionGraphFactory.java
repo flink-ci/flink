@@ -37,7 +37,9 @@ import org.apache.flink.runtime.executiongraph.MarkPartitionFinishedStrategy;
 import org.apache.flink.runtime.executiongraph.VertexAttemptNumberStore;
 import org.apache.flink.runtime.io.network.partition.JobMasterPartitionTracker;
 import org.apache.flink.runtime.jobgraph.JobGraph;
+import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.SavepointRestoreSettings;
+import org.apache.flink.runtime.jobgraph.jsonplan.JsonPlanGenerator;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTracker;
 import org.apache.flink.runtime.jobmaster.ExecutionDeploymentTrackerDeploymentListenerAdapter;
 import org.apache.flink.runtime.metrics.groups.JobManagerJobMetricGroup;
@@ -197,8 +199,18 @@ public class DefaultExecutionGraphFactory implements ExecutionGraphFactory {
                 // check whether we can restore from a savepoint
                 tryRestoreExecutionGraphFromSavepoint(
                         newExecutionGraph, jobGraph.getSavepointRestoreSettings());
+
+                for (JobVertex jobVertex : jobGraph.getVertices()) {
+                    int maxParallelism = newExecutionGraph.getAllVertices().get(jobVertex.getID()).getMaxParallelism();
+
+                    jobVertex.setMaxParallelism(maxParallelism);
+                }
             }
         }
+
+        // set the basic properties
+
+        newExecutionGraph.setJsonPlan(JsonPlanGenerator.generatePlan(jobGraph));
 
         return newExecutionGraph;
     }

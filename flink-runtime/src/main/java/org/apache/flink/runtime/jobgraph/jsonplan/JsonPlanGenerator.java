@@ -26,6 +26,7 @@ import org.apache.flink.runtime.jobgraph.JobType;
 import org.apache.flink.runtime.jobgraph.JobVertex;
 import org.apache.flink.runtime.jobgraph.JobVertexID;
 import org.apache.flink.runtime.scheduler.adaptive.allocator.VertexParallelism;
+import org.apache.flink.runtime.state.KeyGroupRangeAssignment;
 
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonFactory;
 import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonGenerator;
@@ -117,10 +118,25 @@ public class JsonPlanGenerator {
                 // write the core properties
                 JobVertexID vertexID = vertex.getID();
                 int storeParallelism = vertexParallelism.getParallelism(vertexID);
+                int parallelism =
+                        storeParallelism != -1 ? storeParallelism : vertex.getParallelism();
                 gen.writeStringField("id", vertexID.toString());
-                gen.writeNumberField(
-                        "parallelism",
-                        storeParallelism != -1 ? storeParallelism : vertex.getParallelism());
+                gen.writeNumberField("parallelism", parallelism);
+                int storeMaxParallelism =
+                        vertexParallelism.getMaxParallelismForVertices() == null
+                                ? -1
+                                : vertexParallelism
+                                        .getMaxParallelismForVertices()
+                                        .getOrDefault(vertexID, -1);
+                int maxParallelism =
+                        storeMaxParallelism == -1
+                                ? (vertex.getMaxParallelism() == -1
+                                        ? KeyGroupRangeAssignment.computeDefaultMaxParallelism(
+                                                parallelism)
+                                        : vertex.getMaxParallelism())
+                                : storeMaxParallelism;
+                gen.writeNumberField("maxParallelism", maxParallelism);
+
                 gen.writeStringField("operator", operator);
                 gen.writeStringField("operator_strategy", operatorDescr);
                 gen.writeStringField("description", description);
