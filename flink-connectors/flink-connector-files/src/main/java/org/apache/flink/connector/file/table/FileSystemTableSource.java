@@ -145,7 +145,7 @@ public class FileSystemTableSource extends AbstractFileSystemTable
         // the type without partition columns and metadata in the same order of the schema
         DataType physicalDataType = physicalRowDataType;
         final Projection partitionKeysProjections =
-                Projection.fromFieldNames(physicalDataType, partitionKeysToExtract);
+                Projection.fromFieldNames(physicalDataType, partitionKeys);
         final Projection physicalProjections =
                 (projectFields != null
                                 ? Projection.of(projectFields)
