@@ -48,6 +48,7 @@ import java.util.{List => JList, TimeZone}
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Success, Try}
 
 object RexNodeExtractor extends Logging {
@@ -209,19 +210,26 @@ object RexNodeExtractor extends Logging {
 
     val (partitionPredicates, nonPartitionPredicates) =
       conjunctions.partition(isSupportedPartitionPredicate(_, partitionFieldNames, inputFieldNames))
-    (partitionPredicates.filter(p => RexUtil.isDeterministic(p)), nonPartitionPredicates)
+    (partitionPredicates, nonPartitionPredicates)
   }
 
   /**
-   * returns true if the given predicate only contains [[RexInputRef]], [[RexLiteral]] and
-   * [[RexCall]], and all [[RexInputRef]]s reference partition fields. otherwise false.
+   * returns true if the given predicate is a deterministic [[RexNode]] and only contains
+   * [[RexInputRef]], [[RexLiteral]] and [[RexCall]], and all [[RexInputRef]]s reference partition
+   * fields. otherwise false.
    */
   private def isSupportedPartitionPredicate(
       predicate: RexNode,
       partitionFieldNames: Array[String],
       inputFieldNames: Array[String]): Boolean = {
+    if (!RexUtil.isDeterministic(predicate)) {
+      return false
+    }
+    val fields = new ListBuffer[Int]
+
     val visitor = new RexVisitorImpl[Boolean](true) {
       override def visitInputRef(inputRef: RexInputRef): Boolean = {
+        fields.append(inputRef.getIndex)
         val fieldName = inputFieldNames.apply(inputRef.getIndex)
         val typeRoot = FlinkTypeFactory.toLogicalType(inputRef.getType).getTypeRoot
         if (
@@ -271,15 +279,10 @@ object RexNodeExtractor extends Logging {
       }
     }
 
-    val inputRefFinder = new InputRefVisitor
-    predicate.accept(inputRefFinder)
-    // if no fields reached, it's not partition condition
-    if (inputRefFinder.getFields.length == 0) {
-      return false
-    }
     try {
       predicate.accept(visitor)
-      true
+      // if no fields reached, it's not partition condition
+      fields.nonEmpty
     } catch {
       case _: Util.FoundOne => false
     }

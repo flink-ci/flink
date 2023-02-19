@@ -373,6 +373,12 @@ Calc(select=[id, name, part1, part2, +(part2, 1) AS virtualField], where=[<(RAND
 +- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
 ]]>
     </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[id, name, part1, part2, (part2 + 1) AS virtualField], where=[(RAND(part2) < 0.001)])
++- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
+]]>
+    </Resource>
   </TestCase>
   <TestCase name="testRandCondition2[sourceFetchPartitions=false, useCatalogFilter=true]">
     <Resource name="sql">
@@ -389,6 +395,12 @@ LogicalProject(id=[$0], name=[$1], part1=[$2], part2=[$3], virtualField=[$4])
     <Resource name="optimized rel plan">
       <![CDATA[
 Calc(select=[id, name, part1, part2, +(part2, 1) AS virtualField], where=[<(RAND(part2), 0.001)])
++- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[id, name, part1, part2, (part2 + 1) AS virtualField], where=[(RAND(part2) < 0.001)])
 +- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
 ]]>
     </Resource>
@@ -411,6 +423,12 @@ Calc(select=[id, name, part1, part2, +(part2, 1) AS virtualField], where=[<(RAND
 +- TableSourceScan(table=[[default_catalog, default_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
 ]]>
     </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[id, name, part1, part2, (part2 + 1) AS virtualField], where=[(RAND(part2) < 0.001)])
++- TableSourceScan(table=[[default_catalog, default_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
+]]>
+    </Resource>
   </TestCase>
   <TestCase name="testRandCondition[sourceFetchPartitions=false, useCatalogFilter=false]">
     <Resource name="sql">
@@ -427,6 +445,12 @@ LogicalProject(id=[$0], name=[$1], part1=[$2], part2=[$3], virtualField=[$4])
     <Resource name="optimized rel plan">
       <![CDATA[
 Calc(select=[id, name, part1, part2, +(part2, 1) AS virtualField], where=[<(RAND(1), 0.001)])
++- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[id, name, part1, part2, (part2 + 1) AS virtualField], where=[(RAND(1) < 0.001)])
 +- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
 ]]>
     </Resource>
@@ -449,6 +473,12 @@ Calc(select=[id, name, part1, part2, +(part2, 1) AS virtualField], where=[<(RAND
 +- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
 ]]>
     </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[id, name, part1, part2, (part2 + 1) AS virtualField], where=[(RAND(1) < 0.001)])
++- TableSourceScan(table=[[test_catalog, test_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
+]]>
+    </Resource>
   </TestCase>
   <TestCase name="testRandCondition[sourceFetchPartitions=true, useCatalogFilter=false]">
     <Resource name="sql">
@@ -465,6 +495,12 @@ LogicalProject(id=[$0], name=[$1], part1=[$2], part2=[$3], virtualField=[$4])
     <Resource name="optimized rel plan">
       <![CDATA[
 Calc(select=[id, name, part1, part2, +(part2, 1) AS virtualField], where=[<(RAND(1), 0.001)])
++- TableSourceScan(table=[[default_catalog, default_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
+]]>
+    </Resource>
+    <Resource name="optimized exec plan">
+      <![CDATA[
+Calc(select=[id, name, part1, part2, (part2 + 1) AS virtualField], where=[(RAND(1) < 0.001)])
 +- TableSourceScan(table=[[default_catalog, default_database, PartitionableTable, filter=[]]], fields=[id, name, part1, part2])
 ]]>
     </Resource>

@@ -723,6 +723,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
   }
 
   @Test
+  // Test for partition predicates should contains input ref
   def testExtractPartitionPredicateList(): Unit = {
     val doubleType: RelDataType =
       typeFactory.createFieldTypeFromLogicalType(new DoubleType(false))
@@ -730,8 +731,10 @@ class RexNodeExtractorTest extends RexNodeTestBase {
     val decimalType: RelDataType =
       typeFactory.createFieldTypeFromLogicalType(new DecimalType(4, 3))
 
+    // where rand(1) <= 0.001
+    // deterministic rand function
     val rand =
-      rexBuilder.makeCall(FlinkSqlOperatorTable.RAND, rexBuilder.makeLiteral(321, doubleType, true))
+      rexBuilder.makeCall(SqlStdOperatorTable.RAND, rexBuilder.makeLiteral(1, doubleType, true))
     val c1 = rexBuilder.makeCall(
       SqlStdOperatorTable.LESS_THAN_OR_EQUAL,
       rand,
@@ -747,29 +750,15 @@ class RexNodeExtractorTest extends RexNodeTestBase {
   }
 
   @Test
+  // Test for partition predicates should not have non-deterministic call
   def testExtractPartitionPredicateList2(): Unit = {
-    val stringType = typeFactory.createFieldTypeFromLogicalType(new VarCharType())
-
-    val partition = rexBuilder.makeLiteral("1984")
-    val inputRef = rexBuilder.makeInputRef(stringType, 2)
-    val c1 = rexBuilder.makeCall(SqlStdOperatorTable.EQUALS, inputRef, partition)
-    val (p, nonP) = RexNodeExtractor.extractPartitionPredicateList(
-      c1,
-      -1,
-      Array("a", "b", "p"),
-      rexBuilder,
-      Array("p"))
-    Assert.assertTrue(p.nonEmpty)
-    Assert.assertTrue(nonP.isEmpty)
-  }
-
-  @Test
-  def testExtractPartitionPredicateList3(): Unit = {
     val intType = typeFactory.createFieldTypeFromLogicalType(new IntType())
     val decimalType: RelDataType =
       typeFactory.createFieldTypeFromLogicalType(new DecimalType(4, 3))
 
+    // where rand($2) < 0.001
     val inputRef = rexBuilder.makeInputRef(intType, 2)
+    // non-deterministic rand function
     val rand =
       rexBuilder.makeCall(FlinkSqlOperatorTable.RAND, inputRef)
     val c1 = rexBuilder.makeCall(
@@ -783,7 +772,7 @@ class RexNodeExtractorTest extends RexNodeTestBase {
       rexBuilder,
       Array("p"))
     Assert.assertTrue(p.isEmpty)
-    Assert.assertTrue(nonP.isEmpty)
+    Assert.assertTrue(nonP.nonEmpty)
   }
 
   private def testExtractSinglePostfixCondition(
