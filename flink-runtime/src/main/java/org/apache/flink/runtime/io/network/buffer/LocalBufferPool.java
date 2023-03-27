@@ -683,8 +683,7 @@ class LocalBufferPool implements BufferPool {
             }
 
             // If pool size decreases, try to convert ordinary buffer to overdraft buffer.
-            while (numberOfRequestedMemorySegments > currentPoolSize
-                    && numberOfRequestedOverdraftMemorySegments < maxOverdraftBuffersPerGate) {
+            while (numberOfRequestedMemorySegments > currentPoolSize) {
                 numberOfRequestedMemorySegments--;
                 numberOfRequestedOverdraftMemorySegments++;
             }
@@ -777,13 +776,12 @@ class LocalBufferPool implements BufferPool {
 
     @GuardedBy("availableMemorySegments")
     private boolean hasExcessBuffers() {
-        return numberOfRequestedOverdraftMemorySegments > 0
-                || numberOfRequestedMemorySegments > currentPoolSize;
+        return numberOfRequestedOverdraftMemorySegments > 0;
     }
 
     @GuardedBy("availableMemorySegments")
     private boolean isRequestedSizeReached() {
-        return numberOfRequestedMemorySegments >= currentPoolSize;
+        return numberOfRequestedMemorySegments == currentPoolSize;
     }
 
     private static class SubpartitionBufferRecycler implements BufferRecycler {

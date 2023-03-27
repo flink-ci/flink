@@ -265,7 +265,7 @@ class LocalBufferPoolTest {
                 maxMemorySegments, requiredMemorySegments, 7, 5, 2, 7, 2, 5, 0);
         // exceed buffers is greater than maxOverdraftBuffers
         testDecreasePoolSizeInternal(
-                maxMemorySegments, requiredMemorySegments, 9, 5, 3, 9, 3, 6, 0);
+                maxMemorySegments, requiredMemorySegments, 9, 5, 3, 9, 4, 5, 0);
         // exceed buffers is less than maxOverdraftBuffers
         testDecreasePoolSizeInternal(
                 maxMemorySegments, requiredMemorySegments, 7, 5, 4, 7, 2, 5, 0);
