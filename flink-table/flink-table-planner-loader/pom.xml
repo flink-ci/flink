@@ -50,7 +50,6 @@
 			<groupId>org.apache.flink</groupId>
 			<artifactId>flink-test-utils-junit</artifactId>
 		</dependency>
-
 		<dependency>
 			<!-- Ensures that flink-table-planner is built beforehand, in order to bundle the jar -->
 			<groupId>org.apache.flink</groupId>
