@@ -281,9 +281,9 @@ class LocalBufferPoolTest {
             int smallPoolSize,
             int maxOverdraftBuffers,
             int numBuffersToRequest,
-            int numOverdraftBuffersAfterDecreasePoolSize,
-            int numRequestedBuffersAfterDecreasePoolSize,
-            int numAvailableBuffersAfterDecreasePoolSize)
+            int numRequestedOverdraftBuffersAfterDecreasing,
+            int numRequestedOrdinaryBuffersAfterDecreasing,
+            int numAvailableBuffersAfterDecreasing)
             throws Exception {
         LocalBufferPool bufferPool =
                 new LocalBufferPool(
@@ -308,16 +308,16 @@ class LocalBufferPoolTest {
         bufferPool.setNumBuffers(smallPoolSize);
         assertThat(bufferPool.getNumBuffers()).isEqualTo(smallPoolSize);
         assertThat(bufferPool.getNumberOfRequestedOverdraftMemorySegments())
-                .isEqualTo(numOverdraftBuffersAfterDecreasePoolSize);
+                .isEqualTo(numRequestedOverdraftBuffersAfterDecreasing);
         assertThat(
                         bufferPool.bestEffortGetNumOfUsedBuffers()
                                 + bufferPool.getNumberOfAvailableMemorySegments()
                                 - bufferPool.getNumberOfRequestedOverdraftMemorySegments())
-                .isEqualTo(numRequestedBuffersAfterDecreasePoolSize);
+                .isEqualTo(numRequestedOrdinaryBuffersAfterDecreasing);
         assertThat(bufferPool.getNumberOfAvailableMemorySegments())
-                .isEqualTo(numAvailableBuffersAfterDecreasePoolSize);
+                .isEqualTo(numAvailableBuffersAfterDecreasing);
         assertThat(bufferPool.isAvailable())
-                .isEqualTo(numAvailableBuffersAfterDecreasePoolSize > 0);
+                .isEqualTo(numAvailableBuffersAfterDecreasing > 0);
 
         for (MemorySegment buffer : buffers) {
             bufferPool.recycle(buffer);
