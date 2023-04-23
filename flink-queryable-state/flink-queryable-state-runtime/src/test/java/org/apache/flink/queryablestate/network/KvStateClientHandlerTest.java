@@ -25,11 +25,11 @@ import org.apache.flink.queryablestate.network.messages.MessageSerializer;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.channel.embedded.EmbeddedChannel;
 
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 
 import java.nio.channels.ClosedChannelException;
 
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.isA;
 import static org.mockito.Matchers.any;
 import static org.mockito.Matchers.eq;
@@ -38,13 +38,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 /** Tests for {@link ClientHandler}. */
-public class KvStateClientHandlerTest {
+class KvStateClientHandlerTest {
 
     /**
      * Tests that on reads the expected callback methods are called and read buffers are recycled.
      */
     @Test
-    public void testReadCallbacksAndBufferRecycling() throws Exception {
+    void testReadCallbacksAndBufferRecycling() throws Exception {
         final ClientHandlerCallback<KvStateResponse> callback = mock(ClientHandlerCallback.class);
 
         final MessageSerializer<KvStateInternalRequest, KvStateResponse> serializer =
@@ -66,7 +66,7 @@ public class KvStateClientHandlerTest {
         // Verify callback
         channel.writeInbound(buf);
         verify(callback, times(1)).onRequestResult(eq(1222112277L), any(KvStateResponse.class));
-        assertEquals("Buffer not recycled", 0, buf.refCnt());
+        assertThat(buf.refCnt()).isEqualTo(0).withFailMessage("Buffer not recycled");
 
         //
         // Request failure
@@ -81,7 +81,7 @@ public class KvStateClientHandlerTest {
         // Verify callback
         channel.writeInbound(buf);
         verify(callback, times(1)).onRequestFailure(eq(1222112278L), isA(RuntimeException.class));
-        assertEquals("Buffer not recycled", 0, buf.refCnt());
+        assertThat(buf.refCnt()).isEqualTo(0).withFailMessage("Buffer not recycled");
 
         //
         // Server failure
@@ -103,7 +103,7 @@ public class KvStateClientHandlerTest {
         // Verify callback
         channel.writeInbound(buf);
         verify(callback, times(1)).onFailure(isA(IllegalStateException.class));
-        assertEquals("Buffer not recycled", 0, buf.refCnt());
+        assertThat(buf.refCnt()).isEqualTo(0).withFailMessage("Buffer not recycled");
 
         //
         // Exception caught

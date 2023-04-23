@@ -30,11 +30,11 @@ import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
 
 /** Several integration tests for queryable state using the {@link RocksDBStateBackend}. */
 public class NonHAQueryableStateRocksDBBackendITCase extends AbstractQueryableStateTestBase {
@@ -46,32 +46,34 @@ public class NonHAQueryableStateRocksDBBackendITCase extends AbstractQueryableSt
 
     private static final int QS_PROXY_PORT_RANGE_START = 9094;
     private static final int QS_SERVER_PORT_RANGE_START = 9099;
+    private static MiniClusterWithClientResource miniClusterResource;
 
-    @Rule public TemporaryFolder temporaryFolder = new TemporaryFolder();
-
-    @ClassRule
-    public static final MiniClusterWithClientResource MINI_CLUSTER_RESOURCE =
-            new MiniClusterWithClientResource(
-                    new MiniClusterResourceConfiguration.Builder()
-                            .setConfiguration(getConfig())
-                            .setNumberTaskManagers(NUM_TMS)
-                            .setNumberSlotsPerTaskManager(NUM_SLOTS_PER_TM)
-                            .build());
+    @TempDir static Path tmpStateBackendDir;
 
     @Override
     protected StateBackend createStateBackend() throws Exception {
-        return new RocksDBStateBackend(temporaryFolder.newFolder().toURI().toString());
+        return new RocksDBStateBackend(tmpStateBackendDir.toUri().toString());
     }
 
-    @BeforeClass
-    public static void setup() throws Exception {
+    @BeforeAll
+    static void setup() throws Exception {
         client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
 
-        clusterClient = MINI_CLUSTER_RESOURCE.getClusterClient();
+        miniClusterResource =
+                new MiniClusterWithClientResource(
+                        new MiniClusterResourceConfiguration.Builder()
+                                .setConfiguration(getConfig())
+                                .setNumberTaskManagers(NUM_TMS)
+                                .setNumberSlotsPerTaskManager(NUM_SLOTS_PER_TM)
+                                .build());
+
+        miniClusterResource.before();
+        clusterClient = miniClusterResource.getClusterClient();
     }
 
-    @AfterClass
-    public static void tearDown() {
+    @AfterAll
+    static void tearDown() {
+        miniClusterResource.after();
         client.shutdownAndWait();
     }
 

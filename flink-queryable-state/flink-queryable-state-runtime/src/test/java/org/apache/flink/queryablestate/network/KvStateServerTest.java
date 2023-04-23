@@ -56,8 +56,8 @@ import org.apache.flink.shaded.netty4.io.netty.channel.socket.SocketChannel;
 import org.apache.flink.shaded.netty4.io.netty.channel.socket.nio.NioSocketChannel;
 import org.apache.flink.shaded.netty4.io.netty.handler.codec.LengthFieldBasedFrameDecoder;
 
-import org.junit.AfterClass;
-import org.junit.Test;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Test;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -66,19 +66,19 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** Tests for {@link KvStateServerImpl}. */
-public class KvStateServerTest {
+class KvStateServerTest {
 
     // Thread pool for client bootstrap (shared between tests)
     private static final NioEventLoopGroup NIO_GROUP = new NioEventLoopGroup();
 
     private static final int TIMEOUT_MILLIS = 10000;
 
-    @AfterClass
-    public static void tearDown() throws Exception {
+    @AfterAll
+    static void tearDown() throws Exception {
         if (NIO_GROUP != null) {
             // note: no "quiet period" to not trigger Netty#4357
             NIO_GROUP.shutdownGracefully(0, 10, TimeUnit.SECONDS);
@@ -87,7 +87,7 @@ public class KvStateServerTest {
 
     /** Tests a simple successful query via a SocketChannel. */
     @Test
-    public void testSimpleRequest() throws Throwable {
+    void testSimpleRequest() throws Throwable {
         KvStateServerImpl server = null;
         Bootstrap bootstrap = null;
         try {

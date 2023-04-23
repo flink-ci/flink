@@ -29,33 +29,22 @@ import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBufAllocator;
 import org.apache.flink.shaded.netty4.io.netty.buffer.UnpooledByteBufAllocator;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.Parameterized;
+import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.concurrent.ThreadLocalRandom;
 
-import static org.junit.Assert.assertArrayEquals;
-import static org.junit.Assert.assertEquals;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Tests for {@link MessageSerializer}. */
-@RunWith(Parameterized.class)
-public class MessageSerializerTest {
+class MessageSerializerTest {
 
     private final ByteBufAllocator alloc = UnpooledByteBufAllocator.DEFAULT;
 
-    @Parameterized.Parameters
-    public static Collection<Boolean> parameters() {
-        return Arrays.asList(false, true);
-    }
-
-    @Parameterized.Parameter public boolean async;
-
     /** Tests request serialization. */
     @Test
-    public void testRequestSerialization() throws Exception {
+    void testRequestSerialization() throws Exception {
         long requestId = Integer.MAX_VALUE + 1337L;
         KvStateID kvStateId = new KvStateID();
         byte[] serializedKeyAndNamespace = randomByteArray(1024);
@@ -82,7 +71,7 @@ public class MessageSerializerTest {
 
     /** Tests request serialization with zero-length serialized key and namespace. */
     @Test
-    public void testRequestSerializationWithZeroLengthKeyAndNamespace() throws Exception {
+    void testRequestSerializationWithZeroLengthKeyAndNamespace() throws Exception {
 
         long requestId = Integer.MAX_VALUE + 1337L;
         KvStateID kvStateId = new KvStateID();
@@ -112,14 +101,15 @@ public class MessageSerializerTest {
      * Tests that we don't try to be smart about <code>null</code> key and namespace. They should be
      * treated explicitly.
      */
-    @Test(expected = NullPointerException.class)
-    public void testNullPointerExceptionOnNullSerializedKeyAndNamepsace() throws Exception {
-        new KvStateInternalRequest(new KvStateID(), null);
+    @Test
+    void testNullPointerExceptionOnNullSerializedKeyAndNamepsace() throws Exception {
+        assertThatThrownBy(() -> new KvStateInternalRequest(new KvStateID(), null))
+                .isInstanceOf(NullPointerException.class);
     }
 
     /** Tests response serialization. */
     @Test
-    public void testResponseSerialization() throws Exception {
+    void testResponseSerialization() throws Exception {
         long requestId = Integer.MAX_VALUE + 72727278L;
         byte[] serializedResult = randomByteArray(1024);
 
@@ -143,7 +133,7 @@ public class MessageSerializerTest {
 
     /** Tests response serialization with zero-length serialized result. */
     @Test
-    public void testResponseSerializationWithZeroLengthSerializedResult() throws Exception {
+    void testResponseSerializationWithZeroLengthSerializedResult() throws Exception {
         byte[] serializedResult = new byte[0];
 
         final KvStateResponse response = new KvStateResponse(serializedResult);
@@ -168,14 +158,15 @@ public class MessageSerializerTest {
      * Tests that we don't try to be smart about <code>null</code> results. They should be treated
      * explicitly.
      */
-    @Test(expected = NullPointerException.class)
-    public void testNullPointerExceptionOnNullSerializedResult() throws Exception {
-        new KvStateResponse((byte[]) null);
+    @Test
+    void testNullPointerExceptionOnNullSerializedResult() throws Exception {
+        assertThatThrownBy(() -> new KvStateResponse((byte[]) null))
+                .isInstanceOf(NullPointerException.class);
     }
 
     /** Tests request failure serialization. */
     @Test
-    public void testKvStateRequestFailureSerialization() throws Exception {
+    void testKvStateRequestFailureSerialization() throws Exception {
         long requestId = Integer.MAX_VALUE + 1111222L;
         IllegalStateException cause = new IllegalStateException("Expected test");
 
@@ -193,7 +184,7 @@ public class MessageSerializerTest {
 
     /** Tests server failure serialization. */
     @Test
-    public void testServerFailureSerialization() throws Exception {
+    void testServerFailureSerialization() throws Exception {
         IllegalStateException cause = new IllegalStateException("Expected test");
 
         ByteBuf buf = MessageSerializer.serializeServerFailure(alloc, cause);

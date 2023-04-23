@@ -33,13 +33,14 @@ import org.apache.flink.runtime.testutils.ZooKeeperTestUtils;
 import org.apache.flink.test.util.MiniClusterWithClientResource;
 
 import org.apache.curator.test.TestingServer;
-import org.junit.AfterClass;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.junit.rules.TemporaryFolder;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Path;
 
 /** Several integration tests for queryable state using the {@link RocksDBStateBackend}. */
-public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableStateTestBase {
+class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableStateTestBase {
 
     private static final int NUM_JMS = 2;
     // NUM_TMS * NUM_SLOTS_PER_TM must match the parallelism of the pipelines so that
@@ -50,19 +51,19 @@ public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableState
     private static final int QS_PROXY_PORT_RANGE_START = 9074;
     private static final int QS_SERVER_PORT_RANGE_START = 9079;
 
-    @ClassRule public static TemporaryFolder temporaryFolder = new TemporaryFolder();
-
+    @TempDir static Path tmpStateBackendDir;
+    @TempDir static Path tmpHaStoragePath;
     private static TestingServer zkServer;
 
     private static MiniClusterWithClientResource miniClusterResource;
 
     @Override
     protected StateBackend createStateBackend() throws Exception {
-        return new RocksDBStateBackend(temporaryFolder.newFolder().toURI().toString());
+        return new RocksDBStateBackend(tmpStateBackendDir.toUri().toString());
     }
 
-    @BeforeClass
-    public static void setup() throws Exception {
+    @BeforeAll
+    static void setup() throws Exception {
         zkServer = ZooKeeperTestUtils.createAndStartZookeeperTestingServer();
 
         // we have to manage this manually because we have to create the ZooKeeper server
@@ -82,8 +83,8 @@ public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableState
         clusterClient = miniClusterResource.getClusterClient();
     }
 
-    @AfterClass
-    public static void tearDown() throws Exception {
+    @AfterAll
+    static void tearDown() throws Exception {
         miniClusterResource.after();
 
         client.shutdownAndWait();
@@ -110,8 +111,7 @@ public class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableState
                 QS_SERVER_PORT_RANGE_START + "-" + (QS_SERVER_PORT_RANGE_START + NUM_TMS));
         config.setBoolean(WebOptions.SUBMIT_ENABLE, false);
 
-        config.setString(
-                HighAvailabilityOptions.HA_STORAGE_PATH, temporaryFolder.newFolder().toString());
+        config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, tmpHaStoragePath.toString());
 
         config.setString(HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zkServer.getConnectString());
         config.setString(HighAvailabilityOptions.HA_MODE, "zookeeper");
