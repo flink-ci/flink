@@ -20,6 +20,7 @@ package org.apache.flink.queryablestate.network;
 
 import org.apache.flink.queryablestate.messages.KvStateInternalRequest;
 import org.apache.flink.queryablestate.messages.KvStateResponse;
+import org.apache.flink.queryablestate.network.messages.MessageBody;
 import org.apache.flink.queryablestate.network.messages.MessageSerializer;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
@@ -29,13 +30,8 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.channels.ClosedChannelException;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.isA;
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+
 
 /** Tests for {@link ClientHandler}. */
 class KvStateClientHandlerTest {
@@ -45,7 +41,7 @@ class KvStateClientHandlerTest {
      */
     @Test
     void testReadCallbacksAndBufferRecycling() throws Exception {
-        final ClientHandlerCallback<KvStateResponse> callback = mock(ClientHandlerCallback.class);
+        final ClientHandlerCallback<KvStateResponse> callback = new TestClientHandlerCallback();
 
         final MessageSerializer<KvStateInternalRequest, KvStateResponse> serializer =
                 new MessageSerializer<>(
@@ -65,9 +61,10 @@ class KvStateClientHandlerTest {
 
         // Verify callback
         channel.writeInbound(buf);
-        verify(callback, times(1)).onRequestResult(eq(1222112277L), any(KvStateResponse.class));
+        assertThat(TestClientHandlerCallback.onRequestCnt).isEqualTo(1);
+        assertThat(TestClientHandlerCallback.onRequestId).isEqualTo(1222112277L);
+        assertThat(TestClientHandlerCallback.onRequestBody).isInstanceOf(KvStateResponse.class);
         assertThat(buf.refCnt()).isEqualTo(0).withFailMessage("Buffer not recycled");
-
         //
         // Request failure
         //
@@ -80,7 +77,9 @@ class KvStateClientHandlerTest {
 
         // Verify callback
         channel.writeInbound(buf);
-        verify(callback, times(1)).onRequestFailure(eq(1222112278L), isA(RuntimeException.class));
+        assertThat(TestClientHandlerCallback.onRequestFailureCnt).isEqualTo(1);
+        assertThat(TestClientHandlerCallback.onRequestFailureId).isEqualTo(1222112278L);
+        assertThat(TestClientHandlerCallback.onRequestFailureBody).isInstanceOf(RuntimeException.class);
         assertThat(buf.refCnt()).isEqualTo(0).withFailMessage("Buffer not recycled");
 
         //
@@ -93,7 +92,8 @@ class KvStateClientHandlerTest {
 
         // Verify callback
         channel.writeInbound(buf);
-        verify(callback, times(1)).onFailure(isA(RuntimeException.class));
+        assertThat(TestClientHandlerCallback.onFailureCnt).isEqualTo(1);
+        assertThat(TestClientHandlerCallback.onFailureBody).isInstanceOf(RuntimeException.class);
 
         //
         // Unexpected messages
@@ -101,20 +101,57 @@ class KvStateClientHandlerTest {
         buf = channel.alloc().buffer(4).writeInt(1223823);
 
         // Verify callback
+        TestClientHandlerCallback.onFailureCnt = 0;
         channel.writeInbound(buf);
-        verify(callback, times(1)).onFailure(isA(IllegalStateException.class));
+        assertThat(TestClientHandlerCallback.onFailureCnt).isEqualTo(1);
+        assertThat(TestClientHandlerCallback.onFailureBody).isInstanceOf(RuntimeException.class);
         assertThat(buf.refCnt()).isEqualTo(0).withFailMessage("Buffer not recycled");
 
         //
         // Exception caught
         //
+        TestClientHandlerCallback.onFailureCnt = 0;
         channel.pipeline().fireExceptionCaught(new RuntimeException("Expected test Exception"));
-        verify(callback, times(3)).onFailure(isA(RuntimeException.class));
+        assertThat(TestClientHandlerCallback.onFailureCnt).isEqualTo(1);
+        assertThat(TestClientHandlerCallback.onFailureBody).isInstanceOf(RuntimeException.class);
 
         //
         // Channel inactive
         //
+        TestClientHandlerCallback.onFailureCnt = 0;
         channel.pipeline().fireChannelInactive();
-        verify(callback, times(1)).onFailure(isA(ClosedChannelException.class));
+        assertThat(TestClientHandlerCallback.onFailureCnt).isEqualTo(1);
+        assertThat(TestClientHandlerCallback.onFailureBody).isInstanceOf(ClosedChannelException.class);
+    }
+
+    private static class TestClientHandlerCallback implements ClientHandlerCallback {
+        private static int onRequestCnt;
+        private static long onRequestId;
+        private static MessageBody onRequestBody;
+        private static int onRequestFailureCnt;
+        private static long onRequestFailureId;
+        private static Throwable onRequestFailureBody;
+        private static int onFailureCnt;
+        private static Throwable onFailureBody;
+
+        @Override
+        public void onRequestResult(long requestId, MessageBody response) {
+            onRequestCnt++;
+            onRequestId = requestId;
+            onRequestBody = response;
+        }
+
+        @Override
+        public void onRequestFailure(long requestId, Throwable cause) {
+            onRequestFailureCnt++;
+            onRequestFailureId = requestId;
+            onRequestFailureBody = cause;
+        }
+
+        @Override
+        public void onFailure(Throwable cause) {
+            onFailureCnt++;
+            onFailureBody = cause;
+        }
     }
 }

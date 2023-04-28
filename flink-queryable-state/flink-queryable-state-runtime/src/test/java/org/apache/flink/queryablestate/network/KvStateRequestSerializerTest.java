@@ -19,6 +19,7 @@
 package org.apache.flink.queryablestate.network;
 
 import org.apache.flink.api.common.ExecutionConfig;
+import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.state.ListStateDescriptor;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeutils.TypeSerializer;
@@ -29,6 +30,8 @@ import org.apache.flink.core.fs.CloseableRegistry;
 import org.apache.flink.queryablestate.client.VoidNamespace;
 import org.apache.flink.queryablestate.client.VoidNamespaceSerializer;
 import org.apache.flink.queryablestate.client.state.serialization.KvStateSerializer;
+import org.apache.flink.runtime.jobgraph.JobVertexID;
+import org.apache.flink.runtime.query.KvStateRegistry;
 import org.apache.flink.runtime.query.TaskKvStateRegistry;
 import org.apache.flink.runtime.state.AbstractStateBackend;
 import org.apache.flink.runtime.state.BackendBuildingException;
@@ -60,7 +63,6 @@ import java.util.concurrent.ThreadLocalRandom;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 
 /** Tests for {@link KvStateSerializer}. */
 class KvStateRequestSerializerTest {
@@ -321,10 +323,11 @@ class KvStateRequestSerializerTest {
             throws BackendBuildingException {
         final KeyGroupRange keyGroupRange = new KeyGroupRange(0, 0);
         ExecutionConfig executionConfig = new ExecutionConfig();
+        TaskKvStateRegistry taskKvStateRegistry = new KvStateRegistry().createTaskRegistry(JobID.generate(), new JobVertexID());
         // objects for heap state list serialisation
         final HeapKeyedStateBackend<Long> longHeapKeyedStateBackend =
                 new HeapKeyedStateBackendBuilder<>(
-                                mock(TaskKvStateRegistry.class),
+                               taskKvStateRegistry,
                                 LongSerializer.INSTANCE,
                                 ClassLoader.getSystemClassLoader(),
                                 keyGroupRange.getNumberOfKeyGroups(),
