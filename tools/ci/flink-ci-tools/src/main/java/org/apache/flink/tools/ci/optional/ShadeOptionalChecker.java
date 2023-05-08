@@ -176,11 +176,33 @@ public class ShadeOptionalChecker {
             return violations;
         }
 
-        // The set of dependencies that the module directly depends on, which downstream modules
+        // The set of dependencies that the module directly depends on and which downstream modules
         // would pull in transitively.
-        // It also avoids some edge-cases; since a dependency can only occur once in the dependency
-        // tree (on the shortest path to said dependency) it can happen that a compile dependency
-        // is shown as a transitive dependency of a test dependency.
+        //
+        // If this set is empty we do not need to check anything.
+        // This allows us to avoid some edge-cases:
+        //
+        // Assume module M has the following (full) dependency tree, bundling dependency 1 and 2:
+        //
+        // +- dependency1 (compile/optional)",
+        // |  \- dependency2 (compile) (implicitly optional because dependency1 is optional)
+        // \- dependency3 (test)
+        //    \- dependency2 (compile)
+        //
+        // However, in the dependency plugin output a dependency can only show up once, so Maven may
+        // return this:
+        //
+        // +- dependency1 (compile/optional)",
+        // \- dependency3 (test)
+        //    \- dependency2 (compile)
+        //
+        // Given this tree, and knowing that dependency2 is bundled, we would draw the conclusion
+        // that dependency2 is missing the optional flag.
+        //
+        // However, because dependency 1/3 are optional/test dependencies they are not transitive.
+        // Without any direct transitive dependency nothing can leak through to downstream modules,
+        // removing the need to check dependency 2 at all (and in turn, saving us from having to
+        // resolve this problem).
         final List<Dependency> directTransitiveDependencies =
                 dependencyTree.getDirectDependencies().stream()
                         .filter(
