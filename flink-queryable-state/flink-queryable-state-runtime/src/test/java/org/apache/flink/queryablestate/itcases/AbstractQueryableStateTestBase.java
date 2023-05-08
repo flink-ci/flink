@@ -64,7 +64,6 @@ import org.apache.flink.testutils.executor.TestExecutorExtension;
 import org.apache.flink.util.Collector;
 import org.apache.flink.util.ExceptionUtils;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.TestLoggerExtension;
 import org.apache.flink.util.concurrent.FutureUtils;
 import org.apache.flink.util.concurrent.ScheduledExecutor;
 import org.apache.flink.util.concurrent.ScheduledExecutorServiceAdapter;
@@ -73,8 +72,6 @@ import com.esotericsoftware.kryo.Serializer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -92,7 +89,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -102,11 +98,10 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicLongArray;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.fail;
 
 /** Base class for queryable state integration tests with a configurable state backend. */
-@ExtendWith(TestLoggerExtension.class)
 public abstract class AbstractQueryableStateTestBase {
 
     private static final Duration TEST_TIMEOUT = Duration.ofSeconds(200L);
@@ -230,13 +225,15 @@ public abstract class AbstractQueryableStateTestBase {
 
                     result.thenAccept(
                             response -> {
-                                try {
-                                    Tuple2<Integer, Long> res = response.get();
-                                    counts.set(key, res.f1);
-                                    assertThat(key).isEqualTo(res.f0.intValue()).withFailMessage("Key mismatch");
-                                } catch (Exception e) {
-                                    fail(e.getMessage());
-                                }
+                                assertThatCode(
+                                                () -> {
+                                                    Tuple2<Integer, Long> res = response.get();
+                                                    counts.set(key, res.f1);
+                                                    assertThat(key)
+                                                            .isEqualTo(res.f0.intValue())
+                                                            .withFailMessage("Key mismatch");
+                                                })
+                                        .doesNotThrowAnyException();
                             });
 
                     futures.add(result);
@@ -252,14 +249,15 @@ public abstract class AbstractQueryableStateTestBase {
             // All should be non-zero
             for (int i = 0; i < numKeys; i++) {
                 long count = counts.get(i);
-                assertThat(count).isGreaterThan(0).withFailMessage("Count at position " + i + " is " + count);
+                assertThat(count)
+                        .isGreaterThan(0)
+                        .withFailMessage("Count at position " + i + " is " + count);
             }
         }
     }
 
     /** Tests that duplicate query registrations fail the job at the JobManager. */
     @Test
-    @Timeout(60_000)
     void testDuplicateRegistrationFailsJob() throws Exception {
         final int numKeys = 256;
 
@@ -493,7 +491,8 @@ public abstract class AbstractQueryableStateTestBase {
                 jobStatusFuture = clusterClient.getJobStatus(closableJobGraph.getJobId());
             }
 
-            assertThat(jobStatusFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS)).isEqualTo(JobStatus.RUNNING);
+            assertThat(jobStatusFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS))
+                    .isEqualTo(JobStatus.RUNNING);
 
             final JobID wrongJobId = new JobID();
 
@@ -505,17 +504,17 @@ public abstract class AbstractQueryableStateTestBase {
                             BasicTypeInfo.INT_TYPE_INFO,
                             valueState);
 
-            try {
-                unknownJobFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
-                fail("Should fail"); // by now the request must have failed.
-            } catch (ExecutionException e) {
-                assertThat(e.getCause()).isInstanceOf(RuntimeException.class).withFailMessage( "GOT: " + e.getCause().getMessage());
-                assertThat(e.getCause()).hasMessage("FlinkJobNotFoundException: Could not find Flink job ("
-                        + wrongJobId
-                        + ")").withFailMessage("GOT: " + e.getCause().getMessage());
-            } catch (Exception f) {
-                fail("Unexpected type of exception: " + f.getMessage());
-            }
+            assertThatThrownBy(
+                            () ->
+                                    unknownJobFuture.get(
+                                            deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .cause()
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage(
+                            "FlinkJobNotFoundException: Could not find Flink job ("
+                                    + wrongJobId
+                                    + ")");
 
             CompletableFuture<ValueState<Tuple2<Integer, Long>>> unknownQSName =
                     client.getKvState(
@@ -525,16 +524,15 @@ public abstract class AbstractQueryableStateTestBase {
                             BasicTypeInfo.INT_TYPE_INFO,
                             valueState);
 
-            try {
-                unknownQSName.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
-                fail("Should fail"); // by now the request must have failed.
-            } catch (ExecutionException e) {
-                assertThat(e.getCause()).isInstanceOf(RuntimeException.class).withFailMessage("GOT: " + e.getCause().getMessage());
-                assertThat(e.getCause()).hasMessage("UnknownKvStateLocation: No KvStateLocation found for KvState instance with name 'wrong-hakuna'.").withFailMessage("GOT: " + e.getCause().getMessage());
-
-            } catch (Exception f) {
-                fail("Unexpected type of exception: " + f.getMessage());
-            }
+            assertThatThrownBy(
+                            () ->
+                                    unknownQSName.get(
+                                            deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS))
+                    .isInstanceOf(ExecutionException.class)
+                    .cause()
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessage(
+                            "UnknownKvStateLocation: No KvStateLocation found for KvState instance with name 'wrong-hakuna'.");
         }
     }
 
@@ -635,41 +633,34 @@ public abstract class AbstractQueryableStateTestBase {
                                     }
                                 })
                         .asQueryableState("hakuna", valueState);
-        assertThatThrownBy(
-                        () -> {
-                            try (AutoCancellableJob autoCancellableJob =
-                                    new AutoCancellableJob(deadline, clusterClient, env)) {
 
-                                final JobID jobId = autoCancellableJob.getJobId();
-                                final JobGraph jobGraph = autoCancellableJob.getJobGraph();
+        try (AutoCancellableJob autoCancellableJob =
+                new AutoCancellableJob(deadline, clusterClient, env)) {
 
-                                clusterClient.submitJob(jobGraph).get();
+            final JobID jobId = autoCancellableJob.getJobId();
+            final JobGraph jobGraph = autoCancellableJob.getJobGraph();
 
-                                // Now query
-                                int key = 0;
-                                CompletableFuture<ValueState<Tuple2<Integer, Long>>> future =
-                                        getKvState(
-                                                deadline,
-                                                client,
-                                                jobId,
-                                                queryableState.getQueryableStateName(),
-                                                key,
-                                                BasicTypeInfo.INT_TYPE_INFO,
-                                                valueState,
-                                                true,
-                                                executor);
+            clusterClient.submitJob(jobGraph).get();
 
-                                try {
-                                    future.get(
-                                            deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS);
-                                } catch (ExecutionException | CompletionException e) {
-                                    // get() on a completedExceptionally future wraps the
-                                    // exception in an ExecutionException.
-                                    throw e.getCause();
-                                }
-                            }
-                        })
-                .isInstanceOf(UnknownKeyOrNamespaceException.class);
+            // Now query
+            int key = 0;
+            CompletableFuture<ValueState<Tuple2<Integer, Long>>> future =
+                    getKvState(
+                            deadline,
+                            client,
+                            jobId,
+                            queryableState.getQueryableStateName(),
+                            key,
+                            BasicTypeInfo.INT_TYPE_INFO,
+                            valueState,
+                            true,
+                            executor);
+
+            assertThatThrownBy(
+                            () -> future.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS))
+                    .cause()
+                    .isInstanceOf(UnknownKeyOrNamespaceException.class);
+        }
     }
 
     /**
@@ -889,7 +880,9 @@ public abstract class AbstractQueryableStateTestBase {
                                     .get(key);
 
                     if (value != null && value.f0 != null && expected == value.f1) {
-                        assertThat(key).isEqualTo(value.f0.intValue()).withFailMessage("Key mismatch");
+                        assertThat(key)
+                                .isEqualTo(value.f0.intValue())
+                                .withFailMessage("Key mismatch");
                         success = true;
                     } else {
                         // Retry
@@ -1335,7 +1328,8 @@ public abstract class AbstractQueryableStateTestBase {
                             deadline,
                             (jobStatus) -> jobStatus.equals(JobStatus.CANCELED),
                             new ScheduledExecutorServiceAdapter(EXECUTOR_EXTENSION.getExecutor()));
-            assertThat(jobStatusFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS)).isEqualTo(JobStatus.CANCELED);
+            assertThat(jobStatusFuture.get(deadline.timeLeft().toMillis(), TimeUnit.MILLISECONDS))
+                    .isEqualTo(JobStatus.CANCELED);
         }
     }
 

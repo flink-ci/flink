@@ -23,12 +23,10 @@ import org.apache.flink.queryablestate.network.stats.DisabledKvStateRequestStats
 import org.apache.flink.runtime.highavailability.HighAvailabilityServices;
 import org.apache.flink.runtime.jobmaster.KvStateLocationOracle;
 import org.apache.flink.runtime.query.KvStateLocation;
-import org.apache.flink.util.TestLoggerExtension;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.net.InetAddress;
 import java.util.Collections;
@@ -37,7 +35,6 @@ import java.util.concurrent.CompletableFuture;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for the {@link KvStateClientProxyImpl}. */
-@ExtendWith(TestLoggerExtension.class)
 class KvStateClientProxyImplTest {
 
     private KvStateClientProxyImpl kvStateClientProxy;

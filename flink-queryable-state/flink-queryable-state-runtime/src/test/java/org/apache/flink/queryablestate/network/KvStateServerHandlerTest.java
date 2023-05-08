@@ -55,7 +55,6 @@ import org.apache.flink.runtime.state.KeyedStateBackend;
 import org.apache.flink.runtime.state.internal.InternalKvState;
 import org.apache.flink.runtime.state.memory.MemoryStateBackend;
 import org.apache.flink.runtime.state.ttl.TtlTimeProvider;
-import org.apache.flink.util.TestLoggerExtension;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 import org.apache.flink.shaded.netty4.io.netty.buffer.Unpooled;
@@ -67,23 +66,19 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.net.InetAddress;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link KvStateServerHandler}. */
 @Disabled(
         "KvStateServerHandlerTest is unstable. See FLINK-13553 for more information. Since the community "
                 + "does not have time to work on QS, we decided to temporarily ignore this test case in order"
                 + "to maintain build stability.")
-@ExtendWith(TestLoggerExtension.class)
 class KvStateServerHandlerTest {
 
     private static KvStateServerImpl testServer;
@@ -162,7 +157,7 @@ class KvStateServerHandlerTest {
 
         long requestId = Integer.MAX_VALUE + 182828L;
 
-        assertTrue(registryListener.registrationName.equals("vanilla"));
+        assertThat(registryListener.registrationName).isEqualTo("vanilla");
 
         KvStateInternalRequest request =
                 new KvStateInternalRequest(registryListener.kvStateId, serializedKeyAndNamespace);
@@ -177,18 +172,18 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.REQUEST_RESULT, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_RESULT);
         long deserRequestId = MessageSerializer.getRequestId(buf);
         KvStateResponse response = serializer.deserializeResponse(buf);
         buf.release();
 
-        assertEquals(requestId, deserRequestId);
+        assertThat(deserRequestId).isEqualTo(requestId);
 
         int actualValue =
                 KvStateSerializer.deserializeValue(response.getContent(), IntSerializer.INSTANCE);
-        assertEquals(expectedValue, actualValue);
+        assertThat(actualValue).isEqualTo(expectedValue);
 
-        assertEquals(1, stats.getNumRequests(), stats.toString());
+        assertThat(stats.getNumRequests()).isEqualTo(1).withFailMessage(stats.toString());
 
         // Wait for async successful request report
         long deadline = System.nanoTime() + TimeUnit.NANOSECONDS.convert(30, TimeUnit.SECONDS);
@@ -196,7 +191,7 @@ class KvStateServerHandlerTest {
             Thread.sleep(10L);
         }
 
-        assertEquals(1L, stats.getNumSuccessful(), stats.toString());
+        assertThat(stats.getNumSuccessful()).isEqualTo(1L).withFailMessage(stats.toString());
     }
 
     /**
@@ -231,18 +226,18 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_FAILURE);
         RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
         buf.release();
 
-        assertEquals(requestId, response.getRequestId());
+        assertThat(response.getRequestId()).isEqualTo(requestId);
 
-        assertTrue(
-                response.getCause() instanceof UnknownKvStateIdException,
-                "Did not respond with expected failure cause");
+        assertThat(response.getCause())
+                .isInstanceOf(UnknownKvStateIdException.class)
+                .withFailMessage("Did not respond with expected failure cause");
 
-        assertEquals(1L, stats.getNumRequests());
-        assertEquals(1L, stats.getNumFailed());
+        assertThat(stats.getNumRequests()).isEqualTo(1L);
+        assertThat(stats.getNumFailed()).isEqualTo(1L);
     }
 
     /**
@@ -289,7 +284,7 @@ class KvStateServerHandlerTest {
 
         long requestId = Integer.MAX_VALUE + 22982L;
 
-        assertTrue(registryListener.registrationName.equals("vanilla"));
+        assertThat(registryListener.registrationName).isEqualTo("vanilla");
 
         KvStateInternalRequest request =
                 new KvStateInternalRequest(registryListener.kvStateId, serializedKeyAndNamespace);
@@ -303,18 +298,18 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_FAILURE);
         RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
         buf.release();
 
-        assertEquals(requestId, response.getRequestId());
+        assertThat(response.getRequestId()).isEqualTo(requestId);
 
-        assertTrue(
-                response.getCause() instanceof UnknownKeyOrNamespaceException,
-                "Did not respond with expected failure cause");
+        assertThat(response.getCause())
+                .isInstanceOf(UnknownKeyOrNamespaceException.class)
+                .withFailMessage("Did not respond with expected failure cause");
 
-        assertEquals(1L, stats.getNumRequests());
-        assertEquals(1L, stats.getNumFailed());
+        assertThat(stats.getNumRequests()).isEqualTo(1L);
+        assertThat(stats.getNumFailed()).isEqualTo(1L);
     }
 
     /**
@@ -398,14 +393,14 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_FAILURE);
         RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
         buf.release();
 
-        assertTrue(response.getCause().getMessage().contains("Expected test Exception"));
+        assertThat(response.getCause().getMessage()).contains("Expected test Exception");
 
-        assertEquals(1L, stats.getNumRequests());
-        assertEquals(1L, stats.getNumFailed());
+        assertThat(stats.getNumRequests()).isEqualTo(1L);
+        assertThat(stats.getNumFailed()).isEqualTo(1L);
     }
 
     /** Tests that the channel is closed if an Exception reaches the channel handler. */
@@ -429,14 +424,14 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.SERVER_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.SERVER_FAILURE);
         Throwable response = MessageSerializer.deserializeServerFailure(buf);
         buf.release();
 
-        assertTrue(response.getMessage().contains("Expected test Exception"));
+        assertThat(response.getMessage()).contains("Expected test Exception");
 
         channel.closeFuture().await(READ_TIMEOUT_MILLIS);
-        assertFalse(channel.isActive());
+        assertThat(channel.isActive()).isFalse();
     }
 
     /**
@@ -459,7 +454,7 @@ class KvStateServerHandlerTest {
 
         localTestServer.start();
         localTestServer.shutdown();
-        assertTrue(localTestServer.getQueryExecutor().isTerminated());
+        assertThat(localTestServer.getQueryExecutor().isTerminated()).isTrue();
 
         MessageSerializer<KvStateInternalRequest, KvStateResponse> serializer =
                 new MessageSerializer<>(
@@ -487,7 +482,7 @@ class KvStateServerHandlerTest {
 
         backend.getPartitionedState(VoidNamespace.INSTANCE, VoidNamespaceSerializer.INSTANCE, desc);
 
-        assertTrue(registryListener.registrationName.equals("vanilla"));
+        assertThat(registryListener.registrationName).isEqualTo("vanilla");
 
         KvStateInternalRequest request =
                 new KvStateInternalRequest(registryListener.kvStateId, new byte[0]);
@@ -500,14 +495,14 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_FAILURE);
         RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
         buf.release();
 
-        assertTrue(response.getCause().getMessage().contains("RejectedExecutionException"));
+        assertThat(response.getCause().getMessage()).contains("RejectedExecutionException");
 
-        assertEquals(1L, stats.getNumRequests());
-        assertEquals(1L, stats.getNumFailed());
+        assertThat(stats.getNumRequests()).isEqualTo(1L);
+        assertThat(stats.getNumFailed()).isEqualTo(1L);
 
         localTestServer.shutdown();
     }
@@ -538,12 +533,12 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.SERVER_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.SERVER_FAILURE);
         Throwable response = MessageSerializer.deserializeServerFailure(buf);
         buf.release();
 
-        assertEquals(0L, stats.getNumRequests());
-        assertEquals(0L, stats.getNumFailed());
+        assertThat(stats.getNumRequests()).isEqualTo(0L);
+        assertThat(stats.getNumFailed()).isEqualTo(0L);
 
         KvStateResponse stateResponse = new KvStateResponse(new byte[0]);
         unexpectedMessage =
@@ -555,16 +550,16 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.SERVER_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.SERVER_FAILURE);
         response = MessageSerializer.deserializeServerFailure(buf);
         buf.release();
 
-        assertTrue(
-                response instanceof IllegalArgumentException,
-                "Unexpected failure cause " + response.getClass().getName());
+        assertThat(response)
+                .isInstanceOf(IllegalArgumentException.class)
+                .withFailMessage("Unexpected failure cause " + response.getClass().getName());
 
-        assertEquals(0L, stats.getNumRequests());
-        assertEquals(0L, stats.getNumFailed());
+        assertThat(stats.getNumRequests()).isEqualTo(0L);
+        assertThat(stats.getNumFailed()).isEqualTo(0L);
     }
 
     /** Tests that incoming buffer instances are recycled. */
@@ -585,21 +580,21 @@ class KvStateServerHandlerTest {
         KvStateInternalRequest request = new KvStateInternalRequest(new KvStateID(), new byte[0]);
         ByteBuf serRequest = MessageSerializer.serializeRequest(channel.alloc(), 282872L, request);
 
-        assertEquals(1L, serRequest.refCnt());
+        assertThat(serRequest.refCnt()).isEqualTo(1L);
 
         // Write regular request
         channel.writeInbound(serRequest);
-        assertEquals(0L, serRequest.refCnt(), "Buffer not recycled");
+        assertThat(serRequest.refCnt()).isEqualTo(0L).withFailMessage("Buffer not recycled");
 
         // Write unexpected msg
         ByteBuf unexpected = channel.alloc().buffer(8);
         unexpected.writeInt(4);
         unexpected.writeInt(4);
 
-        assertEquals(1L, unexpected.refCnt());
+        assertThat(unexpected.refCnt()).isEqualTo(1L);
 
         channel.writeInbound(unexpected);
-        assertEquals(0L, unexpected.refCnt(), "Buffer not recycled");
+        assertThat(unexpected.refCnt()).isEqualTo(0L).withFailMessage("Buffer not recycled");
         channel.finishAndReleaseAll();
     }
 
@@ -657,7 +652,7 @@ class KvStateServerHandlerTest {
                         "wrong-namespace-type",
                         StringSerializer.INSTANCE);
 
-        assertTrue(registryListener.registrationName.equals("vanilla"));
+        assertThat(registryListener.registrationName).isEqualTo("vanilla");
 
         KvStateInternalRequest request =
                 new KvStateInternalRequest(registryListener.kvStateId, wrongKeyAndNamespace);
@@ -670,11 +665,11 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_FAILURE);
         RequestFailure response = MessageSerializer.deserializeRequestFailure(buf);
         buf.release();
-        assertEquals(182828L, response.getRequestId());
-        assertTrue(response.getCause().getMessage().contains("IOException"));
+        assertThat(response.getRequestId()).isEqualTo(182828L);
+        assertThat(response.getCause().getMessage()).contains("IOException");
 
         // Repeat with wrong namespace only
         request = new KvStateInternalRequest(registryListener.kvStateId, wrongNamespace);
@@ -687,14 +682,14 @@ class KvStateServerHandlerTest {
         buf.skipBytes(4); // skip frame length
 
         // Verify the response
-        assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_FAILURE);
         response = MessageSerializer.deserializeRequestFailure(buf);
         buf.release();
-        assertEquals(182829L, response.getRequestId());
-        assertTrue(response.getCause().getMessage().contains("IOException"));
+        assertThat(response.getRequestId()).isEqualTo(182829L);
+        assertThat(response.getCause().getMessage()).contains("IOException");
 
-        assertEquals(2L, stats.getNumRequests());
-        assertEquals(2L, stats.getNumFailed());
+        assertThat(stats.getNumRequests()).isEqualTo(2L);
+        assertThat(stats.getNumFailed()).isEqualTo(2L);
     }
 
     /** Tests that large responses are chunked. */
@@ -753,8 +748,7 @@ class KvStateServerHandlerTest {
 
         long requestId = Integer.MAX_VALUE + 182828L;
 
-        assertTrue(registryListener.registrationName.equals("vanilla"));
-
+        assertThat(registryListener.registrationName).isEqualTo("vanilla");
         KvStateInternalRequest request =
                 new KvStateInternalRequest(registryListener.kvStateId, serializedKeyAndNamespace);
         ByteBuf serRequest =
@@ -764,7 +758,7 @@ class KvStateServerHandlerTest {
         channel.writeInbound(serRequest);
 
         Object msg = readInboundBlocking(channel);
-        assertTrue(msg instanceof ChunkedByteBuf, "Not ChunkedByteBuf");
+        assertThat(msg).isInstanceOf(ChunkedByteBuf.class).withFailMessage("Not ChunkedByteBuf");
         ((ChunkedByteBuf) msg).close();
     }
 

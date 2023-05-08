@@ -33,9 +33,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.ThreadLocalRandom;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Tests for {@link MessageSerializer}. */
 class MessageSerializerTest {
@@ -59,14 +58,15 @@ class MessageSerializerTest {
         ByteBuf buf = MessageSerializer.serializeRequest(alloc, requestId, request);
 
         int frameLength = buf.readInt();
-        assertEquals(MessageType.REQUEST, MessageSerializer.deserializeHeader(buf));
-        assertEquals(requestId, MessageSerializer.getRequestId(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST);
+        assertThat(MessageSerializer.getRequestId(buf)).isEqualTo(requestId);
         KvStateInternalRequest requestDeser = serializer.deserializeRequest(buf);
 
-        assertEquals(buf.readerIndex(), frameLength + 4);
+        assertThat(buf.readerIndex()).isEqualTo(frameLength + 4);
 
-        assertEquals(kvStateId, requestDeser.getKvStateId());
-        assertArrayEquals(serializedKeyAndNamespace, requestDeser.getSerializedKeyAndNamespace());
+        assertThat(requestDeser.getKvStateId()).isEqualTo(kvStateId);
+        assertThat(requestDeser.getSerializedKeyAndNamespace())
+                .isEqualTo(serializedKeyAndNamespace);
     }
 
     /** Tests request serialization with zero-length serialized key and namespace. */
@@ -87,14 +87,15 @@ class MessageSerializerTest {
         ByteBuf buf = MessageSerializer.serializeRequest(alloc, requestId, request);
 
         int frameLength = buf.readInt();
-        assertEquals(MessageType.REQUEST, MessageSerializer.deserializeHeader(buf));
-        assertEquals(requestId, MessageSerializer.getRequestId(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST);
+        assertThat(MessageSerializer.getRequestId(buf)).isEqualTo(requestId);
         KvStateInternalRequest requestDeser = serializer.deserializeRequest(buf);
 
-        assertEquals(buf.readerIndex(), frameLength + 4);
+        assertThat(buf.readerIndex()).isEqualTo(frameLength + 4);
 
-        assertEquals(kvStateId, requestDeser.getKvStateId());
-        assertArrayEquals(serializedKeyAndNamespace, requestDeser.getSerializedKeyAndNamespace());
+        assertThat(requestDeser.getKvStateId()).isEqualTo(kvStateId);
+        assertThat(requestDeser.getSerializedKeyAndNamespace())
+                .isEqualTo(serializedKeyAndNamespace);
     }
 
     /**
@@ -122,13 +123,13 @@ class MessageSerializerTest {
         ByteBuf buf = MessageSerializer.serializeResponse(alloc, requestId, response);
 
         int frameLength = buf.readInt();
-        assertEquals(MessageType.REQUEST_RESULT, MessageSerializer.deserializeHeader(buf));
-        assertEquals(requestId, MessageSerializer.getRequestId(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_RESULT);
+        assertThat(MessageSerializer.getRequestId(buf)).isEqualTo(requestId);
         KvStateResponse responseDeser = serializer.deserializeResponse(buf);
 
-        assertEquals(buf.readerIndex(), frameLength + 4);
+        assertThat(buf.readerIndex()).isEqualTo(frameLength + 4);
 
-        assertArrayEquals(serializedResult, responseDeser.getContent());
+        assertThat(responseDeser.getContent()).isEqualTo(serializedResult);
     }
 
     /** Tests response serialization with zero-length serialized result. */
@@ -146,12 +147,12 @@ class MessageSerializerTest {
 
         int frameLength = buf.readInt();
 
-        assertEquals(MessageType.REQUEST_RESULT, MessageSerializer.deserializeHeader(buf));
-        assertEquals(72727278L, MessageSerializer.getRequestId(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_RESULT);
+        assertThat(MessageSerializer.getRequestId(buf)).isEqualTo(72727278L);
         KvStateResponse responseDeser = serializer.deserializeResponse(buf);
-        assertEquals(buf.readerIndex(), frameLength + 4);
+        assertThat(buf.readerIndex()).isEqualTo(frameLength + 4);
 
-        assertArrayEquals(serializedResult, responseDeser.getContent());
+        assertThat(responseDeser.getContent()).isEqualTo(serializedResult);
     }
 
     /**
@@ -173,13 +174,13 @@ class MessageSerializerTest {
         ByteBuf buf = MessageSerializer.serializeRequestFailure(alloc, requestId, cause);
 
         int frameLength = buf.readInt();
-        assertEquals(MessageType.REQUEST_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.REQUEST_FAILURE);
         RequestFailure requestFailure = MessageSerializer.deserializeRequestFailure(buf);
-        assertEquals(buf.readerIndex(), frameLength + 4);
+        assertThat(buf.readerIndex()).isEqualTo(frameLength + 4);
 
-        assertEquals(requestId, requestFailure.getRequestId());
-        assertEquals(cause.getClass(), requestFailure.getCause().getClass());
-        assertEquals(cause.getMessage(), requestFailure.getCause().getMessage());
+        assertThat(requestFailure.getRequestId()).isEqualTo(requestId);
+        assertThat(requestFailure.getCause()).isInstanceOf(cause.getClass());
+        assertThat(requestFailure.getCause().getMessage()).isEqualTo(cause.getMessage());
     }
 
     /** Tests server failure serialization. */
@@ -190,12 +191,12 @@ class MessageSerializerTest {
         ByteBuf buf = MessageSerializer.serializeServerFailure(alloc, cause);
 
         int frameLength = buf.readInt();
-        assertEquals(MessageType.SERVER_FAILURE, MessageSerializer.deserializeHeader(buf));
+        assertThat(MessageSerializer.deserializeHeader(buf)).isEqualTo(MessageType.SERVER_FAILURE);
         Throwable request = MessageSerializer.deserializeServerFailure(buf);
-        assertEquals(buf.readerIndex(), frameLength + 4);
+        assertThat(buf.readerIndex()).isEqualTo(frameLength + 4);
 
-        assertEquals(cause.getClass(), request.getClass());
-        assertEquals(cause.getMessage(), request.getMessage());
+        assertThat(request).isInstanceOf(cause.getClass());
+        assertThat(request.getMessage()).isEqualTo(cause.getMessage());
     }
 
     private byte[] randomByteArray(int capacity) {

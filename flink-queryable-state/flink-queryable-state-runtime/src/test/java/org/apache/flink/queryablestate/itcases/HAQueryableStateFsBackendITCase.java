@@ -93,7 +93,7 @@ class HAQueryableStateFsBackendITCase extends AbstractQueryableStateTestBase {
         zkServer.close();
     }
 
-    private static Configuration getConfig() throws Exception {
+    private static Configuration getConfig() {
 
         Configuration config = new Configuration();
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);

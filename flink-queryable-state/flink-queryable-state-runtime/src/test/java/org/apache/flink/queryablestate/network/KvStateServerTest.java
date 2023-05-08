@@ -66,8 +66,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.assertj.core.api.Assertions.assertThat;
 
 /** Tests for {@link KvStateServerImpl}. */
 class KvStateServerTest {
@@ -173,7 +172,7 @@ class KvStateServerTest {
 
             long requestId = Integer.MAX_VALUE + 182828L;
 
-            assertTrue(registryListener.registrationName.equals("vanilla"));
+            assertThat(registryListener.registrationName).isEqualTo("vanilla");
 
             final KvStateInternalRequest request =
                     new KvStateInternalRequest(
@@ -186,14 +185,15 @@ class KvStateServerTest {
 
             ByteBuf buf = responses.poll(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS);
 
-            assertEquals(MessageType.REQUEST_RESULT, MessageSerializer.deserializeHeader(buf));
-            assertEquals(requestId, MessageSerializer.getRequestId(buf));
+            assertThat(MessageSerializer.deserializeHeader(buf))
+                    .isEqualTo(MessageType.REQUEST_RESULT);
+            assertThat(MessageSerializer.getRequestId(buf)).isEqualTo(requestId);
             KvStateResponse response = server.getSerializer().deserializeResponse(buf);
 
             int actualValue =
                     KvStateSerializer.deserializeValue(
                             response.getContent(), IntSerializer.INSTANCE);
-            assertEquals(expectedValue, actualValue);
+            assertThat(actualValue).isEqualTo(expectedValue);
         } finally {
             if (server != null) {
                 server.shutdown();

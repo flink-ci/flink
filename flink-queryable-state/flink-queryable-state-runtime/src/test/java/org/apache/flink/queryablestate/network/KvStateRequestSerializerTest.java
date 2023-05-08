@@ -272,7 +272,7 @@ class KvStateRequestSerializerTest {
     void testDeserializeListEmpty() throws Exception {
         List<Long> actualValue =
                 KvStateSerializer.deserializeList(new byte[] {}, LongSerializer.INSTANCE);
-        assertThat(actualValue).hasSize(0);
+        assertThat(actualValue).isEmpty();
     }
 
     /** Tests list deserialization with too few bytes. */
@@ -323,11 +323,12 @@ class KvStateRequestSerializerTest {
             throws BackendBuildingException {
         final KeyGroupRange keyGroupRange = new KeyGroupRange(0, 0);
         ExecutionConfig executionConfig = new ExecutionConfig();
-        TaskKvStateRegistry taskKvStateRegistry = new KvStateRegistry().createTaskRegistry(JobID.generate(), new JobVertexID());
+        TaskKvStateRegistry taskKvStateRegistry =
+                new KvStateRegistry().createTaskRegistry(JobID.generate(), new JobVertexID());
         // objects for heap state list serialisation
         final HeapKeyedStateBackend<Long> longHeapKeyedStateBackend =
                 new HeapKeyedStateBackendBuilder<>(
-                               taskKvStateRegistry,
+                                taskKvStateRegistry,
                                 LongSerializer.INSTANCE,
                                 ClassLoader.getSystemClassLoader(),
                                 keyGroupRange.getNumberOfKeyGroups(),

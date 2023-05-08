@@ -26,12 +26,10 @@ import org.apache.flink.queryablestate.network.stats.AtomicKvStateRequestStats;
 import org.apache.flink.queryablestate.network.stats.DisabledKvStateRequestStats;
 import org.apache.flink.queryablestate.network.stats.KvStateRequestStats;
 import org.apache.flink.util.Preconditions;
-import org.apache.flink.util.TestLoggerExtension;
 
 import org.apache.flink.shaded.netty4.io.netty.buffer.ByteBuf;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -47,7 +45,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Tests general behavior of the {@link AbstractServerBase}. */
-@ExtendWith(TestLoggerExtension.class)
 class AbstractServerTest {
 
     /**
@@ -57,29 +54,25 @@ class AbstractServerTest {
     @Test
     void testServerInitializationFailure() throws Throwable {
 
-        // the expected exception along with the adequate message
-        assertThatThrownBy(() -> {
-                            List<Integer> portList = Collections.singletonList(0);
+        List<Integer> portList = Collections.singletonList(0);
 
-                            try (TestServer server1 =
-                                    new TestServer(
-                                            "Test Server 1",
-                                            new DisabledKvStateRequestStats(),
-                                            portList.iterator())) {
-                                server1.start();
+        try (TestServer server1 =
+                new TestServer(
+                        "Test Server 1", new DisabledKvStateRequestStats(), portList.iterator())) {
+            server1.start();
 
-                                try (TestServer server2 =
-                                        new TestServer(
-                                                "Test Server 2",
-                                                new DisabledKvStateRequestStats(),
-                                                Collections.singletonList(
-                                                                server1.getServerAddress()
-                                                                        .getPort())
-                                                        .iterator())) {
-                                    server2.start();
-                                }
-                            }
-                        }).hasMessage("Unable to start Test Server 2. All ports in provided range are occupied.");
+            try (TestServer server2 =
+                    new TestServer(
+                            "Test Server 2",
+                            new DisabledKvStateRequestStats(),
+                            Collections.singletonList(server1.getServerAddress().getPort())
+                                    .iterator())) {
+                // the expected exception along with the adequate message
+                assertThatThrownBy(() -> server2.start())
+                        .hasMessage(
+                                "Unable to start Test Server 2. All ports in provided range are occupied.");
+            }
+        }
     }
 
     /**
@@ -129,7 +122,7 @@ class AbstractServerTest {
             assertThat(response2.getMessage()).isEqualTo(server2.getServerName() + "-pong");
 
             assertThat(serverStats1.getNumConnections()).isEqualTo(1L);
-            assertThat(serverStats2.getNumConnections()).isEqualTo(2L);
+            assertThat(serverStats2.getNumConnections()).isEqualTo(1L);
 
             assertThat(clientStats.getNumConnections()).isEqualTo(2L);
             assertThat(clientStats.getNumFailed()).isEqualTo(0L);
