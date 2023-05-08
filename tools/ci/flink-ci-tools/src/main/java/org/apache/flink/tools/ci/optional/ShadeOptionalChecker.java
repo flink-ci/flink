@@ -176,9 +176,8 @@ public class ShadeOptionalChecker {
             return violations;
         }
 
-        // If a module has no transitive dependencies we can shortcut the optional flag checks as
-        // we will not require additional flags in any case.
-        // This reduces noise on CI.
+        // The set of dependencies that the module directly depends on, which downstream modules
+        // would pull in transitively.
         // It also avoids some edge-cases; since a dependency can only occur once in the dependency
         // tree (on the shortest path to said dependency) it can happen that a compile dependency
         // is shown as a transitive dependency of a test dependency.
@@ -192,6 +191,7 @@ public class ShadeOptionalChecker {
                                                 || isCommonCompileDependency(dependency)))
                         .collect(Collectors.toList());
 
+        // if nothing would be exposed to downstream modules we exit early to reduce noise on CI
         if (directTransitiveDependencies.isEmpty()) {
             LOG.debug(
                     "Skipping deep-check of module {} because all direct dependencies are not transitive.",
