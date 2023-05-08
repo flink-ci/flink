@@ -28,7 +28,7 @@ cd "$FLINK_ROOT" || exit
 
 dependency_plugin_output=${CI_DIR}/optional_dep.txt
 
-run_mvn dependency:tree -B >> "${dependency_plugin_output}"
+run_mvn dependency:tree -B > "${dependency_plugin_output}"
 
 cat "${dependency_plugin_output}"
 
