@@ -165,14 +165,10 @@ public class ShadeOptionalChecker {
                 dependencyTree.getDirectDependencies().stream()
                         .filter(
                                 dependency ->
-                                        !(dependency.isOptional().orElse(false)
-                                                || "provided"
-                                                        .equals(dependency.getScope().orElse(null))
-                                                || "test".equals(dependency.getScope().orElse(null))
-                                                || "flink-shaded-force-shading"
-                                                        .equals(dependency.getArtifactId())
-                                                || "jsr305".equals(dependency.getArtifactId())
-                                                || "slf4j-api".equals(dependency.getArtifactId())))
+                                        !(isOptional(dependency)
+                                                || hasProvidedScope(dependency)
+                                                || hasTestScope(dependency)
+                                                || isCommonCompileDependency(dependency)))
                         .collect(Collectors.toList());
 
         if (directTransitiveDependencies.isEmpty()) {
@@ -200,5 +196,28 @@ public class ShadeOptionalChecker {
         }
 
         return violations;
+    }
+
+    private static boolean isOptional(Dependency dependency) {
+        return dependency.isOptional().orElse(false);
+    }
+
+    private static boolean hasProvidedScope(Dependency dependency) {
+        return "provided".equals(dependency.getScope().orElse(null));
+    }
+
+    private static boolean hasTestScope(Dependency dependency) {
+        return "test".equals(dependency.getScope().orElse(null));
+    }
+
+    /**
+     * These are compile dependencies that are set up in the root pom. We do not require modules to
+     * mark these as optional because all modules depend on them anyway; whether they leak through
+     * or not is therefore irrelevant.
+     */
+    private static boolean isCommonCompileDependency(Dependency dependency) {
+        return "flink-shaded-force-shading".equals(dependency.getArtifactId())
+                || "jsr305".equals(dependency.getArtifactId())
+                || "slf4j-api".equals(dependency.getArtifactId());
     }
 }
