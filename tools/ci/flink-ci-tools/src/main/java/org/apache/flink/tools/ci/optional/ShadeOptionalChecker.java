@@ -122,7 +122,9 @@ public class ShadeOptionalChecker {
             final Set<Dependency> violations =
                     checkOptionalFlags(module, bundledDependencies, dependencyTree);
 
-            if (!violations.isEmpty()) {
+            if (violations.isEmpty()) {
+                LOG.info("OK: {}", module);
+            } else {
                 allViolations.put(module, violations);
             }
         }
@@ -195,9 +197,6 @@ public class ShadeOptionalChecker {
             if (!isOptional) {
                 violations.add(bundledDependency);
             }
-        }
-        if (violations.isEmpty()) {
-            LOG.info("OK: {}", module);
         }
 
         return violations;
