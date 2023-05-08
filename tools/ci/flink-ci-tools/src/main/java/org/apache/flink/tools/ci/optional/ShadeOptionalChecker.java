@@ -41,6 +41,27 @@ import java.util.stream.Collectors;
  * Verifies that all dependencies bundled with the shade-plugin are marked as optional in the pom.
  * This ensures compatibility with later maven versions and in general simplifies dependency
  * management as transitivity is no longer dependent on the shade-plugin.
+ *
+ * <p>In Maven 3.3 the dependency tree was made immutable at runtime, and thus can no longer be
+ * changed by the shade plugin. The plugin would usually remove a dependency from the tree when it
+ * is being bundled (known as dependency reduction). While dependency reduction still works for the
+ * published poms (== what users consume) since it can still change the content of the final pom,
+ * while developing Flink it no longer works. This breaks plenty of things, since suddenly a bunch
+ * of dependencies are still visible to downstream modules that weren't before.
+ *
+ * <p>To workaround this we mark all dependencies that we bundle as optional; this makes them
+ * non-transitive. To a downstream module, behavior-wise a non-transitive dependency is identical to
+ * a removed dependency.
+ *
+ * <p>This checker analyzes the bundled dependencies (based on the shade-plugin output) and the set
+ * of dependencies (based on the dependency plugin) to detect cases where a dependency is not marked
+ * as optional as it should.
+ *
+ * <p>The enforced rule is rather simple: Any dependency that is bundled, or any of its parents,
+ * must show up as optional in the dependency tree. The parent clause is required to cover cases
+ * where a module has 2 paths to a bundled dependency. If a module depends on A1/A2, each depending
+ * on B, with A1 and B being bundled, then even if A1 is marked as optional B is still shown as a
+ * non-optional dependency (because the non-optional A2 still needs it!).
  */
 public class ShadeOptionalChecker {
     private static final Logger LOG = LoggerFactory.getLogger(ShadeOptionalChecker.class);
