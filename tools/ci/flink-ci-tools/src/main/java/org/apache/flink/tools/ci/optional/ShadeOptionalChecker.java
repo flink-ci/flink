@@ -178,12 +178,11 @@ public class ShadeOptionalChecker {
                     "Skipping deep-check of module {} because all direct dependencies are not transitive.",
                     module);
             return violations;
-        } else {
-            LOG.debug(
-                    "Running deep-check of module {} because there are direct dependencies that are transitive: {}",
-                    module,
-                    directTransitiveDependencies);
         }
+        LOG.debug(
+                "Running deep-check of module {} because there are direct dependencies that are transitive: {}",
+                module,
+                directTransitiveDependencies);
 
         for (Dependency bundledDependency : bundledDependencies) {
             LOG.debug("\tChecking dependency '{}'.", bundledDependency);
