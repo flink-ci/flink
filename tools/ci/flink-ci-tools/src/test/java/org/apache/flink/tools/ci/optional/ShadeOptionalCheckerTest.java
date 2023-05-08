@@ -133,13 +133,9 @@ class ShadeOptionalCheckerTest {
 
     @Test
     void testTestDependenciesAreIgnored() {
-        final Dependency dependencyA = createOptionalDependency("a");
-        final Dependency dependencyB = createMandatoryDependency("b");
-        final Set<Dependency> bundled = Collections.singleton(dependencyB);
-        final DependencyTree dependencyTree =
-                new DependencyTree()
-                        .addDirectDependency(dependencyA)
-                        .addTransitiveDependencyTo(dependencyB, dependencyA);
+        final Dependency dependencyA = createTestDependency("a");
+        final Set<Dependency> bundled = Collections.emptySet();
+        final DependencyTree dependencyTree = new DependencyTree().addDirectDependency(dependencyA);
 
         final Set<Dependency> violations =
                 ShadeOptionalChecker.checkOptionalFlags(MODULE, bundled, dependencyTree);
@@ -153,5 +149,9 @@ class ShadeOptionalCheckerTest {
 
     private static Dependency createOptionalDependency(String artifactId) {
         return Dependency.create("groupId", artifactId, "version", null, "compile", true);
+    }
+
+    private static Dependency createTestDependency(String artifactId) {
+        return Dependency.create("groupId", artifactId, "version", null, "test", false);
     }
 }
