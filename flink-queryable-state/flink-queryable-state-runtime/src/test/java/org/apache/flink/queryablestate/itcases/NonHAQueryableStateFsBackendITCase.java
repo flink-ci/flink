@@ -18,6 +18,7 @@
 
 package org.apache.flink.queryablestate.itcases;
 
+import org.apache.flink.client.program.rest.RestClusterClient;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MemorySize;
@@ -28,10 +29,12 @@ import org.apache.flink.queryablestate.client.QueryableStateClient;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.state.filesystem.FsStateBackend;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
-import org.apache.flink.test.util.MiniClusterWithClientResource;
+import org.apache.flink.test.junit5.InjectClusterClient;
+import org.apache.flink.test.junit5.MiniClusterExtension;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -48,8 +51,17 @@ public class NonHAQueryableStateFsBackendITCase extends AbstractQueryableStateTe
     private static final int QS_PROXY_PORT_RANGE_START = 9084;
     private static final int QS_SERVER_PORT_RANGE_START = 9089;
 
-    private static MiniClusterWithClientResource miniClusterResource;
     @TempDir static Path tmpStateBackendDir;
+
+    @RegisterExtension
+    static final MiniClusterExtension MINI_CLUSTER_RESOURCE =
+            new MiniClusterExtension(
+                    () ->
+                            new MiniClusterResourceConfiguration.Builder()
+                                    .setConfiguration(getConfig())
+                                    .setNumberTaskManagers(NUM_TMS)
+                                    .setNumberSlotsPerTaskManager(NUM_SLOTS_PER_TM)
+                                    .build());
 
     @Override
     protected StateBackend createStateBackend() throws Exception {
@@ -57,24 +69,15 @@ public class NonHAQueryableStateFsBackendITCase extends AbstractQueryableStateTe
     }
 
     @BeforeAll
-    static void setup() throws Exception {
+    static void setup(@InjectClusterClient RestClusterClient<?> injectedClusterClient)
+            throws Exception {
         client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
-        miniClusterResource =
-                new MiniClusterWithClientResource(
-                        new MiniClusterResourceConfiguration.Builder()
-                                .setConfiguration(getConfig())
-                                .setNumberTaskManagers(NUM_TMS)
-                                .setNumberSlotsPerTaskManager(NUM_SLOTS_PER_TM)
-                                .build());
 
-        miniClusterResource.before();
-        clusterClient = miniClusterResource.getClusterClient();
+        clusterClient = injectedClusterClient;
     }
 
     @AfterAll
     static void tearDown() {
-        miniClusterResource.after();
-
         client.shutdownAndWait();
     }
 

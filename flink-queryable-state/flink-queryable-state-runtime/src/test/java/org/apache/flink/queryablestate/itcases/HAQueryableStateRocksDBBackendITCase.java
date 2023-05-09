@@ -18,6 +18,7 @@
 
 package org.apache.flink.queryablestate.itcases;
 
+import org.apache.flink.client.program.rest.RestClusterClient;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.HighAvailabilityOptions;
@@ -26,15 +27,18 @@ import org.apache.flink.configuration.QueryableStateOptions;
 import org.apache.flink.configuration.TaskManagerOptions;
 import org.apache.flink.configuration.WebOptions;
 import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
+import org.apache.flink.core.testutils.AllCallbackWrapper;
 import org.apache.flink.queryablestate.client.QueryableStateClient;
 import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
-import org.apache.flink.runtime.testutils.ZooKeeperTestUtils;
-import org.apache.flink.test.util.MiniClusterWithClientResource;
+import org.apache.flink.runtime.zookeeper.ZooKeeperExtension;
+import org.apache.flink.test.junit5.InjectClusterClient;
+import org.apache.flink.test.junit5.MiniClusterExtension;
 
-import org.apache.curator.test.TestingServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Order;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
@@ -51,11 +55,29 @@ class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableStateTestBas
     private static final int QS_PROXY_PORT_RANGE_START = 9074;
     private static final int QS_SERVER_PORT_RANGE_START = 9079;
 
-    @TempDir static Path tmpStateBackendDir;
-    @TempDir static Path tmpHaStoragePath;
-    private static TestingServer zkServer;
+    @TempDir
+    @Order(1)
+    static Path tmpStateBackendDir;
 
-    private static MiniClusterWithClientResource miniClusterResource;
+    @TempDir
+    @Order(2)
+    static Path tmpHaStoragePath;
+
+    @RegisterExtension
+    @Order(3)
+    static final AllCallbackWrapper<ZooKeeperExtension> ZK_RESOURCE =
+            new AllCallbackWrapper<>(new ZooKeeperExtension());
+
+    @RegisterExtension
+    @Order(4)
+    static final MiniClusterExtension MINI_CLUSTER_RESOURCE =
+            new MiniClusterExtension(
+                    () ->
+                            new MiniClusterResourceConfiguration.Builder()
+                                    .setConfiguration(getConfig())
+                                    .setNumberTaskManagers(NUM_TMS)
+                                    .setNumberSlotsPerTaskManager(NUM_SLOTS_PER_TM)
+                                    .build());
 
     @Override
     protected StateBackend createStateBackend() throws Exception {
@@ -63,36 +85,19 @@ class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableStateTestBas
     }
 
     @BeforeAll
-    static void setup() throws Exception {
-        zkServer = ZooKeeperTestUtils.createAndStartZookeeperTestingServer();
-
-        // we have to manage this manually because we have to create the ZooKeeper server
-        // ahead of this
-        miniClusterResource =
-                new MiniClusterWithClientResource(
-                        new MiniClusterResourceConfiguration.Builder()
-                                .setConfiguration(getConfig())
-                                .setNumberTaskManagers(NUM_TMS)
-                                .setNumberSlotsPerTaskManager(NUM_SLOTS_PER_TM)
-                                .build());
-
-        miniClusterResource.before();
-
+    static void setup(@InjectClusterClient RestClusterClient<?> injectedClusterClient)
+            throws Exception {
         client = new QueryableStateClient("localhost", QS_PROXY_PORT_RANGE_START);
 
-        clusterClient = miniClusterResource.getClusterClient();
+        clusterClient = injectedClusterClient;
     }
 
     @AfterAll
     static void tearDown() throws Exception {
-        miniClusterResource.after();
-
         client.shutdownAndWait();
-
-        zkServer.close();
     }
 
-    private static Configuration getConfig() throws Exception {
+    private static Configuration getConfig() {
 
         Configuration config = new Configuration();
         config.setBoolean(QueryableStateOptions.ENABLE_QUERYABLE_STATE_PROXY_SERVER, true);
@@ -113,7 +118,9 @@ class HAQueryableStateRocksDBBackendITCase extends AbstractQueryableStateTestBas
 
         config.setString(HighAvailabilityOptions.HA_STORAGE_PATH, tmpHaStoragePath.toString());
 
-        config.setString(HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM, zkServer.getConnectString());
+        config.setString(
+                HighAvailabilityOptions.HA_ZOOKEEPER_QUORUM,
+                ZK_RESOURCE.getCustomExtension().getConnectString());
         config.setString(HighAvailabilityOptions.HA_MODE, "zookeeper");
 
         return config;
