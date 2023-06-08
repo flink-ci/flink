@@ -183,7 +183,7 @@ class KvStateServerHandlerTest {
                 KvStateSerializer.deserializeValue(response.getContent(), IntSerializer.INSTANCE);
         assertThat(actualValue).isEqualTo(expectedValue);
 
-        assertThat(stats.getNumRequests()).isEqualTo(1).withFailMessage(stats.toString());
+        assertThat(stats.getNumRequests()).withFailMessage(stats.toString()).isEqualTo(1);
 
         // Wait for async successful request report
         long deadline = System.nanoTime() + TimeUnit.NANOSECONDS.convert(30, TimeUnit.SECONDS);
@@ -191,7 +191,7 @@ class KvStateServerHandlerTest {
             Thread.sleep(10L);
         }
 
-        assertThat(stats.getNumSuccessful()).isEqualTo(1L).withFailMessage(stats.toString());
+        assertThat(stats.getNumSuccessful()).withFailMessage(stats.toString()).isEqualTo(1L);
     }
 
     /**
@@ -233,8 +233,8 @@ class KvStateServerHandlerTest {
         assertThat(response.getRequestId()).isEqualTo(requestId);
 
         assertThat(response.getCause())
-                .isInstanceOf(UnknownKvStateIdException.class)
-                .withFailMessage("Did not respond with expected failure cause");
+                .withFailMessage("Did not respond with expected failure cause")
+                .isInstanceOf(UnknownKvStateIdException.class);
 
         assertThat(stats.getNumRequests()).isEqualTo(1L);
         assertThat(stats.getNumFailed()).isEqualTo(1L);
@@ -305,8 +305,8 @@ class KvStateServerHandlerTest {
         assertThat(response.getRequestId()).isEqualTo(requestId);
 
         assertThat(response.getCause())
-                .isInstanceOf(UnknownKeyOrNamespaceException.class)
-                .withFailMessage("Did not respond with expected failure cause");
+                .withFailMessage("Did not respond with expected failure cause")
+                .isInstanceOf(UnknownKeyOrNamespaceException.class);
 
         assertThat(stats.getNumRequests()).isEqualTo(1L);
         assertThat(stats.getNumFailed()).isEqualTo(1L);
@@ -555,8 +555,8 @@ class KvStateServerHandlerTest {
         buf.release();
 
         assertThat(response)
-                .isInstanceOf(IllegalArgumentException.class)
-                .withFailMessage("Unexpected failure cause " + response.getClass().getName());
+                .withFailMessage("Unexpected failure cause " + response.getClass().getName())
+                .isInstanceOf(IllegalArgumentException.class);
 
         assertThat(stats.getNumRequests()).isEqualTo(0L);
         assertThat(stats.getNumFailed()).isEqualTo(0L);
@@ -584,7 +584,7 @@ class KvStateServerHandlerTest {
 
         // Write regular request
         channel.writeInbound(serRequest);
-        assertThat(serRequest.refCnt()).isEqualTo(0L).withFailMessage("Buffer not recycled");
+        assertThat(serRequest.refCnt()).withFailMessage("Buffer not recycled").isEqualTo(0L);
 
         // Write unexpected msg
         ByteBuf unexpected = channel.alloc().buffer(8);
@@ -594,7 +594,7 @@ class KvStateServerHandlerTest {
         assertThat(unexpected.refCnt()).isEqualTo(1L);
 
         channel.writeInbound(unexpected);
-        assertThat(unexpected.refCnt()).isEqualTo(0L).withFailMessage("Buffer not recycled");
+        assertThat(unexpected.refCnt()).withFailMessage("Buffer not recycled").isEqualTo(0L);
         channel.finishAndReleaseAll();
     }
 
@@ -758,7 +758,7 @@ class KvStateServerHandlerTest {
         channel.writeInbound(serRequest);
 
         Object msg = readInboundBlocking(channel);
-        assertThat(msg).isInstanceOf(ChunkedByteBuf.class).withFailMessage("Not ChunkedByteBuf");
+        assertThat(msg).withFailMessage("Not ChunkedByteBuf").isInstanceOf(ChunkedByteBuf.class);
         ((ChunkedByteBuf) msg).close();
     }
 

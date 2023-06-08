@@ -63,8 +63,8 @@ class KryoSerializerClassLoadingTest extends SerializerTestBase<Object> {
     void guardTestAssumptions() {
         assertThatThrownBy(
                         () -> Class.forName(OUTSIDE_CLASS_LOADING.getObject().getClass().getName()))
-                .isInstanceOf(ClassNotFoundException.class)
-                .withFailMessage("This test's assumptions are broken");
+                .withFailMessage("This test's assumptions are broken")
+                .isInstanceOf(ClassNotFoundException.class);
     }
 
     // ------------------------------------------------------------------------

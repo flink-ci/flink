@@ -273,9 +273,9 @@ class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.TestUserC
         int tHash = tupleComp.hash(tupleTest);
 
         assertThat(tHash)
-                .isEqualTo(pHash)
                 .withFailMessage(
-                        "The hashing for tuples and pojos must be the same, so that they are mixable");
+                        "The hashing for tuples and pojos must be the same, so that they are mixable")
+                .isEqualTo(pHash);
 
         Tuple3<Integer, String, Double> multiTupleTest =
                 new Tuple3<Integer, String, Double>(
@@ -293,8 +293,8 @@ class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.TestUserC
                         pType);
 
         assertThat(fieldKey.areCompatible(expressKey))
-                .isTrue()
-                .withFailMessage("Expecting the keys to be compatible");
+                .withFailMessage("Expecting the keys to be compatible")
+                .isTrue();
         TypeComparator<TestUserClass> multiPojoComp =
                 pType.createComparator(
                         expressKey.computeLogicalKeyPositions(),
@@ -313,9 +313,9 @@ class PojoSerializerTest extends SerializerTestBase<PojoSerializerTest.TestUserC
         int multiTupleHash = multiTupleComp.hash(multiTupleTest);
 
         assertThat(multiPojoHash)
-                .isEqualTo(multiTupleHash)
                 .withFailMessage(
-                        "The hashing for tuples and pojos must be the same, so that they are mixable. Also for those with multiple key fields");
+                        "The hashing for tuples and pojos must be the same, so that they are mixable. Also for those with multiple key fields")
+                .isEqualTo(multiTupleHash);
     }
 
     // --------------------------------------------------------------------------------------------

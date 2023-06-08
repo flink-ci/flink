@@ -694,8 +694,8 @@ class JsonRowDataSerDeSchemaTest {
         RowData rowData = ignoreErrorsSchema.deserialize(spec.json.getBytes());
         Row actual = convertToExternal(rowData, fromLogicalToDataType(spec.rowType));
         assertThat(actual)
-                .isEqualTo(expected)
-                .withFailMessage("Test Ignore Parse Error: " + spec.json);
+                .withFailMessage("Test Ignore Parse Error: " + spec.json)
+                .isEqualTo(expected);
     }
 
     private void testParseErrors(TestSpec spec) {
