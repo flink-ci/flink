@@ -99,7 +99,8 @@ class JsonRowDataSerDeSchemaTest {
         BigDecimal decimal = new BigDecimal("123.456789");
         Double[] doubles = new Double[] {1.1, 2.2, 3.3};
         LocalDate date = LocalDate.parse("1990-10-14");
-        LocalTime time = LocalTime.parse("12:12:43");
+        LocalTime time = LocalTime.parse("10:12:43");
+        LocalTime time3 = LocalTime.parse("13:12:43.123");
         Timestamp timestamp3 = Timestamp.valueOf("1990-10-14 12:12:43.123");
         Timestamp timestamp9 = Timestamp.valueOf("1990-10-14 12:12:43.123456789");
         Instant timestampWithLocalZone =
@@ -133,7 +134,8 @@ class JsonRowDataSerDeSchemaTest {
         root.put("decimal", decimal);
         root.set("doubles", doubleNode);
         root.put("date", "1990-10-14");
-        root.put("time", "12:12:43");
+        root.put("time", "10:12:43");
+        root.put("time3", "13:12:43.123");
         root.put("timestamp3", "1990-10-14T12:12:43.123");
         root.put("timestamp9", "1990-10-14T12:12:43.123456789");
         root.put("timestampWithLocalZone", "1990-10-14T12:12:43.123456789Z");
@@ -157,6 +159,7 @@ class JsonRowDataSerDeSchemaTest {
                         FIELD("doubles", ARRAY(DOUBLE())),
                         FIELD("date", DATE()),
                         FIELD("time", TIME(0)),
+                        FIELD("time3", TIME(3)),
                         FIELD("timestamp3", TIMESTAMP(3)),
                         FIELD("timestamp9", TIMESTAMP(9)),
                         FIELD("timestampWithLocalZone", TIMESTAMP_WITH_LOCAL_TIME_ZONE(9)),
@@ -171,7 +174,7 @@ class JsonRowDataSerDeSchemaTest {
                         schema, resultTypeInfo, false, false, TimestampFormat.ISO_8601);
         open(deserializationSchema);
 
-        Row expected = new Row(18);
+        Row expected = new Row(19);
         expected.setField(0, true);
         expected.setField(1, tinyint);
         expected.setField(2, smallint);
@@ -184,12 +187,13 @@ class JsonRowDataSerDeSchemaTest {
         expected.setField(9, doubles);
         expected.setField(10, date);
         expected.setField(11, time);
-        expected.setField(12, timestamp3.toLocalDateTime());
-        expected.setField(13, timestamp9.toLocalDateTime());
-        expected.setField(14, timestampWithLocalZone);
-        expected.setField(15, map);
-        expected.setField(16, multiSet);
-        expected.setField(17, nestedMap);
+        expected.setField(12, time3);
+        expected.setField(13, timestamp3.toLocalDateTime());
+        expected.setField(14, timestamp9.toLocalDateTime());
+        expected.setField(15, timestampWithLocalZone);
+        expected.setField(16, map);
+        expected.setField(17, multiSet);
+        expected.setField(18, nestedMap);
 
         RowData rowData = deserializationSchema.deserialize(serializedJson);
         Row actual = convertToExternal(rowData, dataType);
