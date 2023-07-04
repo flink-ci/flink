@@ -563,7 +563,7 @@ public final class Expressions {
      *     ))
      * }</pre>
      *
-     * <p>Note If the number of fields in a row array is not 2 or the key of a row array is null, an
+     * <p>Note If the number of fields in a row array is not 2, an
      * error is returned.
      */
     public static ApiExpression mapFromEntries(Object rows) {
