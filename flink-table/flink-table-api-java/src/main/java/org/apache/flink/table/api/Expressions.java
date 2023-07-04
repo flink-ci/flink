@@ -563,8 +563,7 @@ public final class Expressions {
      *     ))
      * }</pre>
      *
-     * <p>Note If the number of fields in a row array is not 2, an
-     * error is returned.
+     * <p>Note If the number of fields in a row array is not 2, an error is returned.
      */
     public static ApiExpression mapFromEntries(Object rows) {
         return apiCall(BuiltInFunctionDefinitions.MAP_FROM_ENTRIES, objectToExpression(rows));

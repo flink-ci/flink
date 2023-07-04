@@ -517,9 +517,6 @@ def map_from_entries(rows) -> Expression:
         >>>         array(row(key1, 1), row(key2, 2), row(key3, 3))
         >>>     ))
 
-    .. note::
-
-        both arrays should have the same length.
     """
     return _unary_op("mapFromEntries", rows)
 
