@@ -19,8 +19,9 @@
 package org.apache.flink.table.runtime.functions.scalar;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.table.data.ArrayBasedMapData;
 import org.apache.flink.table.data.ArrayData;
-import org.apache.flink.table.data.GenericMapData;
+import org.apache.flink.table.data.GenericArrayData;
 import org.apache.flink.table.data.MapData;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.functions.BuiltInFunctionDefinitions;
@@ -30,8 +31,6 @@ import org.apache.flink.table.types.logical.RowType;
 
 import javax.annotation.Nullable;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.stream.IntStream;
 
 /** Implementation of {@link BuiltInFunctionDefinitions#MAP_FROM_ENTRIES}. */
@@ -59,17 +58,16 @@ public class MapFromEntriesFunction extends BuiltInScalarFunction {
         }
 
         int size = input.size();
-        Map<Object, Object> map = new HashMap<>();
+        Object[] keys = new Object[size];
+        Object[] values = new Object[size];
         for (int pos = 0; pos < size; pos++) {
             if (input.isNullAt(pos)) {
                 return null;
             }
-
             RowData rowData = input.getRow(pos, 2);
-            final Object key = fieldGetters[0].getFieldOrNull(rowData);
-            final Object value = fieldGetters[1].getFieldOrNull(rowData);
-            map.put(key, value);
+            keys[pos] = fieldGetters[0].getFieldOrNull(rowData);
+            values[pos] = fieldGetters[1].getFieldOrNull(rowData);
         }
-        return new GenericMapData(map);
+        return new ArrayBasedMapData(new GenericArrayData(keys), new GenericArrayData(values));
     }
 }

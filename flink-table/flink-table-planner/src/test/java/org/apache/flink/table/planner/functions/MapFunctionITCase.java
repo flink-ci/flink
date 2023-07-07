@@ -365,11 +365,11 @@ public class MapFunctionITCase extends BuiltInFunctionTestBase {
                                 DataTypes.ARRAY(DataTypes.INT()))
                         .testTableApiRuntimeError(
                                 mapFromArrays($("f2"), $("f3")),
-                                "Invalid function MAP_FROM_ARRAYS call:\n"
+                                "Invalid function call:\n"
                                         + "The length of the keys array 1 is not equal to the length of the values array 2")
                         .testSqlRuntimeError(
                                 "MAP_FROM_ARRAYS(array[1, 2, 3], array[1, 2])",
-                                "Invalid function MAP_FROM_ARRAYS call:\n"
+                                "Invalid function call:\n"
                                         + "The length of the keys array 3 is not equal to the length of the values array 2")
                         .testResult(
                                 mapFromArrays($("f0"), $("f1")),
