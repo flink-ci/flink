@@ -21,6 +21,7 @@ package org.apache.flink.table.planner.operations;
 import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.operations.LoadModuleOperation;
 import org.apache.flink.table.operations.Operation;
+import org.apache.flink.table.operations.ShowCatalogsOperation;
 import org.apache.flink.table.operations.ShowFunctionsOperation;
 import org.apache.flink.table.operations.ShowModulesOperation;
 import org.apache.flink.table.operations.ShowPartitionsOperation;
@@ -147,7 +148,25 @@ public class SqlOtherOperationConverterTest extends SqlNodeToOperationConversion
     }
 
     @Test
-    void testShowModules() {
+    public void testShowCatalogs() {
+        String sql = "show catalogs";
+        assertShowCatalogs(sql, "SHOW CATALOGS");
+
+        sql = "show catalogs like 'c%'";
+        assertShowCatalogs(sql, "SHOW CATALOGS LIKE 'c%'");
+
+        sql = "show catalogs not like 'c%'";
+        assertShowCatalogs(sql, "SHOW CATALOGS NOT LIKE 'c%'");
+
+        sql = "show catalogs ilike 'c%'";
+        assertShowCatalogs(sql, "SHOW CATALOGS ILIKE 'c%'");
+
+        sql = "show catalogs not ilike 'c%'";
+        assertShowCatalogs(sql, "SHOW CATALOGS NOT ILIKE 'c%'");
+    }
+
+    @Test
+    public void testShowModules() {
         final String sql = "SHOW MODULES";
         Operation operation = parse(sql);
         assertThat(operation).isInstanceOf(ShowModulesOperation.class);
@@ -386,5 +405,12 @@ public class SqlOtherOperationConverterTest extends SqlNodeToOperationConversion
 
         final ShowProceduresOperation showProceduresOperation = (ShowProceduresOperation) operation;
         assertThat(showProceduresOperation.asSummaryString()).isEqualTo(expectedSummary);
+    }
+
+    private void assertShowCatalogs(String sql, String expectedSummary) {
+        Operation operation = parse(sql);
+        assertThat(operation).isInstanceOf(ShowCatalogsOperation.class);
+        final ShowCatalogsOperation showCatalogsOperation = (ShowCatalogsOperation) operation;
+        assertThat(showCatalogsOperation.asSummaryString()).isEqualTo(expectedSummary);
     }
 }
