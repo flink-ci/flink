@@ -59,8 +59,7 @@ class JavaSerializerTest extends SerializerTestBase<Serializable> {
     @Test
     void guardTest() {
         assertThatThrownBy(
-                        () -> Class.forName(OUTSIDE_CLASS_LOADING.getObject().getClass().getName()))
-                .withFailMessage(
+                        () -> Class.forName(OUTSIDE_CLASS_LOADING.getObject().getClass().getName()),
                         "Test ineffective: The test class that should not be on the classpath is actually on the classpath.")
                 .isInstanceOf(ClassNotFoundException.class);
     }
