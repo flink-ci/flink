@@ -58,6 +58,7 @@ import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_CONTAINS;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_DISTINCT;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_ELEMENT;
+import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_INTERSECT;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_MAX;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_MIN;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_POSITION;
@@ -226,6 +227,11 @@ public abstract class BaseExpressions<InType, OutType> {
                                         Stream.of(toExpr(), ApiExpressionUtils.valueLiteral(name)),
                                         Stream.of(extraNames).map(ApiExpressionUtils::valueLiteral))
                                 .toArray(Expression[]::new)));
+    }
+
+    public OutType arrayIntersect(InType array) {
+        return toApiSpecificExpression(
+                unresolvedCall(ARRAY_INTERSECT, toExpr(), objectToExpression(array)));
     }
 
     /**
