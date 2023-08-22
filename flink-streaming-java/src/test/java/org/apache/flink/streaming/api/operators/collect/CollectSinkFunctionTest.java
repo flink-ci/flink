@@ -246,7 +246,7 @@ public class CollectSinkFunctionTest extends TestLogger {
     }
 
     @Test
-    public void testSpecifyCollectPort() throws Exception{
+    public void testSpecifyCollectPort() throws Exception {
         functionWrapper = new CollectSinkFunctionTestWrapper<>(serializer, 12, 22333);
         testIncreasingToken();
     }

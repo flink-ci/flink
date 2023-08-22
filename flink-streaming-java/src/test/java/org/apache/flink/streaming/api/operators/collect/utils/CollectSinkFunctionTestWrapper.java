@@ -88,14 +88,17 @@ public class CollectSinkFunctionTestWrapper<IN> {
         this.functionInitializationContext = new MockFunctionInitializationContext();
     }
 
-    public CollectSinkFunctionTestWrapper(TypeSerializer<IN> serializer, int maxBytesPerBatch, int collectPort)
-            throws Exception {
+    public CollectSinkFunctionTestWrapper(
+            TypeSerializer<IN> serializer, int maxBytesPerBatch, int collectPort) throws Exception {
         this.serializer = serializer;
         this.maxBytesPerBatch = maxBytesPerBatch;
 
         this.ioManager = new IOManagerAsync();
-        TestingTaskManagerRuntimeInfo testingTaskManagerRuntimeInfo = new TestingTaskManagerRuntimeInfo();
-        testingTaskManagerRuntimeInfo.getConfiguration().setInteger(TaskManagerOptions.COLLECT_PORT, collectPort);
+        TestingTaskManagerRuntimeInfo testingTaskManagerRuntimeInfo =
+                new TestingTaskManagerRuntimeInfo();
+        testingTaskManagerRuntimeInfo
+                .getConfiguration()
+                .setInteger(TaskManagerOptions.COLLECT_PORT, collectPort);
         MockEnvironment environment =
                 new MockEnvironmentBuilder()
                         .setTaskName("mockTask")
