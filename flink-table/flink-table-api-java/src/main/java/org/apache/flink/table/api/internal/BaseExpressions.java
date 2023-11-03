@@ -55,6 +55,7 @@ import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ACOS;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.AND;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_CONCAT;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_CONTAINS;
+import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_CONTAINS_SEQ;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_DISTINCT;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_ELEMENT;
 import static org.apache.flink.table.functions.BuiltInFunctionDefinitions.ARRAY_MAX;
@@ -1432,6 +1433,15 @@ public abstract class BaseExpressions<InType, OutType> {
     public OutType arrayUnion(InType array) {
         return toApiSpecificExpression(
                 unresolvedCall(ARRAY_UNION, toExpr(), objectToExpression(array)));
+    }
+
+    /**
+     * Return true if array array1 contains all of array2 as a subsequence (all values in the same
+     * consecutive order).
+     */
+    public OutType arrayContainsSeq(InType array) {
+        return toApiSpecificExpression(
+                unresolvedCall(ARRAY_CONTAINS_SEQ, toExpr(), objectToExpression(array)));
     }
 
     /**
