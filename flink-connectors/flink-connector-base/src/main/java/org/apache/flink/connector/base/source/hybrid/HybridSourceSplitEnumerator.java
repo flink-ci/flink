@@ -67,7 +67,6 @@ import java.util.function.BiConsumer;
  * the current enumerator and replay the returned splits by activating the previous readers. After
  * returned splits were processed, delegation to the current underlying enumerator resumes.
  */
-
 public class HybridSourceSplitEnumerator
         implements SplitEnumerator<HybridSourceSplit, HybridSourceEnumeratorState> {
     private static final Logger LOG = LoggerFactory.getLogger(HybridSourceSplitEnumerator.class);
@@ -188,10 +187,11 @@ public class HybridSourceSplitEnumerator
         currentEnumeratorReadWriteLock.readLock().lock();
         Object enumState = currentEnumerator.snapshotState(checkpointId);
         byte[] enumStateBytes = currentEnumeratorCheckpointSerializer.serialize(enumState);
-        HybridSourceEnumeratorState hybridSourceSplitEnumeratorState = new HybridSourceEnumeratorState(
-                currentSourceIndex,
-                enumStateBytes,
-                currentEnumeratorCheckpointSerializer.getVersion());
+        HybridSourceEnumeratorState hybridSourceSplitEnumeratorState =
+                new HybridSourceEnumeratorState(
+                        currentSourceIndex,
+                        enumStateBytes,
+                        currentEnumeratorCheckpointSerializer.getVersion());
         currentEnumeratorReadWriteLock.readLock().unlock();
         return hybridSourceSplitEnumeratorState;
     }
