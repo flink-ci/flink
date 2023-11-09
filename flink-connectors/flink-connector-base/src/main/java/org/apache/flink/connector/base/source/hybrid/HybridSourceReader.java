@@ -104,6 +104,8 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
                     new SourceReaderFinishedEvent(currentSourceIndex));
             if (!isFinalSource) {
                 // More splits may arrive for a subsequent reader.
+                // InputStatus.NOTHING_AVAILABLE suspends poll, complete the
+                // availability future in the switchover to the next reader
                 currentReaderReadWriteLock.readLock().unlock();
                 return InputStatus.NOTHING_AVAILABLE;
             }
@@ -142,7 +144,7 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
     }
 
     @Override
-    public  CompletableFuture<Void> isAvailable() {
+    public CompletableFuture<Void> isAvailable() {
         if (availabilityFuture.isDone()) {
             availabilityFuture = currentReader.isAvailable();
         }

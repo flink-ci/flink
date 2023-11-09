@@ -283,6 +283,7 @@ public class HybridSourceSplitEnumerator
     }
 
     private void switchEnumerator() {
+
         currentEnumeratorReadWriteLock.writeLock().lock();
         SplitEnumerator<SourceSplit, Object> previousEnumerator = currentEnumerator;
         if (currentEnumerator != null) {
@@ -332,6 +333,7 @@ public class HybridSourceSplitEnumerator
                     "Failed to create enumerator for sourceIndex=" + currentSourceIndex, e);
         }
         LOG.info("Starting enumerator for sourceIndex={}", currentSourceIndex);
+        context.setIsProcessingBacklog(currentSourceIndex < sources.size() - 1);
         currentEnumeratorReadWriteLock.writeLock().unlock();
         currentEnumeratorReadWriteLock.readLock().lock();
         currentEnumerator.start();
@@ -403,7 +405,7 @@ public class HybridSourceSplitEnumerator
         private Map<Integer, ReaderInfo> filterRegisteredReaders(Map<Integer, ReaderInfo> readers) {
             Map<Integer, ReaderInfo> readersForSource = new HashMap<>(readers.size());
             for (Map.Entry<Integer, ReaderInfo> e : readers.entrySet()) {
-                if (readerSourceIndex.get(e.getKey()) == (Integer) sourceIndex) {
+                if (Objects.equals(readerSourceIndex.get(e.getKey()), sourceIndex)) {
                     readersForSource.put(e.getKey(), e.getValue());
                 }
             }
