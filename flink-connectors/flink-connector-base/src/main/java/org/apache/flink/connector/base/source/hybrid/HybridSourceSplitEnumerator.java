@@ -394,7 +394,7 @@ public class HybridSourceSplitEnumerator
             }
             Integer lastIndex = null;
             for (Integer sourceIndex : readerSourceIndex.values()) {
-                if (lastIndex != null && lastIndex != sourceIndex) {
+                if (lastIndex != null && !lastIndex.equals(sourceIndex)) {
                     return filterRegisteredReaders(readers);
                 }
                 lastIndex = sourceIndex;
