@@ -208,10 +208,6 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
             setCurrentReader(sse.sourceIndex());
             currentReaderReadWriteLock.readLock().lock();
             isFinalSource = sse.isFinalSource();
-            if (!availabilityFuture.isDone()) {
-                // continue polling
-                availabilityFuture.complete(null);
-            }
         } else {
             currentReader.handleSourceEvents(sourceEvent);
         }
