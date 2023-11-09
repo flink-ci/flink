@@ -104,12 +104,6 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
                     new SourceReaderFinishedEvent(currentSourceIndex));
             if (!isFinalSource) {
                 // More splits may arrive for a subsequent reader.
-                // InputStatus.NOTHING_AVAILABLE suspends poll, requires completion of the
-                // availability future after receiving more splits to resume.
-                if (availabilityFuture.isDone()) {
-                    // reset to avoid continued polling
-                    availabilityFuture = new CompletableFuture();
-                }
                 currentReaderReadWriteLock.readLock().unlock();
                 return InputStatus.NOTHING_AVAILABLE;
             }
@@ -149,6 +143,10 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
 
     @Override
     public  CompletableFuture<Void> isAvailable() {
+        if (availabilityFuture.isDone()) {
+            availabilityFuture = currentReader.isAvailable();
+        }
+
         return availabilityFuture;
     }
 
@@ -260,16 +258,7 @@ public class HybridSourceReader<T> implements SourceReader<T, HybridSourceSplit>
         reader.start();
         currentSourceIndex = index;
         currentReader = reader;
-        currentReader
-                .isAvailable()
-                .whenComplete(
-                        (result, ex) -> {
-                            if (ex == null) {
-                                availabilityFuture.complete(result);
-                            } else {
-                                availabilityFuture.completeExceptionally(ex);
-                            }
-                        });
+        availabilityFuture.complete(null);
         LOG.debug(
                 "Reader started: subtask={} sourceIndex={} {}",
                 readerContext.getIndexOfSubtask(),

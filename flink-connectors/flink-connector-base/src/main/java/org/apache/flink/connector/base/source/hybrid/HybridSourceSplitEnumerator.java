@@ -77,7 +77,7 @@ public class HybridSourceSplitEnumerator
     private final SwitchedSources switchedSources = new SwitchedSources();
     // Splits that have been returned due to subtask reset
     private final Map<Integer, TreeMap<Integer, List<HybridSourceSplit>>> pendingSplits;
-    private Set<Integer> finishedReaders;
+    private final Set<Integer> finishedReaders;
     private final Map<Integer, Integer> readerSourceIndex;
     private int currentSourceIndex;
     private HybridSourceEnumeratorState restoredEnumeratorState;
@@ -284,11 +284,11 @@ public class HybridSourceSplitEnumerator
 
     private void switchEnumerator() {
         currentEnumeratorReadWriteLock.writeLock().lock();
-        finishedReaders = new HashSet<>();
         SplitEnumerator<SourceSplit, Object> previousEnumerator = currentEnumerator;
         if (currentEnumerator != null) {
             try {
                 currentEnumerator.close();
+                finishedReaders.clear();
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
