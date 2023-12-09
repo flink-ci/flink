@@ -54,7 +54,7 @@ integrate_connector_docs mongodb v1.0
 integrate_connector_docs opensearch v1.0
 integrate_connector_docs kafka v3.0
 integrate_connector_docs hbase v3.0
-integrate_connector_docs hive v3.0
+integrate_connector_docs hive main
 
 cd ..
 rm -rf tmp
