@@ -475,7 +475,10 @@ class JobMasterTest {
         @Nonnull
         @Override
         public SlotPoolService createSlotPoolService(
-                @Nonnull JobID jobId, DeclarativeSlotPoolFactory declarativeSlotPoolFactory) {
+                @Nonnull JobID jobId,
+                DeclarativeSlotPoolFactory declarativeSlotPoolFactory,
+                @Nullable Time slotRequestMaxInterval,
+                @Nonnull ComponentMainThreadExecutor componentMainThreadExecutor) {
             return new TestingSlotPool(jobId, hasReceivedSlotOffers);
         }
     }

@@ -24,6 +24,7 @@ import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
+import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.jobmanager.slots.TaskManagerGateway;
 import org.apache.flink.runtime.jobmaster.SlotInfo;
 import org.apache.flink.runtime.messages.Acknowledge;
@@ -50,6 +51,8 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -103,12 +106,20 @@ public class DefaultDeclarativeSlotPool implements DeclarativeSlotPool {
 
     private final RequirementMatcher requirementMatcher = new DefaultRequirementMatcher();
 
+    @Nonnull private final ComponentMainThreadExecutor componentMainThreadExecutor;
+
+    // For slots(resources) requests by batch.
+    @Nullable private final Time slotRequestMaxInterval;
+    @Nullable private ScheduledFuture<?> slotRequestMaxIntervalTimeoutFuture;
+
     public DefaultDeclarativeSlotPool(
             JobID jobId,
             AllocatedSlotPool slotPool,
             Consumer<? super Collection<ResourceRequirement>> notifyNewResourceRequirements,
             Time idleSlotTimeout,
-            Time rpcTimeout) {
+            Time rpcTimeout,
+            @Nullable Time slotRequestMaxInterval,
+            @Nonnull ComponentMainThreadExecutor componentMainThreadExecutor) {
 
         this.jobId = jobId;
         this.slotPool = slotPool;
@@ -118,26 +129,47 @@ public class DefaultDeclarativeSlotPool implements DeclarativeSlotPool {
         this.totalResourceRequirements = ResourceCounter.empty();
         this.fulfilledResourceRequirements = ResourceCounter.empty();
         this.slotToRequirementProfileMappings = new HashMap<>();
+        this.componentMainThreadExecutor = Preconditions.checkNotNull(componentMainThreadExecutor);
+        this.slotRequestMaxInterval = slotRequestMaxInterval;
     }
 
     @Override
     public void increaseResourceRequirementsBy(ResourceCounter increment) {
-        if (increment.isEmpty()) {
+        updateResourceRequirementsBy(
+                increment,
+                () -> totalResourceRequirements = totalResourceRequirements.add(increment));
+    }
+
+    private void updateResourceRequirementsBy(
+            @Nonnull ResourceCounter deltaResourceCount, @Nonnull Runnable runnable) {
+        if (deltaResourceCount.isEmpty()) {
             return;
         }
-        totalResourceRequirements = totalResourceRequirements.add(increment);
 
-        declareResourceRequirements();
+        runnable.run();
+
+        if (slotRequestMaxInterval == null) {
+            declareResourceRequirements();
+            return;
+        }
+
+        if (slotRequestMaxIntervalTimeoutFuture != null
+                && !slotRequestMaxIntervalTimeoutFuture.isDone()
+                && !slotRequestMaxIntervalTimeoutFuture.isCancelled()) {
+            slotRequestMaxIntervalTimeoutFuture.cancel(true);
+        }
+        slotRequestMaxIntervalTimeoutFuture =
+                componentMainThreadExecutor.schedule(
+                        this::declareResourceRequirements,
+                        slotRequestMaxInterval.toMilliseconds(),
+                        TimeUnit.MILLISECONDS);
     }
 
     @Override
     public void decreaseResourceRequirementsBy(ResourceCounter decrement) {
-        if (decrement.isEmpty()) {
-            return;
-        }
-        totalResourceRequirements = totalResourceRequirements.subtract(decrement);
-
-        declareResourceRequirements();
+        updateResourceRequirementsBy(
+                decrement,
+                () -> totalResourceRequirements = totalResourceRequirements.subtract(decrement));
     }
 
     @Override
