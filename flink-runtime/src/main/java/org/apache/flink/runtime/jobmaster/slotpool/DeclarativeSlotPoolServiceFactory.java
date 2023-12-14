@@ -45,7 +45,8 @@ public class DeclarativeSlotPoolServiceFactory implements SlotPoolServiceFactory
             @Nonnull JobID jobId,
             DeclarativeSlotPoolFactory declarativeSlotPoolFactory,
             @Nullable Time slotRequestMaxInterval,
-            @Nonnull ComponentMainThreadExecutor componentMainThreadExecutor) {
+            @Nonnull ComponentMainThreadExecutor componentMainThreadExecutor,
+            boolean slotBatchAllocatable) {
         return new DeclarativeSlotPoolService(
                 jobId,
                 declarativeSlotPoolFactory,

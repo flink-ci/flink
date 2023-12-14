@@ -337,7 +337,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
                                 createDeclarativeSlotPoolFactory(
                                         jobMasterConfiguration.getConfiguration()),
                                 null,
-                                getMainThreadExecutor());
+                                getMainThreadExecutor(),
+                                false);
 
         this.partitionTracker =
                 checkNotNull(partitionTrackerFactory)

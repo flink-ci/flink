@@ -135,19 +135,15 @@ public class DefaultDeclarativeSlotPool implements DeclarativeSlotPool {
 
     @Override
     public void increaseResourceRequirementsBy(ResourceCounter increment) {
-        updateResourceRequirementsBy(
-                increment,
-                () -> totalResourceRequirements = totalResourceRequirements.add(increment));
-    }
-
-    private void updateResourceRequirementsBy(
-            @Nonnull ResourceCounter deltaResourceCount, @Nonnull Runnable runnable) {
-        if (deltaResourceCount.isEmpty()) {
+        if (increment.isEmpty()) {
             return;
         }
+        totalResourceRequirements = totalResourceRequirements.add(increment);
 
-        runnable.run();
+        doDeclareResourceRequirements();
+    }
 
+    private void doDeclareResourceRequirements() {
         if (slotRequestMaxInterval == null) {
             declareResourceRequirements();
             return;
@@ -167,9 +163,12 @@ public class DefaultDeclarativeSlotPool implements DeclarativeSlotPool {
 
     @Override
     public void decreaseResourceRequirementsBy(ResourceCounter decrement) {
-        updateResourceRequirementsBy(
-                decrement,
-                () -> totalResourceRequirements = totalResourceRequirements.subtract(decrement));
+        if (decrement.isEmpty()) {
+            return;
+        }
+        totalResourceRequirements = totalResourceRequirements.subtract(decrement);
+
+        doDeclareResourceRequirements();
     }
 
     @Override

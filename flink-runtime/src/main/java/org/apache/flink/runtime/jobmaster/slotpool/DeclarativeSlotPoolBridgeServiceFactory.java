@@ -47,7 +47,8 @@ public class DeclarativeSlotPoolBridgeServiceFactory extends AbstractSlotPoolSer
             @Nonnull JobID jobId,
             DeclarativeSlotPoolFactory declarativeSlotPoolFactory,
             @Nullable Time slotRequestMaxInterval,
-            @Nonnull ComponentMainThreadExecutor componentMainThreadExecutor) {
+            @Nonnull ComponentMainThreadExecutor componentMainThreadExecutor,
+            boolean slotBatchAllocatable) {
         return new DeclarativeSlotPoolBridge(
                 jobId,
                 declarativeSlotPoolFactory,
@@ -57,6 +58,7 @@ public class DeclarativeSlotPoolBridgeServiceFactory extends AbstractSlotPoolSer
                 batchSlotTimeout,
                 requestSlotMatchingStrategy,
                 slotRequestMaxInterval,
-                componentMainThreadExecutor);
+                componentMainThreadExecutor,
+                slotBatchAllocatable);
     }
 }
