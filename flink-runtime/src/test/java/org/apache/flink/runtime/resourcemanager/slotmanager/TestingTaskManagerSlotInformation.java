@@ -25,7 +25,10 @@ import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
 import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnection;
+import org.apache.flink.runtime.scheduler.loading.LoadingWeight;
 import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGatewayBuilder;
+
+import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
 
@@ -103,6 +106,14 @@ public final class TestingTaskManagerSlotInformation implements TaskManagerSlotI
     public static Builder newBuilder() {
         return new Builder();
     }
+
+    @Override
+    public LoadingWeight getLoading() {
+        return null;
+    }
+
+    @Override
+    public void setLoading(@NotNull LoadingWeight loadingWeight) {}
 
     static class Builder {
         private SlotID slotId = new SlotID(ResourceID.generate(), 0);

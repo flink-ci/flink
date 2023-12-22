@@ -21,6 +21,9 @@ package org.apache.flink.runtime.scheduler;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.jobmanager.scheduler.SlotSharingGroup;
+import org.apache.flink.runtime.scheduler.loading.DefaultLoadingWeight;
+import org.apache.flink.runtime.scheduler.loading.LoadingWeight;
+import org.apache.flink.runtime.scheduler.loading.WeightLoadable;
 import org.apache.flink.runtime.scheduler.strategy.ExecutionVertexID;
 import org.apache.flink.util.Preconditions;
 
@@ -31,19 +34,23 @@ import java.util.HashSet;
 import java.util.Set;
 
 /** Represents execution vertices that will run the same shared slot. */
-class ExecutionSlotSharingGroup {
+class ExecutionSlotSharingGroup implements WeightLoadable {
 
     private final Set<ExecutionVertexID> executionVertexIds;
 
     @Nonnull private final SlotSharingGroup slotSharingGroup;
 
+    private LoadingWeight loadingWeight;
+
     ExecutionSlotSharingGroup(@Nonnull SlotSharingGroup slotSharingGroup) {
         this.slotSharingGroup = Preconditions.checkNotNull(slotSharingGroup);
         this.executionVertexIds = new HashSet<>();
+        this.loadingWeight = LoadingWeight.EMPTY;
     }
 
     void addVertex(final ExecutionVertexID executionVertexId) {
         executionVertexIds.add(executionVertexId);
+        ((DefaultLoadingWeight) loadingWeight).incLoading();
     }
 
     @VisibleForTesting
@@ -68,6 +75,18 @@ class ExecutionSlotSharingGroup {
                 + executionVertexIds
                 + ", slotSharingGroup="
                 + slotSharingGroup
+                + ", loadingWeight="
+                + loadingWeight
                 + '}';
+    }
+
+    @Override
+    public LoadingWeight getLoading() {
+        return loadingWeight;
+    }
+
+    @Override
+    public void setLoading(@Nonnull LoadingWeight loadingWeight) {
+        this.loadingWeight = loadingWeight;
     }
 }
