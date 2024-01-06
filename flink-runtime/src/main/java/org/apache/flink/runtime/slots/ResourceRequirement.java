@@ -42,7 +42,7 @@ public class ResourceRequirement implements Serializable {
             int numberOfRequiredSlots,
             List<LoadingWeight> loadingWeights) {
         Preconditions.checkNotNull(resourceProfile);
-        Preconditions.checkArgument(numberOfRequiredSlots > 0);
+        Preconditions.checkArgument(numberOfRequiredSlots >= 0);
         Preconditions.checkArgument(
                 numberOfRequiredSlots == loadingWeights.size(),
                 "The number of loading weight info must be equals to numberOfRequiredSlots.");

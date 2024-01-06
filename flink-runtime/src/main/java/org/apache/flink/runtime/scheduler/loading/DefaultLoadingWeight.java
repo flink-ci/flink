@@ -31,7 +31,7 @@ public class DefaultLoadingWeight implements LoadingWeight {
 
     private float tasks;
 
-    public DefaultLoadingWeight(float tasks) {
+    DefaultLoadingWeight(float tasks) {
         Preconditions.checkArgument(tasks >= 0.0f);
         this.tasks = tasks;
     }
@@ -48,9 +48,9 @@ public class DefaultLoadingWeight implements LoadingWeight {
     @Override
     public LoadingWeight merge(LoadingWeight other) {
         if (other == null) {
-            return new DefaultLoadingWeight(this.tasks);
+            return LoadingWeight.ofDefaultLoadingWeight(this.tasks);
         }
-        return new DefaultLoadingWeight(tasks + other.getLoading());
+        return LoadingWeight.ofDefaultLoadingWeight(tasks + other.getLoading());
     }
 
     @Override

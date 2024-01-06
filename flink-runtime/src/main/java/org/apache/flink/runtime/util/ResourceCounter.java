@@ -111,11 +111,6 @@ public final class ResourceCounter implements WeightLoadable {
         return internalAdd(ResourceCounter.withResources(increment, loadingWeightMap));
     }
 
-    public ResourceCounter addWithEmptyLoadings(Map<ResourceProfile, Integer> increment) {
-        return internalAdd(
-                ResourceCounter.withResources(increment, generateEmptyLoadingsFor(increment)));
-    }
-
     /**
      * Adds increment to the count of resourceProfile and returns the new value.
      *
@@ -314,7 +309,7 @@ public final class ResourceCounter implements WeightLoadable {
                 new HashMap<>(resources), new HashMap<>(generateEmptyLoadingsFor(resources)));
     }
 
-    public static Map<ResourceProfile, List<LoadingWeight>> generateEmptyLoadingsFor(
+    private static Map<ResourceProfile, List<LoadingWeight>> generateEmptyLoadingsFor(
             Map<ResourceProfile, Integer> resources) {
         final Map<ResourceProfile, List<LoadingWeight>> loadingMap = new HashMap<>();
 

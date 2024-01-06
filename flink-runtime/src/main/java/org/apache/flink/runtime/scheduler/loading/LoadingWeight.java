@@ -22,6 +22,7 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.util.Preconditions;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,6 +32,18 @@ import java.util.stream.Collectors;
 public interface LoadingWeight extends Comparable<LoadingWeight>, Serializable {
 
     LoadingWeight EMPTY = new DefaultLoadingWeight(0f);
+
+    static LoadingWeight ofDefaultLoadingWeight(float loading) {
+        return new DefaultLoadingWeight(loading);
+    }
+
+    static List<LoadingWeight> ofDefaultLoadingWeights(int... loadings) {
+        List<LoadingWeight> loadingWeights = new ArrayList<>(loadings.length);
+        for (int loading : loadings) {
+            loadingWeights.add(ofDefaultLoadingWeight(loading));
+        }
+        return loadingWeights;
+    }
 
     static List<LoadingWeight> supplyEmptyLoadWeights(int number) {
         Preconditions.checkArgument(number >= 0);

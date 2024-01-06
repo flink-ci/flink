@@ -28,8 +28,7 @@ import org.apache.flink.runtime.resourcemanager.registration.TaskExecutorConnect
 import org.apache.flink.runtime.scheduler.loading.LoadingWeight;
 import org.apache.flink.runtime.taskexecutor.TestingTaskExecutorGatewayBuilder;
 
-import org.jetbrains.annotations.NotNull;
-
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 /** Testing implementation of {@link TaskManagerSlotInformation}. */
@@ -41,6 +40,7 @@ public final class TestingTaskManagerSlotInformation implements TaskManagerSlotI
     @Nullable private final JobID jobId;
     private final ResourceProfile resourceProfile;
     private final SlotState state;
+    private LoadingWeight loadingWeight;
     private final TaskExecutorConnection taskExecutorConnection =
             new TaskExecutorConnection(
                     ResourceID.generate(),
@@ -52,13 +52,15 @@ public final class TestingTaskManagerSlotInformation implements TaskManagerSlotI
             @Nullable JobID jobId,
             InstanceID instanceId,
             ResourceProfile resourceProfile,
-            SlotState state) {
+            SlotState state,
+            LoadingWeight loadingWeight) {
         this.slotId = slotId;
         this.allocationId = allocationId;
         this.jobId = jobId;
         this.instanceId = instanceId;
         this.resourceProfile = resourceProfile;
         this.state = state;
+        this.loadingWeight = loadingWeight;
     }
 
     @Override
@@ -109,11 +111,13 @@ public final class TestingTaskManagerSlotInformation implements TaskManagerSlotI
 
     @Override
     public LoadingWeight getLoading() {
-        return null;
+        return loadingWeight;
     }
 
     @Override
-    public void setLoading(@NotNull LoadingWeight loadingWeight) {}
+    public void setLoading(@Nonnull LoadingWeight loadingWeight) {
+        this.loadingWeight = loadingWeight;
+    }
 
     static class Builder {
         private SlotID slotId = new SlotID(ResourceID.generate(), 0);
@@ -122,9 +126,15 @@ public final class TestingTaskManagerSlotInformation implements TaskManagerSlotI
         private InstanceID instanceId = new InstanceID();
         private ResourceProfile resourceProfile = ResourceProfile.ANY;
         private SlotState state = SlotState.FREE;
+        private LoadingWeight loadingWeight = LoadingWeight.EMPTY;
 
         public Builder setState(SlotState state) {
             this.state = state;
+            return this;
+        }
+
+        public Builder setLoadingWeight(LoadingWeight loadingWeight) {
+            this.loadingWeight = loadingWeight;
             return this;
         }
 
@@ -155,7 +165,7 @@ public final class TestingTaskManagerSlotInformation implements TaskManagerSlotI
 
         public TestingTaskManagerSlotInformation build() {
             return new TestingTaskManagerSlotInformation(
-                    slotId, allocationId, jobId, instanceId, resourceProfile, state);
+                    slotId, allocationId, jobId, instanceId, resourceProfile, state, loadingWeight);
         }
     }
 }

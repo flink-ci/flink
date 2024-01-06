@@ -23,11 +23,12 @@ import org.apache.flink.runtime.instance.InstanceID;
 import org.apache.flink.runtime.scheduler.loading.LoadingWeight;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.Optional;
 import java.util.function.Function;
 
-/** {@link SlotMatchingStrategy} which picks the first matching slot. */
-public enum AnyMatchingSlotMatchingStrategy implements SlotMatchingStrategy {
+/** The implementation to match slot by latest loading weight. */
+public enum LeastLoadingWeightSlotMatchingStrategy implements SlotMatchingStrategy {
     INSTANCE;
 
     @Override
@@ -38,8 +39,26 @@ public enum AnyMatchingSlotMatchingStrategy implements SlotMatchingStrategy {
             Function<InstanceID, Integer> numberRegisteredSlotsLookup,
             Function<InstanceID, LoadingWeight> loadingWeightLookup) {
 
-        return freeSlots.stream()
-                .filter(slot -> slot.isMatchingRequirement(requestedProfile))
-                .findAny();
+        T taskManagerSlotInformation =
+                freeSlots.stream()
+                        .filter(
+                                taskManagerSlot ->
+                                        taskManagerSlot.isMatchingRequirement(requestedProfile))
+                        .min(
+                                (Comparator<TaskManagerSlotInformation>)
+                                        (slot1, slot2) -> {
+                                            LoadingWeight loading1 =
+                                                    loadingWeightLookup.apply(
+                                                            slot1.getInstanceId());
+                                            LoadingWeight loading2 =
+                                                    loadingWeightLookup.apply(
+                                                            slot2.getInstanceId());
+                                            return loading1.compareTo(loading2);
+                                        })
+                        .orElse(null);
+        if (taskManagerSlotInformation != null) {
+            taskManagerSlotInformation.setLoading(loadingWeight);
+        }
+        return Optional.ofNullable(taskManagerSlotInformation);
     }
 }

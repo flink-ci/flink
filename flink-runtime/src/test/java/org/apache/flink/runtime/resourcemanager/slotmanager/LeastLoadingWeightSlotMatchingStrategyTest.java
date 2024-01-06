@@ -1,11 +1,10 @@
 /*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
  *
  *    http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -20,6 +19,7 @@ package org.apache.flink.runtime.resourcemanager.slotmanager;
 
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.instance.InstanceID;
+import org.apache.flink.runtime.scheduler.loading.LoadingWeight;
 
 import org.apache.flink.shaded.guava32.com.google.common.collect.ImmutableMap;
 
@@ -33,14 +33,15 @@ import java.util.function.Function;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** Tests for the {@link LeastUtilizationSlotMatchingStrategy}. */
-class LeastUtilizationSlotMatchingStrategyTest {
+/** Test for {@link LeastLoadingWeightSlotMatchingStrategy}. */
+class LeastLoadingWeightSlotMatchingStrategyTest {
 
     @Test
-    void findMatchingSlot_multipleMatchingSlots_returnsSlotWithLeastUtilization() {
+    void findMatchingSlot_multipleMatchingSlots_returnsSlotWithLeastLoadingWeight() {
         final ResourceProfile requestedResourceProfile = ResourceProfile.fromResources(2.0, 2);
+        final LoadingWeight loadingWeight = LoadingWeight.ofDefaultLoadingWeight(1f);
 
-        final TestingTaskManagerSlotInformation leastUtilizedSlot =
+        final TestingTaskManagerSlotInformation leastLoadingWeightSlot =
                 TestingTaskManagerSlotInformation.newBuilder()
                         .setResourceProfile(requestedResourceProfile)
                         .build();
@@ -54,31 +55,39 @@ class LeastUtilizationSlotMatchingStrategyTest {
                         .build();
 
         final Collection<TestingTaskManagerSlotInformation> freeSlots =
-                Arrays.asList(tooSmallSlot, leastUtilizedSlot, alternativeSlot);
+                Arrays.asList(tooSmallSlot, leastLoadingWeightSlot, alternativeSlot);
 
         Map<InstanceID, Integer> registeredSlotPerTaskExecutor =
                 ImmutableMap.of(
-                        leastUtilizedSlot.getInstanceId(), 1,
+                        leastLoadingWeightSlot.getInstanceId(), 1,
                         tooSmallSlot.getInstanceId(), 1,
                         alternativeSlot.getInstanceId(), 2);
+        Map<InstanceID, LoadingWeight> registeredSlotLoadingWeightPerTaskExecutor =
+                ImmutableMap.of(
+                        leastLoadingWeightSlot.getInstanceId(), LoadingWeight.EMPTY,
+                        tooSmallSlot.getInstanceId(), LoadingWeight.ofDefaultLoadingWeight(3),
+                        alternativeSlot.getInstanceId(), LoadingWeight.ofDefaultLoadingWeight(2));
 
         final Optional<TestingTaskManagerSlotInformation> matchingSlot =
-                LeastUtilizationSlotMatchingStrategy.INSTANCE.findMatchingSlot(
+                LeastLoadingWeightSlotMatchingStrategy.INSTANCE.findMatchingSlot(
                         requestedResourceProfile,
-                        null,
+                        loadingWeight,
                         freeSlots,
-                        createRegisteredSlotsLookupFunction(registeredSlotPerTaskExecutor),
-                        null);
+                        instanceID -> 0,
+                        createRegisteredLoadingWeightLookupFunction(
+                                registeredSlotLoadingWeightPerTaskExecutor));
 
         assertThat(matchingSlot)
                 .hasValueSatisfying(
                         slot ->
                                 assertThat(slot.getSlotId())
-                                        .isEqualTo(leastUtilizedSlot.getSlotId()));
+                                        .isEqualTo(leastLoadingWeightSlot.getSlotId()));
     }
 
-    private Function<InstanceID, Integer> createRegisteredSlotsLookupFunction(
-            Map<InstanceID, Integer> registeredSlotPerTaskExecutor) {
-        return instanceID -> registeredSlotPerTaskExecutor.getOrDefault(instanceID, 0);
+    private Function<InstanceID, LoadingWeight> createRegisteredLoadingWeightLookupFunction(
+            Map<InstanceID, LoadingWeight> registeredSlotLoadingWeightPerTaskExecutor) {
+        return instanceID ->
+                registeredSlotLoadingWeightPerTaskExecutor.getOrDefault(
+                        instanceID, LoadingWeight.EMPTY);
     }
 }
