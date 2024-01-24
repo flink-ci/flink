@@ -20,6 +20,7 @@ package org.apache.flink.runtime.resourcemanager.slotmanager;
 import org.apache.flink.api.common.JobID;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
+import org.apache.flink.runtime.clusterframework.types.LoadableResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.SlotID;
@@ -107,7 +108,7 @@ class DefaultSlotStatusSyncerTest {
                         taskExecutorConnection.getInstanceID(),
                         jobId,
                         "address",
-                        ResourceProfile.ANY);
+                        ResourceProfile.ANY.toEmptyLoadsResourceProfile());
 
         assertThatThrownBy(allocatedFuture::get).hasCauseInstanceOf(TimeoutException.class);
         assertThat(resourceTracker.getAcquiredResources(jobId)).isEmpty();
@@ -133,7 +134,7 @@ class DefaultSlotStatusSyncerTest {
     void testFreeSlot() {
         final FineGrainedTaskManagerTracker taskManagerTracker =
                 new FineGrainedTaskManagerTracker();
-        final ResourceTracker resourceTracker = new DefaultResourceTracker();
+        final DefaultResourceTracker resourceTracker = new DefaultResourceTracker();
         final JobID jobId = new JobID();
         final AllocationID allocationId = new AllocationID();
         final SlotStatusSyncer slotStatusSyncer =
@@ -198,14 +199,27 @@ class DefaultSlotStatusSyncerTest {
         final SlotReport slotReport1 =
                 new SlotReport(
                         Arrays.asList(
-                                new SlotStatus(slotId1, totalResource),
-                                new SlotStatus(slotId2, resource, jobId, allocationId1),
-                                new SlotStatus(slotId3, resource, jobId, allocationId2)));
+                                new SlotStatus(
+                                        slotId1, totalResource.toEmptyLoadsResourceProfile()),
+                                new SlotStatus(
+                                        slotId2,
+                                        resource.toEmptyLoadsResourceProfile(),
+                                        jobId,
+                                        allocationId1),
+                                new SlotStatus(
+                                        slotId3,
+                                        resource.toEmptyLoadsResourceProfile(),
+                                        jobId,
+                                        allocationId2)));
         final SlotReport slotReport2 =
                 new SlotReport(
                         Arrays.asList(
-                                new SlotStatus(slotId3, resource),
-                                new SlotStatus(slotId2, resource, jobId, allocationId1)));
+                                new SlotStatus(slotId3, resource.toEmptyLoadsResourceProfile()),
+                                new SlotStatus(
+                                        slotId2,
+                                        resource.toEmptyLoadsResourceProfile(),
+                                        jobId,
+                                        allocationId1)));
         taskManagerTracker.addTaskManager(taskExecutorConnection, totalResource, totalResource);
 
         slotStatusSyncer.reportSlotStatus(taskExecutorConnection.getInstanceID(), slotReport1);
@@ -222,7 +236,10 @@ class DefaultSlotStatusSyncerTest {
         assertThat(taskManagerTracker.getAllocatedOrPendingSlot(allocationId2)).isPresent();
 
         slotStatusSyncer.allocateSlot(
-                taskExecutorConnection.getInstanceID(), jobId, "address", resource);
+                taskExecutorConnection.getInstanceID(),
+                jobId,
+                "address",
+                resource.toEmptyLoadsResourceProfile());
         assertThat(resourceTracker.getAcquiredResources(jobId))
                 .contains(ResourceRequirement.create(resource, 3));
         assertThat(

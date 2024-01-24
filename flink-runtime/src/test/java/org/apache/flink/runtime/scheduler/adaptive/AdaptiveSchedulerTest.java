@@ -40,6 +40,7 @@ import org.apache.flink.runtime.checkpoint.TestingCheckpointIDCounter;
 import org.apache.flink.runtime.checkpoint.TestingCheckpointRecoveryFactory;
 import org.apache.flink.runtime.checkpoint.TestingCompletedCheckpointStore;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
+import org.apache.flink.runtime.clusterframework.types.LoadableResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutor;
 import org.apache.flink.runtime.concurrent.ComponentMainThreadExecutorServiceAdapter;
@@ -303,10 +304,10 @@ public class AdaptiveSchedulerTest {
             ResourceCounter resourceRequirements) {
         final Collection<TestSlotInfo> slotInfos = new ArrayList<>();
 
-        for (Map.Entry<ResourceProfile, Integer> resourceProfileCount :
-                resourceRequirements.getResourcesWithCount()) {
+        for (Map.Entry<LoadableResourceProfile, Integer> resourceProfileCount :
+                resourceRequirements.getLoadableResourcesWithCount()) {
             for (int i = 0; i < resourceProfileCount.getValue(); i++) {
-                slotInfos.add(new TestSlotInfo(resourceProfileCount.getKey()));
+                slotInfos.add(new TestSlotInfo(resourceProfileCount.getKey().getResourceProfile()));
             }
         }
 

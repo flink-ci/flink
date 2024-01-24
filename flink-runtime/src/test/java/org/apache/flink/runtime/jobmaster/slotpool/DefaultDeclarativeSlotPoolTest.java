@@ -20,6 +20,7 @@ package org.apache.flink.runtime.jobmaster.slotpool;
 
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
+import org.apache.flink.runtime.clusterframework.types.LoadableResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.jobmaster.SlotInfo;
 import org.apache.flink.runtime.messages.Acknowledge;
@@ -247,7 +248,7 @@ class DefaultDeclarativeSlotPoolTest extends DefaultDeclarativeSlotPoolTestBase 
         waitSlotRequestMaxIntervalIfNeeded();
 
         final ResourceCounter increasedRequirements =
-                resourceRequirements.add(RESOURCE_PROFILE_1, 2);
+                resourceRequirements.add(RESOURCE_PROFILE_1.toEmptyLoadsResourceProfile(), 2);
 
         final Collection<SlotOffer> slotOffers =
                 createSlotOffersForResourceRequirements(increasedRequirements);
@@ -255,12 +256,12 @@ class DefaultDeclarativeSlotPoolTest extends DefaultDeclarativeSlotPoolTestBase 
         final Collection<SlotOffer> acceptedSlots =
                 SlotPoolTestUtils.offerSlots(slotPool, slotOffers);
 
-        final Map<ResourceProfile, Long> resourceProfileCount =
+        final Map<LoadableResourceProfile, Long> resourceProfileCount =
                 acceptedSlots.stream()
-                        .map(SlotOffer::getResourceProfile)
+                        .map(SlotOffer::getLoadableResourceProfile)
                         .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
 
-        assertThat(resourceRequirements.getResourcesWithCount())
+        assertThat(resourceRequirements.getLoadableResourcesWithCount())
                 .allSatisfy(
                         resourceCount ->
                                 assertThat(
@@ -366,7 +367,7 @@ class DefaultDeclarativeSlotPoolTest extends DefaultDeclarativeSlotPoolTestBase 
                                     slotToReserve.getAllocationId(),
                                     new FlinkException("Test failure"));
 
-                    assertThat(fulfilledRequirementsOfFreeSlot.getResources()).isEmpty();
+                    assertThat(fulfilledRequirementsOfFreeSlot.getLoadableResources()).isEmpty();
                     assertThat(
                                     fulfilledRequirementsOfReservedSlot.getResourceCount(
                                             slotToReserve.getResourceProfile()))
@@ -381,7 +382,7 @@ class DefaultDeclarativeSlotPoolTest extends DefaultDeclarativeSlotPoolTestBase 
                 DefaultDeclarativeSlotPoolBuilder.builder().build();
 
         final ResourceCounter resourceRequirements =
-                ResourceCounter.withResource(RESOURCE_PROFILE_1, 1).add(RESOURCE_PROFILE_2, 1);
+                ResourceCounter.withResource(RESOURCE_PROFILE_1).add(RESOURCE_PROFILE_2);
 
         final LocalTaskManagerLocation taskManagerLocation = new LocalTaskManagerLocation();
         final FreeSlotConsumer freeSlotConsumer = new FreeSlotConsumer();
@@ -422,7 +423,7 @@ class DefaultDeclarativeSlotPoolTest extends DefaultDeclarativeSlotPoolTestBase 
         slotPool.releaseSlot(physicalSlot.getAllocationId(), new FlinkException("Test failure"));
 
         final ResourceCounter finalResourceRequirements =
-                resourceRequirements.subtract(physicalSlot.getResourceProfile(), 1);
+                resourceRequirements.subtract(physicalSlot.getLoadableResourceProfile());
         assertThat(slotPool.getFulfilledResourceRequirements())
                 .isEqualTo(finalResourceRequirements);
     }
@@ -762,7 +763,7 @@ class DefaultDeclarativeSlotPoolTest extends DefaultDeclarativeSlotPoolTestBase 
     @Nonnull
     private static Collection<ResourceRequirement> toResourceRequirements(
             ResourceCounter resourceCounter) {
-        return resourceCounter.getResourcesWithCount().stream()
+        return resourceCounter.getLoadableResourcesWithCount().stream()
                 .map(
                         resourceCount ->
                                 ResourceRequirement.create(

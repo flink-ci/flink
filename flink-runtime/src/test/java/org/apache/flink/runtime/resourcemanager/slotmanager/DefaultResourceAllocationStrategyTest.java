@@ -23,6 +23,7 @@ import org.apache.flink.api.common.resources.CPUResource;
 import org.apache.flink.api.common.resources.ExternalResource;
 import org.apache.flink.api.common.time.Time;
 import org.apache.flink.configuration.MemorySize;
+import org.apache.flink.runtime.clusterframework.types.LoadableResourceProfile;
 import org.apache.flink.runtime.clusterframework.types.ResourceProfile;
 import org.apache.flink.runtime.slots.ResourceRequirement;
 import org.apache.flink.runtime.util.ResourceCounter;
@@ -245,20 +246,20 @@ class DefaultResourceAllocationStrategyTest {
         final PendingTaskManagerId newAllocated =
                 result.getPendingTaskManagersToAllocate().get(0).getPendingTaskManagerId();
         ResourceCounter allFulfilledRequirements = ResourceCounter.empty();
-        for (Map.Entry<ResourceProfile, Integer> resourceWithCount :
+        for (Map.Entry<LoadableResourceProfile, Integer> resourceWithCount :
                 result.getAllocationsOnPendingResources()
                         .get(pendingTaskManager.getPendingTaskManagerId())
                         .get(jobId)
-                        .getResourcesWithCount()) {
+                        .getLoadableResourcesWithCount()) {
             allFulfilledRequirements =
                     allFulfilledRequirements.add(
                             resourceWithCount.getKey(), resourceWithCount.getValue());
         }
-        for (Map.Entry<ResourceProfile, Integer> resourceWithCount :
+        for (Map.Entry<LoadableResourceProfile, Integer> resourceWithCount :
                 result.getAllocationsOnPendingResources()
                         .get(newAllocated)
                         .get(jobId)
-                        .getResourcesWithCount()) {
+                        .getLoadableResourcesWithCount()) {
             allFulfilledRequirements =
                     allFulfilledRequirements.add(
                             resourceWithCount.getKey(), resourceWithCount.getValue());
