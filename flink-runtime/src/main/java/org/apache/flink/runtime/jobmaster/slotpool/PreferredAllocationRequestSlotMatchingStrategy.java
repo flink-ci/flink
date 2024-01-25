@@ -18,10 +18,14 @@
 
 package org.apache.flink.runtime.jobmaster.slotpool;
 
+import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.runtime.clusterframework.types.AllocationID;
 import org.apache.flink.runtime.clusterframework.types.ResourceID;
 import org.apache.flink.runtime.jobmaster.SlotRequestId;
 import org.apache.flink.runtime.scheduler.loading.LoadingWeight;
+import org.apache.flink.util.Preconditions;
+
+import javax.annotation.Nonnull;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,6 +33,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -37,8 +42,19 @@ import java.util.stream.Collectors;
  * strategy will try to fulfill the preferred allocations and if this is not possible, then it will
  * fall back to {@link SimpleRequestSlotMatchingStrategy}.
  */
-public enum PreferredAllocationRequestSlotMatchingStrategy implements RequestSlotMatchingStrategy {
-    INSTANCE;
+public class PreferredAllocationRequestSlotMatchingStrategy implements RequestSlotMatchingStrategy {
+
+    private final @Nonnull RequestSlotMatchingStrategy rollback;
+
+    private PreferredAllocationRequestSlotMatchingStrategy(
+            @Nonnull RequestSlotMatchingStrategy rollback) {
+        this.rollback = Preconditions.checkNotNull(rollback);
+    }
+
+    public static RequestSlotMatchingStrategy create(
+            @Nonnull RequestSlotMatchingStrategy rollback) {
+        return new PreferredAllocationRequestSlotMatchingStrategy(rollback);
+    }
 
     @Override
     public Collection<RequestSlotMatch> matchRequestsAndSlots(
@@ -95,13 +111,29 @@ public enum PreferredAllocationRequestSlotMatchingStrategy implements RequestSlo
         }
 
         unmatchedRequests.addAll(pendingRequestsWithPreferredAllocations.values());
-        if (!freeSlots.isEmpty() && !unmatchedRequests.isEmpty()) {
+        if (Objects.nonNull(rollback) && !freeSlots.isEmpty() && !unmatchedRequests.isEmpty()) {
             requestSlotMatches.addAll(
-                    SimpleRequestSlotMatchingStrategy.INSTANCE.matchRequestsAndSlots(
+                    rollback.matchRequestsAndSlots(
                             freeSlots.values(), unmatchedRequests, taskExecutorsLoadingWeight));
         }
 
         return requestSlotMatches;
+    }
+
+    @VisibleForTesting
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        PreferredAllocationRequestSlotMatchingStrategy that =
+                (PreferredAllocationRequestSlotMatchingStrategy) o;
+        return Objects.equals(rollback, that.rollback);
     }
 
     @Override

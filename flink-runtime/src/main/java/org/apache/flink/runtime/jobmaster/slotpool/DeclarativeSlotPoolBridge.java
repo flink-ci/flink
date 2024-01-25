@@ -222,7 +222,9 @@ public class DeclarativeSlotPoolBridge extends DeclarativeSlotPoolService implem
         if (!slotBatchAllocatable) {
             final Collection<RequestSlotMatchingStrategy.RequestSlotMatch> requestSlotMatches =
                     requestSlotMatchingStrategy.matchRequestsAndSlots(
-                            newSlots, pendingRequests.values(), null);
+                            newSlots,
+                            pendingRequests.values(),
+                            getDeclarativeSlotPool().getTaskExecutorsLoadingWeight());
             reserveMatchedFreeSlots(requestSlotMatches);
             fulfillMatchedSlots(requestSlotMatches);
             return;
@@ -239,13 +241,16 @@ public class DeclarativeSlotPoolBridge extends DeclarativeSlotPoolService implem
                         receivedSlots,
                         pendingRequests.values(),
                         getDeclarativeSlotPool().getTaskExecutorsLoadingWeight());
-        if (requestSlotMatches.size() >= pendingRequests.size()) {
-            Preconditions.checkState(
-                    requestSlotMatches.size() == pendingRequests.size(),
-                    "The number of matched slots is not equals to the pendingRequests.");
+        if (requestSlotMatches.size() == pendingRequests.size()) {
             reserveMatchedFreeSlots(requestSlotMatches);
             fulfillMatchedSlots(requestSlotMatches);
             receivedSlots.clear();
+        } else if (requestSlotMatches.size() < pendingRequests.size()) {
+            // do nothing.
+        } else {
+            // requestSlotMatches.size() > pendingRequests.size()
+            throw new IllegalStateException(
+                    "The number of matched slots is not equals to the pendingRequests.");
         }
     }
 
