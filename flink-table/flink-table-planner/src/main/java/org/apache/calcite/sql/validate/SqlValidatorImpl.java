@@ -158,16 +158,19 @@ import static org.apache.calcite.util.Static.RESOURCE;
  * Default implementation of {@link SqlValidator}, the class was copied over because of
  * CALCITE-4554.
  *
- * <p>Lines 1958 ~ 1978, Flink improves error message for functions without appropriate arguments in
+ * <p>Lines 193 ~ 196, Flink improves error message for functions without appropriate arguments in
+ * handleUnresolvedFunction.
+ *
+ * <p>Lines 1963 ~ 1983, Flink improves error message for functions without appropriate arguments in
  * handleUnresolvedFunction at {@link SqlValidatorImpl#handleUnresolvedFunction}.
  *
- * <p>Lines 3736 ~ 3740, Flink improves Optimize the retrieval of sub-operands in SqlCall when using
+ * <p>Lines 3741 ~ 3745, Flink improves Optimize the retrieval of sub-operands in SqlCall when using
  * NamedParameters at {@link SqlValidatorImpl#checkRollUp}.
  *
- * <p>Lines 5108 ~ 5121, Flink enables TIMESTAMP and TIMESTAMP_LTZ for system time period
+ * <p>Lines 5113 ~ 5126, Flink enables TIMESTAMP and TIMESTAMP_LTZ for system time period
  * specification type at {@link org.apache.calcite.sql.validate.SqlValidatorImpl#validateSnapshot}.
  *
- * <p>Lines 5465 ~ 5471, Flink enables TIMESTAMP and TIMESTAMP_LTZ for first orderBy column in
+ * <p>Lines 5470 ~ 5476, Flink enables TIMESTAMP and TIMESTAMP_LTZ for first orderBy column in
  * matchRecognize at {@link SqlValidatorImpl#validateMatchRecognize}.
  */
 public class SqlValidatorImpl implements SqlValidatorWithHints {
@@ -187,8 +190,10 @@ public class SqlValidatorImpl implements SqlValidatorWithHints {
     /** Alias prefix generated for source columns when rewriting UPDATE to MERGE. */
     public static final String UPDATE_ANON_PREFIX = "SYS$ANON";
 
+    // ----- FLINK MODIFICATION BEGIN -----
     private static final ExtraCalciteResource EXTRA_RESOURCE =
             Resources.create(ExtraCalciteResource.class);
+    // ----- FLINK MODIFICATION END -----
 
     // ~ Instance fields --------------------------------------------------------
 
