@@ -38,7 +38,7 @@ import static java.util.Objects.requireNonNull;
  * <p>FLINK modifications are at lines
  *
  * <ol>
- *   <li>Should be removed after fix of FLINK-31350: Lines 541 ~ 553.
+ *   <li>Should be removed after fix of FLINK-31350: Lines 547 ~ 559.
  * </ol>
  */
 public class SqlTypeFactoryImpl extends RelDataTypeFactoryImpl {
@@ -117,6 +117,12 @@ public class SqlTypeFactoryImpl extends RelDataTypeFactoryImpl {
     @Override
     public RelDataType createMapType(RelDataType keyType, RelDataType valueType) {
         MapSqlType newType = new MapSqlType(keyType, valueType, false);
+        return canonize(newType);
+    }
+
+    @Override
+    public RelDataType createMeasureType(RelDataType valueType) {
+        MeasureSqlType newType = MeasureSqlType.create(valueType);
         return canonize(newType);
     }
 
