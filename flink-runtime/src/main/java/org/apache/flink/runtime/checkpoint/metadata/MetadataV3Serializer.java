@@ -62,11 +62,20 @@ public class MetadataV3Serializer extends MetadataV2V3SerializerBase implements 
     /** The singleton instance of the serializer. */
     public static final MetadataV3Serializer INSTANCE = new MetadataV3Serializer();
 
-    private final ChannelStateHandleSerializer channelStateHandleSerializer =
-            new ChannelStateHandleSerializerV1();
+    private final ChannelStateHandleSerializer channelStateHandleSerializer;
 
     /** Singleton, not meant to be instantiated. */
-    private MetadataV3Serializer() {}
+    private MetadataV3Serializer() {
+        this.channelStateHandleSerializer = new ChannelStateHandleSerializerV1();
+    }
+
+    /**
+     * Subsequent {@link MetadataSerializer} such as {@link MetadataV5Serializer} may use
+     * MetadataV3Serializer but with another {@link ChannelStateHandleSerializer} .
+     */
+    MetadataV3Serializer(ChannelStateHandleSerializer channelStateHandleSerializer) {
+        this.channelStateHandleSerializer = channelStateHandleSerializer;
+    }
 
     @Override
     public int getVersion() {
