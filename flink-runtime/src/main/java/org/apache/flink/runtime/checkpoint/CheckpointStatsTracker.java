@@ -112,8 +112,9 @@ public class CheckpointStatsTracker {
      *     progress ones.
      * @param metricGroup Metric group for exposed metrics
      */
-    public CheckpointStatsTracker(int numRememberedCheckpoints, MetricGroup metricGroup) {
-        this(numRememberedCheckpoints, metricGroup, new JobID(), Integer.MAX_VALUE);
+    public CheckpointStatsTracker(
+            int numRememberedCheckpoints, MetricGroup metricGroup, JobID jobID) {
+        this(numRememberedCheckpoints, metricGroup, jobID, Integer.MAX_VALUE);
     }
 
     CheckpointStatsTracker(
