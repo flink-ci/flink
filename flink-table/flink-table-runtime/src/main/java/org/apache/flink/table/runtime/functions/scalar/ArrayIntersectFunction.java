@@ -44,25 +44,35 @@ import static org.apache.flink.table.api.Expressions.$;
 @Internal
 public class ArrayIntersectFunction extends BuiltInScalarFunction {
     private final ArrayData.ElementGetter elementGetter;
-    private final SpecializedFunction.ExpressionEvaluator intersectEvaluator;
-    private transient MethodHandle intersectHandle;
+    private final SpecializedFunction.ExpressionEvaluator hashcodeEvaluator;
+    private final SpecializedFunction.ExpressionEvaluator equalityEvaluator;
+    private transient MethodHandle hashcodeHandle;
+    private transient MethodHandle equalityHandle;
 
     public ArrayIntersectFunction(SpecializedFunction.SpecializedContext context) {
         super(BuiltInFunctionDefinitions.ARRAY_INTERSECT, context);
         final DataType dataType =
                 ((CollectionDataType) context.getCallContext().getArgumentDataTypes().get(0))
-                        .getElementDataType();
+                        .getElementDataType()
+                        .toInternal();
         elementGetter = ArrayData.createElementGetter(dataType.getLogicalType());
-        intersectEvaluator =
+        hashcodeEvaluator =
                 context.createEvaluator(
-                        Expressions.call("HASHCODE", $("element1")),
-                        DataTypes.INT().notNull(),
+                        Expressions.call("$HASHCODE$1", $("element1")),
+                        DataTypes.INT(),
                         DataTypes.FIELD("element1", dataType.notNull().toInternal()));
+        equalityEvaluator =
+                context.createEvaluator(
+                        $("element1").isEqual($("element2")),
+                        DataTypes.BOOLEAN(),
+                        DataTypes.FIELD("element1", dataType.notNull().toInternal()),
+                        DataTypes.FIELD("element2", dataType.notNull().toInternal()));
     }
 
     @Override
     public void open(FunctionContext context) throws Exception {
-        intersectHandle = intersectEvaluator.open(context);
+        hashcodeHandle = hashcodeEvaluator.open(context);
+        equalityHandle = equalityEvaluator.open(context);
     }
 
     public @Nullable ArrayData eval(ArrayData array1, ArrayData array2) {
@@ -71,33 +81,27 @@ public class ArrayIntersectFunction extends BuiltInScalarFunction {
                 return null;
             }
             List<Object> list = new ArrayList();
-            Set<Integer> seen = new HashSet<>();
+            Set<ObjectContainer> seen = new HashSet<>();
 
             boolean isNullPresentInArrayTwo = false;
-            if (array2 != null) {
-                for (int pos = 0; pos < array2.size(); pos++) {
-                    final Object element = elementGetter.getElementOrNull(array2, pos);
-                    if (element == null) {
-                        isNullPresentInArrayTwo = true;
-                    } else {
-                        int hashCode = (int) intersectHandle.invoke(element);
-                        if (!seen.contains(hashCode)) {
-                            seen.add(hashCode);
-                        }
-                    }
+            for (int pos = 0; pos < array2.size(); pos++) {
+                final Object element = elementGetter.getElementOrNull(array2, pos);
+                if (element == null) {
+                    isNullPresentInArrayTwo = true;
+                } else {
+                    ObjectContainer objectContainer = new ObjectContainer(element);
+                    seen.add(objectContainer);
                 }
             }
             boolean isNullPresentInArrayOne = false;
-            if (array1 != null) {
-                for (int pos = 0; pos < array1.size(); pos++) {
-                    final Object element = elementGetter.getElementOrNull(array1, pos);
-                    if (element == null) {
-                        isNullPresentInArrayOne = true;
-                    } else {
-                        int hashCode = (int) intersectHandle.invoke(element);
-                        if (seen.contains(hashCode)) {
-                            list.add(element);
-                        }
+            for (int pos = 0; pos < array1.size(); pos++) {
+                final Object element = elementGetter.getElementOrNull(array1, pos);
+                if (element == null) {
+                    isNullPresentInArrayOne = true;
+                } else {
+                    ObjectContainer objectContainer = new ObjectContainer(element);
+                    if (seen.contains(objectContainer)) {
+                        list.add(element);
                     }
                 }
             }
@@ -110,8 +114,43 @@ public class ArrayIntersectFunction extends BuiltInScalarFunction {
         }
     }
 
+    private class ObjectContainer {
+
+        Object o;
+
+        public ObjectContainer(Object o) {
+            this.o = o;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof ObjectContainer)) {
+                return false;
+            }
+            ObjectContainer that = (ObjectContainer) other;
+            try {
+                return (boolean) equalityHandle.invoke(this.o, that.o);
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public int hashCode() {
+            try {
+                return (int) hashcodeHandle.invoke(o);
+            } catch (Throwable e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
     @Override
     public void close() throws Exception {
-        intersectEvaluator.close();
+        hashcodeEvaluator.close();
+        equalityEvaluator.close();
     }
 }
