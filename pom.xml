@@ -102,6 +102,7 @@ under the License.
 		<module>flink-kubernetes</module>
 		<module>flink-external-resources</module>
 		<module>tools/ci/flink-ci-tools</module>
+		<module>flink-process-function-parent</module>
 	</modules>
 
 	<properties>
