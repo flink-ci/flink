@@ -246,15 +246,6 @@ Jobs/applications executing in a batch fashion do not use state backends and che
 
 {{< generated/common_state_backends_section >}}
 
-
-#### Checkpoint File Merging
-
-Merging the small files of checkpoints can reduce the pressure on the file system, these options control the behavior of file merging.
-
-{{< hint warning >}} The feature is in experimental status. {{< /hint >}}
-
-{{< generated/file_merging_section >}}
-
 ### High Availability
 
 High-availability here refers to the ability of the JobManager process to recover from failures.

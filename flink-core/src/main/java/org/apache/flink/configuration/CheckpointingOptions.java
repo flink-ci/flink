@@ -18,6 +18,7 @@
 
 package org.apache.flink.configuration;
 
+import org.apache.flink.annotation.Experimental;
 import org.apache.flink.annotation.docs.Documentation;
 import org.apache.flink.configuration.description.Description;
 import org.apache.flink.configuration.description.TextElement;
@@ -283,14 +284,30 @@ public class CheckpointingOptions {
                                     FS_SMALL_FILE_THRESHOLD.key()))
                     .withDeprecatedKeys("state.backend.fs.write-buffer-size");
 
+    // ------------------------------------------------------------------------
+    //  Options related to file merging
+    // ------------------------------------------------------------------------
+
+    /**
+     * Whether to enable merging multiple checkpoint files into one, which will greatly reduce the
+     * number of small checkpoint files. See FLIP-306 for details.
+     */
+    @Experimental
     @Documentation.Section(Documentation.Sections.FILE_MERGING)
     public static final ConfigOption<Boolean> FILE_MERGING_ENABLED =
             ConfigOptions.key("state.checkpoints.file-merging.enabled")
                     .booleanType()
                     .defaultValue(false)
                     .withDescription(
-                            "Enable merging multiple checkpoint files into one, which will greatly reduce the number of small checkpoint files.");
+                            "Whether to enable merging multiple checkpoint files into one, which will greatly reduce"
+                                    + " the number of small checkpoint files.");
 
+    /**
+     * Whether to allow merging data of multiple checkpoints into one physical file. If this option
+     * is set to false, only files within checkpoint boundaries will be merged. Otherwise, it is
+     * possible for the logical files of different checkpoints to share the same physical file.
+     */
+    @Experimental
     @Documentation.Section(Documentation.Sections.FILE_MERGING)
     public static final ConfigOption<Boolean> FILE_MERGING_ACROSS_BOUNDARY =
             ConfigOptions.key("state.checkpoints.file-merging.across-checkpoint-boundary")
@@ -303,11 +320,15 @@ public class CheckpointingOptions {
                                             TextElement.code(FILE_MERGING_ENABLED.key()))
                                     .linebreak()
                                     .text(
-                                            "Allow merging data of multiple checkpoints into one physical file."
-                                                    + "If this option is set to false, we only merge files within checkpoint boundaries."
-                                                    + "Otherwise, it is possible for the logical files of different checkpoints to share the same physical file.")
+                                            "Whether to allow merging data of multiple checkpoints into one physical file."
+                                                    + "If this option is set to false, "
+                                                    + "only merge files within checkpoint boundaries will be merged."
+                                                    + "Otherwise, it is possible for the logical files of different "
+                                                    + "checkpoints to share the same physical file.")
                                     .build());
 
+    /** The max size of a physical file for merged checkpoints. */
+    @Experimental
     @Documentation.Section(Documentation.Sections.FILE_MERGING)
     public static final ConfigOption<MemorySize> FILE_MERGING_MAX_FILE_SIZE =
             ConfigOptions.key("state.checkpoints.file-merging.max-file-size")
@@ -315,6 +336,12 @@ public class CheckpointingOptions {
                     .defaultValue(MemorySize.parse("32MB"))
                     .withDescription("Max size of a physical file for merged checkpoints.");
 
+    /**
+     * The upper limit of the file pool size for concurrent file merging, non-negative. The caller's
+     * thread will be used to merge files synchronously when set to 0, otherwise the threads in
+     * thread pool will be used to merge file asynchronously.
+     */
+    @Experimental
     @Documentation.Section(Documentation.Sections.FILE_MERGING)
     public static final ConfigOption<Integer> FILE_MERGING_POOL_SIZE =
             ConfigOptions.key("state.checkpoints.file-merging.pool-size")
@@ -325,14 +352,26 @@ public class CheckpointingOptions {
                                     + "The caller's thread will be used to merge files synchronously when set to 0,"
                                     + "otherwise the threads in thread pool will be used to merge file asynchronously.");
 
+    /**
+     * The upper limit of the file pool size based on the number of subtasks within each TM (only
+     * for merging private state at Task Manager level).
+     */
+    @Experimental
     @Documentation.Section(Documentation.Sections.FILE_MERGING)
     public static final ConfigOption<Integer> FILE_MERGING_MAX_SUBTASKS_PER_FILE =
             ConfigOptions.key("state.checkpoints.file-merging.max-subtasks-per-file")
                     .intType()
                     .defaultValue(0)
                     .withDescription(
-                            "The upper limit of the file pool size based on the number of subtasks within each TM (only for merging private state at Task Manager level).");
+                            "The upper limit of the file pool size based on the number of subtasks within each TM "
+                                    + "(only for merging private state at Task Manager level).");
 
+    /**
+     * A threshold that triggers a compaction (re-uploading) of one physical file. If the amount of
+     * invalid data in a physical file exceeds the threshold, a new physical file will be created
+     * and uploaded.
+     */
+    @Experimental
     @Documentation.Section(Documentation.Sections.FILE_MERGING)
     public static final ConfigOption<Float> FILE_MERGING_MAX_SPACE_AMPLIFICATION =
             ConfigOptions.key("state.checkpoints.file-merging.max-space-amplification")
@@ -340,5 +379,6 @@ public class CheckpointingOptions {
                     .defaultValue(0.75f)
                     .withDescription(
                             "A threshold that triggers a compaction (re-uploading) of one physical file."
-                                    + "If the amount of invalid data in a physical file exceeds the threshold, a new physical file will be created and uploaded.");
+                                    + "If the amount of invalid data in a physical file exceeds the threshold, "
+                                    + "a new physical file will be created and uploaded.");
 }

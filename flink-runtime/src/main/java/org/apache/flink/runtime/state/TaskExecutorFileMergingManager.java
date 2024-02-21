@@ -83,9 +83,12 @@ public class TaskExecutorFileMergingManager {
                         "TaskExecutorFileMergingManager is already closed and cannot "
                                 + "register a new FileMergingSnapshotManager.");
             }
+            if (!mergingEnabled) {
+                return null;
+            }
             FileMergingSnapshotManager fileMergingSnapshotManager =
                     fileMergingSnapshotManagerByJobId.get(jobId);
-            if (fileMergingSnapshotManager == null && mergingEnabled) {
+            if (fileMergingSnapshotManager == null) {
                 boolean acrossCheckpoint =
                         jobConfiguration
                                 .getOptional(FILE_MERGING_ACROSS_BOUNDARY)
