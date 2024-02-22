@@ -19,6 +19,8 @@
 package org.apache.flink.process.impl.utils;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.connector.v2.Sink;
+import org.apache.flink.api.connector.v2.WrappedSink;
 import org.apache.flink.api.java.Utils;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -29,11 +31,14 @@ import org.apache.flink.process.api.function.TwoInputNonBroadcastStreamProcessFu
 import org.apache.flink.process.api.function.TwoOutputStreamProcessFunction;
 import org.apache.flink.process.impl.stream.DataStream;
 import org.apache.flink.process.impl.stream.KeyedPartitionStreamImpl;
+import org.apache.flink.process.impl.stream.NonKeyedPartitionStreamImpl;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.SimpleUdfStreamOperatorFactory;
+import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
+import org.apache.flink.streaming.api.transformations.ProcessFunctionSinkTransformation;
 import org.apache.flink.streaming.api.transformations.TwoInputTransformation;
 
 /**
@@ -227,5 +232,57 @@ public final class StreamUtils {
         }
 
         return transform;
+    }
+
+    /** Construct and return a new DataStream with one input operator. */
+    public static <T, R> DataStream<R> transformOneInputOperator(
+            String operatorName,
+            DataStream<T> inputStream,
+            TypeInformation<R> outTypeInfo,
+            StreamOperatorFactory<R> operatorFactory) {
+        // read the output type of the input Transform to coax out errors about MissingTypeInfo
+        inputStream.getTransformation().getOutputType();
+
+        OneInputTransformation<T, R> resultTransform =
+                new OneInputTransformation<>(
+                        inputStream.getTransformation(),
+                        operatorName,
+                        operatorFactory,
+                        outTypeInfo,
+                        inputStream.getEnvironment().getParallelism(),
+                        false);
+
+        NonKeyedPartitionStreamImpl<R> returnStream =
+                new NonKeyedPartitionStreamImpl<>(inputStream.getEnvironment(), resultTransform);
+
+        inputStream.getEnvironment().addOperator(resultTransform);
+
+        return returnStream;
+    }
+
+    /** Add sink operator to the input stream. */
+    public static <T> ProcessFunctionSinkTransformation<T, T> addSinkOperator(
+            DataStream<T> inputStream, Sink<T> sink, TypeInformation<T> typeInformation) {
+        // read the output type of the input Transform to coax out errors about MissingTypeInfo
+        inputStream.getTransformation().getOutputType();
+
+        if (!(sink instanceof WrappedSink)) {
+            throw new UnsupportedOperationException(
+                    "Unsupported type of sink, please use SinkUtils to wrap a sink-v2 sink first.");
+        }
+
+        org.apache.flink.api.connector.sink2.Sink<T> innerSink =
+                ((WrappedSink<T>) sink).getWrappedSink();
+
+        ProcessFunctionSinkTransformation<T, T> sinkTransformation =
+                new ProcessFunctionSinkTransformation<>(
+                        inputStream,
+                        innerSink,
+                        typeInformation,
+                        "Sink",
+                        inputStream.getEnvironment().getParallelism(),
+                        false);
+        inputStream.getEnvironment().addOperator(sinkTransformation);
+        return sinkTransformation;
     }
 }

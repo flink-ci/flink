@@ -19,12 +19,15 @@
 package org.apache.flink.process.impl.stream;
 
 import org.apache.flink.api.common.typeinfo.Types;
+import org.apache.flink.api.connector.v2.SinkUtils;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.process.api.stream.NonKeyedPartitionStream;
 import org.apache.flink.process.impl.ExecutionEnvironmentImpl;
 import org.apache.flink.process.impl.TestingTransformation;
+import org.apache.flink.streaming.api.functions.sink.v2.DiscardingSink;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
+import org.apache.flink.streaming.api.transformations.ProcessFunctionSinkTransformation;
 import org.apache.flink.streaming.api.transformations.TwoInputTransformation;
 
 import org.junit.jupiter.api.Test;
@@ -114,5 +117,18 @@ class NonKeyedPartitionStreamImplTest {
         List<Transformation<?>> transformations = env.getTransformations();
         assertThat(transformations).hasSize(1);
         assertProcessType(transformations.get(0), TwoInputTransformation.class, Types.LONG);
+    }
+
+    @Test
+    void testToSink() throws Exception {
+        ExecutionEnvironmentImpl env = StreamTestUtils.getEnv();
+        GlobalStreamImpl<Integer> stream =
+                new GlobalStreamImpl<>(env, new TestingTransformation<>("t1", Types.INT, 1));
+        stream.toSink(SinkUtils.wrapSink(new DiscardingSink<>()));
+        List<Transformation<?>> transformations = env.getTransformations();
+        assertThat(transformations)
+                .hasSize(1)
+                .element(0)
+                .isInstanceOf(ProcessFunctionSinkTransformation.class);
     }
 }

@@ -19,6 +19,7 @@
 package org.apache.flink.process.impl.stream;
 
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.connector.v2.Sink;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
@@ -38,6 +39,7 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.SimpleUdfStreamOperatorFactory;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
+import org.apache.flink.streaming.api.transformations.ProcessFunctionSinkTransformation;
 import org.apache.flink.streaming.runtime.partitioner.ShufflePartitioner;
 import org.apache.flink.util.OutputTag;
 
@@ -98,7 +100,14 @@ public class GlobalStreamImpl<T> extends DataStream<T> implements GlobalStream<T
         return new GlobalStreamImpl<>(environment, outTransformation);
     }
 
-    // TODO add toSink method.
+    @Override
+    public void toSink(Sink<T> sink) {
+        ProcessFunctionSinkTransformation<T, T> sinkTransformation =
+                StreamUtils.addSinkOperator(this, sink, getType());
+        // Operator parallelism should always be 1 for global stream.
+        // parallelismConfigured should be true to avoid overwritten by AdaptiveBatchScheduler.
+        sinkTransformation.setParallelism(1, true);
+    }
 
     // ---------------------
     //   Partitioning

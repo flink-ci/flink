@@ -19,6 +19,7 @@
 package org.apache.flink.process.api.stream;
 
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.api.connector.v2.Sink;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.process.api.function.OneInputStreamProcessFunction;
 import org.apache.flink.process.api.function.TwoInputBroadcastStreamProcessFunction;
@@ -194,7 +195,7 @@ public interface KeyedPartitionStream<K, T> {
      */
     BroadcastStream<T> broadcast();
 
-    // TODO add toSink method.
+    void toSink(Sink<T> sink);
 
     /**
      * This class represents a combination of two {@link KeyedPartitionStream}. It will be used as
