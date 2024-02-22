@@ -12,13 +12,13 @@
             <td><h5>state.checkpoints.file-merging.across-checkpoint-boundary</h5></td>
             <td style="word-wrap: break-word;">false</td>
             <td>Boolean</td>
-            <td>Only relevant if <code class="highlighter-rouge">state.checkpoints.file-merging.enabled</code> is enabled.<br />Allow merging data of multiple checkpoints into one physical file.If this option is set to false, we only merge files within checkpoint boundaries.Otherwise, it is possible for the logical files of different checkpoints to share the same physical file.</td>
+            <td>Only relevant if <code class="highlighter-rouge">state.checkpoints.file-merging.enabled</code> is enabled.<br />Whether to allow merging data of multiple checkpoints into one physical file.If this option is set to false, only merge files within checkpoint boundaries will be merged.Otherwise, it is possible for the logical files of different checkpoints to share the same physical file.</td>
         </tr>
         <tr>
             <td><h5>state.checkpoints.file-merging.enabled</h5></td>
             <td style="word-wrap: break-word;">false</td>
             <td>Boolean</td>
-            <td>Enable merging multiple checkpoint files into one, which will greatly reduce the number of small checkpoint files.</td>
+            <td>Whether to enable merging multiple checkpoint files into one, which will greatly reduce the number of small checkpoint files.</td>
         </tr>
         <tr>
             <td><h5>state.checkpoints.file-merging.max-file-size</h5></td>
