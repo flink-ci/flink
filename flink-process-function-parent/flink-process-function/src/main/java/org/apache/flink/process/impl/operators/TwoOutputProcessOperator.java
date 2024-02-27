@@ -18,6 +18,7 @@
 
 package org.apache.flink.process.impl.operators;
 
+import org.apache.flink.api.common.TaskInfo;
 import org.apache.flink.process.api.context.TwoOutputNonPartitionedContext;
 import org.apache.flink.process.api.function.TwoOutputStreamProcessFunction;
 import org.apache.flink.process.impl.common.OutputCollector;
@@ -29,6 +30,7 @@ import org.apache.flink.streaming.api.operators.BoundedOneInput;
 import org.apache.flink.streaming.api.operators.ChainingStrategy;
 import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.Output;
+import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
 
@@ -64,7 +66,14 @@ public class TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE>
     public void open() throws Exception {
         this.mainCollector = getMainCollector();
         this.sideCollector = getSideCollector();
-        this.context = new DefaultRuntimeContext(getRuntimeContext());
+        StreamingRuntimeContext operatorContext = getRuntimeContext();
+        TaskInfo taskInfo = operatorContext.getTaskInfo();
+        this.context =
+                new DefaultRuntimeContext(
+                        operatorContext,
+                        taskInfo.getNumberOfParallelSubtasks(),
+                        taskInfo.getMaxNumberOfParallelSubtasks(),
+                        taskInfo.getTaskName());
         this.nonPartitionedContext = new DefaultTwoOutputNonPartitionedContext<>(context);
     }
 

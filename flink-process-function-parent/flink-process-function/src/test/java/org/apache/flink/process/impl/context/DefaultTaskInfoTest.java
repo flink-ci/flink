@@ -16,22 +16,19 @@
  * limitations under the License.
  */
 
-package org.apache.flink.process.api.context;
+package org.apache.flink.process.impl.context;
 
-import org.apache.flink.annotation.Experimental;
+import org.junit.jupiter.api.Test;
 
-/**
- * A RuntimeContext contains information about the context in which process functions are executed.
- * Each parallel instance of the function will have a context through which it can access contextual
- * information, such as the current key and execution mode. Through this context, we can also
- * interact with the execution layer, such as getting state, emitting watermark, registering timer,
- * etc.
- */
-@Experimental
-public interface RuntimeContext {
-    /** Get the {@link JobInfo} of this process function. */
-    JobInfo getJobInfo();
+import static org.assertj.core.api.Assertions.assertThat;
 
-    /** Get the {@link TaskInfo} of this process function. */
-    TaskInfo getTaskInfo();
+/** Tests for {@link DefaultTaskInfo}. */
+class DefaultTaskInfoTest {
+    @Test
+    void testTaskInfo() {
+        DefaultTaskInfo taskInfo = new DefaultTaskInfo(1, 2, "taskName");
+        assertThat(taskInfo.getParallelism()).isEqualTo(1);
+        assertThat(taskInfo.getMaxParallelism()).isEqualTo(2);
+        assertThat(taskInfo.getTaskName()).isEqualTo("taskName");
+    }
 }

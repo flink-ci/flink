@@ -20,6 +20,7 @@ package org.apache.flink.process.impl.context;
 
 import org.apache.flink.process.api.context.JobInfo;
 import org.apache.flink.process.api.context.NonPartitionedContext;
+import org.apache.flink.process.api.context.TaskInfo;
 import org.apache.flink.process.api.function.ApplyPartitionFunction;
 
 /** The default implementation of {@link NonPartitionedContext}. */
@@ -38,5 +39,10 @@ public class DefaultNonPartitionedContext<OUT> implements NonPartitionedContext<
     @Override
     public JobInfo getJobInfo() {
         return context.getJobInfo();
+    }
+
+    @Override
+    public TaskInfo getTaskInfo() {
+        return context.getTaskInfo();
     }
 }
