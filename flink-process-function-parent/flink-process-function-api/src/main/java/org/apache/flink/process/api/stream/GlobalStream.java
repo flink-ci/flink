@@ -34,7 +34,8 @@ public interface GlobalStream<T> {
      * @param processFunction to perform operation.
      * @return new stream with this operation.
      */
-    <OUT> GlobalStream<OUT> process(OneInputStreamProcessFunction<T, OUT> processFunction);
+    <OUT> ProcessConfigurableAndGlobalStream<OUT> process(
+            OneInputStreamProcessFunction<T, OUT> processFunction);
 
     /**
      * Apply a two output operation to this {@link GlobalStream}.
@@ -52,7 +53,7 @@ public interface GlobalStream<T> {
      * @param processFunction to perform operation.
      * @return new stream with this operation.
      */
-    <T_OTHER, OUT> GlobalStream<OUT> connectAndProcess(
+    <T_OTHER, OUT> ProcessConfigurableAndGlobalStream<OUT> connectAndProcess(
             GlobalStream<T_OTHER> other,
             TwoInputNonBroadcastStreamProcessFunction<T, T_OTHER, OUT> processFunction);
 
@@ -79,7 +80,12 @@ public interface GlobalStream<T> {
      */
     BroadcastStream<T> broadcast();
 
-    void toSink(Sink<T> sink);
+    ProcessConfigurable<?> toSink(Sink<T> sink);
+
+    /** This interface represents a configurable {@link GlobalStream}. */
+    @Experimental
+    interface ProcessConfigurableAndGlobalStream<T>
+            extends GlobalStream<T>, ProcessConfigurable<ProcessConfigurableAndGlobalStream<T>> {}
 
     /**
      * This class represents a combination of two {@link GlobalStream}. It will be used as the
@@ -88,9 +94,9 @@ public interface GlobalStream<T> {
     @Experimental
     interface TwoGlobalStreams<T1, T2> {
         /** Get the first stream. */
-        GlobalStream<T1> getFirst();
+        ProcessConfigurableAndGlobalStream<T1> getFirst();
 
         /** Get the second stream. */
-        GlobalStream<T2> getSecond();
+        ProcessConfigurableAndGlobalStream<T2> getSecond();
     }
 }

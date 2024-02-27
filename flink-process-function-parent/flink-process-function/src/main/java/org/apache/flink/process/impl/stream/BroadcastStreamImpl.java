@@ -25,7 +25,9 @@ import org.apache.flink.api.java.typeutils.TypeExtractor;
 import org.apache.flink.process.api.function.TwoInputBroadcastStreamProcessFunction;
 import org.apache.flink.process.api.stream.BroadcastStream;
 import org.apache.flink.process.api.stream.KeyedPartitionStream;
+import org.apache.flink.process.api.stream.KeyedPartitionStream.ProcessConfigurableAndKeyedPartitionStream;
 import org.apache.flink.process.api.stream.NonKeyedPartitionStream;
+import org.apache.flink.process.api.stream.NonKeyedPartitionStream.ProcessConfigurableAndNonKeyedPartitionStream;
 import org.apache.flink.process.impl.ExecutionEnvironmentImpl;
 import org.apache.flink.process.impl.operators.KeyedTwoInputBroadcastProcessOperator;
 import org.apache.flink.process.impl.operators.TwoInputBroadcastProcessOperator;
@@ -48,7 +50,7 @@ public class BroadcastStreamImpl<T> extends DataStream<T> implements BroadcastSt
     }
 
     @Override
-    public <K, T_OTHER, OUT> NonKeyedPartitionStream<OUT> connectAndProcess(
+    public <K, T_OTHER, OUT> ProcessConfigurableAndNonKeyedPartitionStream<OUT> connectAndProcess(
             KeyedPartitionStream<K, T_OTHER> other,
             TwoInputBroadcastStreamProcessFunction<T_OTHER, T, OUT> processFunction) {
         TypeInformation<OUT> outTypeInfo =
@@ -71,7 +73,7 @@ public class BroadcastStreamImpl<T> extends DataStream<T> implements BroadcastSt
     }
 
     @Override
-    public <T_OTHER, OUT> NonKeyedPartitionStream<OUT> connectAndProcess(
+    public <T_OTHER, OUT> ProcessConfigurableAndNonKeyedPartitionStream<OUT> connectAndProcess(
             NonKeyedPartitionStream<T_OTHER> other,
             TwoInputBroadcastStreamProcessFunction<T_OTHER, T, OUT> processFunction) {
         TypeInformation<OUT> outTypeInfo =
@@ -94,7 +96,7 @@ public class BroadcastStreamImpl<T> extends DataStream<T> implements BroadcastSt
     }
 
     @Override
-    public <K, T_OTHER, OUT> KeyedPartitionStream<K, OUT> connectAndProcess(
+    public <K, T_OTHER, OUT> ProcessConfigurableAndKeyedPartitionStream<K, OUT> connectAndProcess(
             KeyedPartitionStream<K, T_OTHER> other,
             TwoInputBroadcastStreamProcessFunction<T_OTHER, T, OUT> processFunction,
             KeySelector<OUT, K> newKeySelector) {

@@ -18,6 +18,7 @@
 
 package org.apache.flink.process.impl.stream;
 
+import org.apache.flink.api.common.operators.SlotSharingGroup;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.connector.v2.SinkUtils;
 import org.apache.flink.api.dag.Transformation;
@@ -130,5 +131,25 @@ class NonKeyedPartitionStreamImplTest {
                 .hasSize(1)
                 .element(0)
                 .isInstanceOf(ProcessFunctionSinkTransformation.class);
+    }
+
+    @Test
+    void testConfig() throws Exception {
+        ExecutionEnvironmentImpl env = StreamTestUtils.getEnv();
+        NonKeyedPartitionStreamImpl<Integer> stream =
+                new NonKeyedPartitionStreamImpl<>(
+                        env, new TestingTransformation<>("t1", Types.INT, 1));
+        stream.withName("test");
+        stream.withParallelism(2);
+        stream.withMaxParallelism(3);
+        stream.withUid("uid");
+        SlotSharingGroup ssg = SlotSharingGroup.newBuilder("test-ssg").build();
+        stream.withSlotSharingGroup(ssg);
+        Transformation<Integer> transformation = stream.getTransformation();
+        assertThat(transformation.getName()).isEqualTo("test");
+        assertThat(transformation.getParallelism()).isEqualTo(2);
+        assertThat(transformation.getMaxParallelism()).isEqualTo(3);
+        assertThat(transformation.getUid()).isEqualTo("uid");
+        assertThat(transformation.getSlotSharingGroup()).hasValue(ssg);
     }
 }

@@ -28,8 +28,10 @@ import org.apache.flink.process.api.function.TwoInputNonBroadcastStreamProcessFu
 import org.apache.flink.process.api.function.TwoOutputStreamProcessFunction;
 import org.apache.flink.process.api.stream.BroadcastStream;
 import org.apache.flink.process.api.stream.GlobalStream;
+import org.apache.flink.process.api.stream.GlobalStream.ProcessConfigurableAndGlobalStream;
 import org.apache.flink.process.api.stream.KeyedPartitionStream;
 import org.apache.flink.process.api.stream.NonKeyedPartitionStream;
+import org.apache.flink.process.api.stream.ProcessConfigurable;
 import org.apache.flink.process.impl.ExecutionEnvironmentImpl;
 import org.apache.flink.process.impl.operators.ProcessOperator;
 import org.apache.flink.process.impl.operators.TwoInputNonBroadcastProcessOperator;
@@ -44,14 +46,17 @@ import org.apache.flink.streaming.runtime.partitioner.ShufflePartitioner;
 import org.apache.flink.util.OutputTag;
 
 /** The implementation of {@link GlobalStream}. */
-public class GlobalStreamImpl<T> extends DataStream<T> implements GlobalStream<T> {
+public class GlobalStreamImpl<T>
+        extends ProcessConfigurableDataStream<T, ProcessConfigurableAndGlobalStream<T>>
+        implements ProcessConfigurableAndGlobalStream<T> {
     public GlobalStreamImpl(
             ExecutionEnvironmentImpl environment, Transformation<T> transformation) {
         super(environment, transformation);
     }
 
     @Override
-    public <OUT> GlobalStream<OUT> process(OneInputStreamProcessFunction<T, OUT> processFunction) {
+    public <OUT> ProcessConfigurableAndGlobalStream<OUT> process(
+            OneInputStreamProcessFunction<T, OUT> processFunction) {
         TypeInformation<OUT> outType =
                 StreamUtils.getOutputTypeForOneInputProcessFunction(processFunction, getType());
         ProcessOperator<T, OUT> operator = new ProcessOperator<>(processFunction);
@@ -78,7 +83,7 @@ public class GlobalStreamImpl<T> extends DataStream<T> implements GlobalStream<T
     }
 
     @Override
-    public <T_OTHER, OUT> GlobalStream<OUT> connectAndProcess(
+    public <T_OTHER, OUT> ProcessConfigurableAndGlobalStream<OUT> connectAndProcess(
             GlobalStream<T_OTHER> other,
             TwoInputNonBroadcastStreamProcessFunction<T, T_OTHER, OUT> processFunction) {
         TypeInformation<OUT> outTypeInfo =
@@ -101,12 +106,13 @@ public class GlobalStreamImpl<T> extends DataStream<T> implements GlobalStream<T
     }
 
     @Override
-    public void toSink(Sink<T> sink) {
+    public ProcessConfigurable<?> toSink(Sink<T> sink) {
         ProcessFunctionSinkTransformation<T, T> sinkTransformation =
                 StreamUtils.addSinkOperator(this, sink, getType());
         // Operator parallelism should always be 1 for global stream.
         // parallelismConfigured should be true to avoid overwritten by AdaptiveBatchScheduler.
         sinkTransformation.setParallelism(1, true);
+        return new GlobalStreamImpl<>(environment, sinkTransformation);
     }
 
     // ---------------------
@@ -128,6 +134,12 @@ public class GlobalStreamImpl<T> extends DataStream<T> implements GlobalStream<T
     @Override
     public BroadcastStream<T> broadcast() {
         return new BroadcastStreamImpl<>(environment, getTransformation());
+    }
+
+    @Override
+    protected boolean canBeParallel() {
+        // global stream can not be parallel by define.
+        return false;
     }
 
     private <R> GlobalStreamImpl<R> transform(
@@ -158,28 +170,30 @@ public class GlobalStreamImpl<T> extends DataStream<T> implements GlobalStream<T
 
     private static class TwoGlobalStreamsImpl<OUT1, OUT2> implements TwoGlobalStreams<OUT1, OUT2> {
 
-        private final GlobalStream<OUT1> firstStream;
+        private final ProcessConfigurableAndGlobalStream<OUT1> firstStream;
 
-        private final GlobalStream<OUT2> secondStream;
+        private final ProcessConfigurableAndGlobalStream<OUT2> secondStream;
 
         public static <OUT1, OUT2> TwoGlobalStreamsImpl<OUT1, OUT2> of(
-                GlobalStreamImpl<OUT1> firstStream, GlobalStreamImpl<OUT2> secondStream) {
+                ProcessConfigurableAndGlobalStream<OUT1> firstStream,
+                ProcessConfigurableAndGlobalStream<OUT2> secondStream) {
             return new TwoGlobalStreamsImpl<>(firstStream, secondStream);
         }
 
         private TwoGlobalStreamsImpl(
-                GlobalStreamImpl<OUT1> firstStream, GlobalStreamImpl<OUT2> secondStream) {
+                ProcessConfigurableAndGlobalStream<OUT1> firstStream,
+                ProcessConfigurableAndGlobalStream<OUT2> secondStream) {
             this.firstStream = firstStream;
             this.secondStream = secondStream;
         }
 
         @Override
-        public GlobalStream<OUT1> getFirst() {
+        public ProcessConfigurableAndGlobalStream<OUT1> getFirst() {
             return firstStream;
         }
 
         @Override
-        public GlobalStream<OUT2> getSecond() {
+        public ProcessConfigurableAndGlobalStream<OUT2> getSecond() {
             return secondStream;
         }
     }

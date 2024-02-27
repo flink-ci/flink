@@ -31,6 +31,8 @@ import org.apache.flink.process.api.stream.BroadcastStream;
 import org.apache.flink.process.api.stream.GlobalStream;
 import org.apache.flink.process.api.stream.KeyedPartitionStream;
 import org.apache.flink.process.api.stream.NonKeyedPartitionStream;
+import org.apache.flink.process.api.stream.NonKeyedPartitionStream.ProcessConfigurableAndNonKeyedPartitionStream;
+import org.apache.flink.process.api.stream.ProcessConfigurable;
 import org.apache.flink.process.impl.ExecutionEnvironmentImpl;
 import org.apache.flink.process.impl.operators.ProcessOperator;
 import org.apache.flink.process.impl.operators.TwoInputBroadcastProcessOperator;
@@ -39,20 +41,22 @@ import org.apache.flink.process.impl.operators.TwoOutputProcessOperator;
 import org.apache.flink.process.impl.utils.StreamUtils;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.PartitionTransformation;
+import org.apache.flink.streaming.api.transformations.ProcessFunctionSinkTransformation;
 import org.apache.flink.streaming.runtime.partitioner.GlobalPartitioner;
 import org.apache.flink.streaming.runtime.partitioner.ShufflePartitioner;
 import org.apache.flink.util.OutputTag;
 
 /** The implementation of {@link NonKeyedPartitionStream}. */
-public class NonKeyedPartitionStreamImpl<T> extends DataStream<T>
-        implements NonKeyedPartitionStream<T> {
+public class NonKeyedPartitionStreamImpl<T>
+        extends ProcessConfigurableDataStream<T, ProcessConfigurableAndNonKeyedPartitionStream<T>>
+        implements ProcessConfigurableAndNonKeyedPartitionStream<T> {
     public NonKeyedPartitionStreamImpl(
             ExecutionEnvironmentImpl environment, Transformation<T> transformation) {
         super(environment, transformation);
     }
 
     @Override
-    public <OUT> NonKeyedPartitionStream<OUT> process(
+    public <OUT> ProcessConfigurableAndNonKeyedPartitionStream<OUT> process(
             OneInputStreamProcessFunction<T, OUT> processFunction) {
         TypeInformation<OUT> outType =
                 StreamUtils.getOutputTypeForOneInputProcessFunction(processFunction, getType());
@@ -87,7 +91,7 @@ public class NonKeyedPartitionStreamImpl<T> extends DataStream<T>
     }
 
     @Override
-    public <T_OTHER, OUT> NonKeyedPartitionStream<OUT> connectAndProcess(
+    public <T_OTHER, OUT> ProcessConfigurableAndNonKeyedPartitionStream<OUT> connectAndProcess(
             NonKeyedPartitionStream<T_OTHER> other,
             TwoInputNonBroadcastStreamProcessFunction<T, T_OTHER, OUT> processFunction) {
         TypeInformation<OUT> outTypeInfo =
@@ -110,7 +114,7 @@ public class NonKeyedPartitionStreamImpl<T> extends DataStream<T>
     }
 
     @Override
-    public <T_OTHER, OUT> NonKeyedPartitionStream<OUT> connectAndProcess(
+    public <T_OTHER, OUT> ProcessConfigurableAndNonKeyedPartitionStream<OUT> connectAndProcess(
             BroadcastStream<T_OTHER> other,
             TwoInputBroadcastStreamProcessFunction<T, T_OTHER, OUT> processFunction) {
         TypeInformation<OUT> outTypeInfo =
@@ -134,8 +138,10 @@ public class NonKeyedPartitionStreamImpl<T> extends DataStream<T>
     }
 
     @Override
-    public void toSink(Sink<T> sink) {
-        StreamUtils.addSinkOperator(this, sink, getType());
+    public ProcessConfigurable<?> toSink(Sink<T> sink) {
+        ProcessFunctionSinkTransformation<T, T> sinkTransformation =
+                StreamUtils.addSinkOperator(this, sink, getType());
+        return new NonKeyedPartitionStreamImpl<>(environment, sinkTransformation);
     }
 
     // ---------------------
@@ -169,30 +175,30 @@ public class NonKeyedPartitionStreamImpl<T> extends DataStream<T>
     static class TwoNonKeyedPartitionStreamsImpl<OUT1, OUT2>
             implements TwoNonKeyedPartitionStreams<OUT1, OUT2> {
 
-        private final NonKeyedPartitionStream<OUT1> firstStream;
+        private final ProcessConfigurableAndNonKeyedPartitionStream<OUT1> firstStream;
 
-        private final NonKeyedPartitionStream<OUT2> secondStream;
+        private final ProcessConfigurableAndNonKeyedPartitionStream<OUT2> secondStream;
 
         public static <OUT1, OUT2> TwoNonKeyedPartitionStreamsImpl<OUT1, OUT2> of(
-                NonKeyedPartitionStreamImpl<OUT1> firstStream,
-                NonKeyedPartitionStreamImpl<OUT2> secondStream) {
+                ProcessConfigurableAndNonKeyedPartitionStream<OUT1> firstStream,
+                ProcessConfigurableAndNonKeyedPartitionStream<OUT2> secondStream) {
             return new TwoNonKeyedPartitionStreamsImpl<>(firstStream, secondStream);
         }
 
         private TwoNonKeyedPartitionStreamsImpl(
-                NonKeyedPartitionStreamImpl<OUT1> firstStream,
-                NonKeyedPartitionStreamImpl<OUT2> secondStream) {
+                ProcessConfigurableAndNonKeyedPartitionStream<OUT1> firstStream,
+                ProcessConfigurableAndNonKeyedPartitionStream<OUT2> secondStream) {
             this.firstStream = firstStream;
             this.secondStream = secondStream;
         }
 
         @Override
-        public NonKeyedPartitionStream<OUT1> getFirst() {
+        public ProcessConfigurableAndNonKeyedPartitionStream<OUT1> getFirst() {
             return firstStream;
         }
 
         @Override
-        public NonKeyedPartitionStream<OUT2> getSecond() {
+        public ProcessConfigurableAndNonKeyedPartitionStream<OUT2> getSecond() {
             return secondStream;
         }
     }

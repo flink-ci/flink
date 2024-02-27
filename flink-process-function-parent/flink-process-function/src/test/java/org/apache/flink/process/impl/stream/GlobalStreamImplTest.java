@@ -18,6 +18,7 @@
 
 package org.apache.flink.process.impl.stream;
 
+import org.apache.flink.api.common.operators.SlotSharingGroup;
 import org.apache.flink.api.common.typeinfo.Types;
 import org.apache.flink.api.connector.v2.SinkUtils;
 import org.apache.flink.api.dag.Transformation;
@@ -35,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Tests for {@link GlobalStreamImpl}. */
 class GlobalStreamImplTest {
@@ -87,5 +89,25 @@ class GlobalStreamImplTest {
                 .hasSize(1)
                 .element(0)
                 .isInstanceOf(ProcessFunctionSinkTransformation.class);
+    }
+
+    @Test
+    void testConfig() throws Exception {
+        ExecutionEnvironmentImpl env = StreamTestUtils.getEnv();
+        GlobalStreamImpl<Integer> stream =
+                new GlobalStreamImpl<>(env, new TestingTransformation<>("t1", Types.INT, 1));
+        stream.withName("test");
+        assertThatThrownBy(() -> stream.withParallelism(2))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> stream.withMaxParallelism(3))
+                .isInstanceOf(IllegalArgumentException.class);
+        stream.withUid("uid");
+        SlotSharingGroup ssg = SlotSharingGroup.newBuilder("test-ssg").build();
+        stream.withSlotSharingGroup(ssg);
+        Transformation<Integer> transformation = stream.getTransformation();
+        assertThat(transformation.getName()).isEqualTo("test");
+        assertThat(transformation.getParallelism()).isOne();
+        assertThat(transformation.getUid()).isEqualTo("uid");
+        assertThat(transformation.getSlotSharingGroup()).hasValue(ssg);
     }
 }
