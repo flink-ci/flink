@@ -64,8 +64,8 @@ public class TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE>
     public void open() throws Exception {
         this.mainCollector = getMainCollector();
         this.sideCollector = getSideCollector();
-        this.context = new DefaultRuntimeContext();
-        this.nonPartitionedContext = new DefaultTwoOutputNonPartitionedContext<>();
+        this.context = new DefaultRuntimeContext(getRuntimeContext());
+        this.nonPartitionedContext = new DefaultTwoOutputNonPartitionedContext<>(context);
     }
 
     @Override

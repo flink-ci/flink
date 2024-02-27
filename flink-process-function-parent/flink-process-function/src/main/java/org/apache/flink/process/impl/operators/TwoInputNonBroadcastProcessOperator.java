@@ -53,8 +53,8 @@ public class TwoInputNonBroadcastProcessOperator<IN1, IN2, OUT>
     public void open() throws Exception {
         super.open();
         this.collector = getOutputCollector();
-        this.context = new DefaultRuntimeContext();
-        this.nonPartitionedContext = new DefaultNonPartitionedContext<>();
+        this.context = new DefaultRuntimeContext(getRuntimeContext());
+        this.nonPartitionedContext = new DefaultNonPartitionedContext<>(context);
     }
 
     @Override

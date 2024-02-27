@@ -19,24 +19,26 @@
 package org.apache.flink.process.impl.context;
 
 import org.apache.flink.process.api.context.JobInfo;
-import org.apache.flink.process.api.context.NonPartitionedContext;
-import org.apache.flink.process.api.function.ApplyPartitionFunction;
+import org.apache.flink.runtime.jobgraph.JobType;
+import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 
-/** The default implementation of {@link NonPartitionedContext}. */
-public class DefaultNonPartitionedContext<OUT> implements NonPartitionedContext<OUT> {
-    private final DefaultRuntimeContext context;
+/** Default implementation of {@link JobInfo}. */
+public class DefaultJobInfo implements JobInfo {
+    private final StreamingRuntimeContext operatorContext;
 
-    public DefaultNonPartitionedContext(DefaultRuntimeContext context) {
-        this.context = context;
+    public DefaultJobInfo(StreamingRuntimeContext streamingRuntimeContext) {
+        this.operatorContext = streamingRuntimeContext;
     }
 
     @Override
-    public void applyToAllPartitions(ApplyPartitionFunction<OUT> applyPartitionFunction) {
-        // TODO implements this method.
+    public String getJobName() {
+        return operatorContext.getJobInfo().getJobName();
     }
 
     @Override
-    public JobInfo getJobInfo() {
-        return context.getJobInfo();
+    public ExecutionMode getExecutionMode() {
+        return operatorContext.getJobType() == JobType.STREAMING
+                ? ExecutionMode.STREAMING
+                : ExecutionMode.BATCH;
     }
 }

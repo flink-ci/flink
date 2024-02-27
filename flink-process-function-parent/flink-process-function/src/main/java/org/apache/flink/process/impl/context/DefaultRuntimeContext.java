@@ -18,9 +18,20 @@
 
 package org.apache.flink.process.impl.context;
 
+import org.apache.flink.process.api.context.JobInfo;
 import org.apache.flink.process.api.context.RuntimeContext;
+import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 
 /** The default implementation of {@link RuntimeContext}. */
 public class DefaultRuntimeContext implements RuntimeContext {
-    // TODO implements this class
+    private final DefaultJobInfo jobInfo;
+
+    public DefaultRuntimeContext(StreamingRuntimeContext operatorContext) {
+        this.jobInfo = new DefaultJobInfo(operatorContext);
+    }
+
+    @Override
+    public JobInfo getJobInfo() {
+        return jobInfo;
+    }
 }
