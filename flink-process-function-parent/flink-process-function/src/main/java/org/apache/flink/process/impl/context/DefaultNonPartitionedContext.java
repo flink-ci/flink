@@ -18,6 +18,7 @@
 
 package org.apache.flink.process.impl.context;
 
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
 import org.apache.flink.process.api.context.JobInfo;
 import org.apache.flink.process.api.context.NonPartitionedContext;
 import org.apache.flink.process.api.context.ProcessingTimeManager;
@@ -59,6 +60,11 @@ public class DefaultNonPartitionedContext<OUT> implements NonPartitionedContext<
     public ProcessingTimeManager getProcessingTimeManager() {
         // processing timer is partition-aware, so it's not supported in non-partitioned context.
         return UnsupportedProcessingTimeManager.INSTANCE;
+    }
+
+    @Override
+    public OperatorMetricGroup getMetricGroup() {
+        return context.getMetricGroup();
     }
 
     @Override

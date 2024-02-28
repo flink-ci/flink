@@ -19,6 +19,7 @@
 package org.apache.flink.process.api.context;
 
 import org.apache.flink.annotation.Experimental;
+import org.apache.flink.metrics.groups.OperatorMetricGroup;
 
 /**
  * A RuntimeContext contains information about the context in which process functions are executed.
@@ -40,6 +41,9 @@ public interface RuntimeContext {
 
     /** Get the {@link ProcessingTimeManager} of this process function. */
     ProcessingTimeManager getProcessingTimeManager();
+
+    /** Get the metric group of this process function. */
+    OperatorMetricGroup getMetricGroup();
 
     /** Get the {@link TimestampManager} of this process function. */
     TimestampManager getTimestampManager();
