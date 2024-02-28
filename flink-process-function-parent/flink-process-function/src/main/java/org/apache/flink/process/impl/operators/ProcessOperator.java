@@ -73,7 +73,9 @@ public class ProcessOperator<IN, OUT>
     @Override
     public void processElement(StreamRecord<IN> element) throws Exception {
         outputCollector.setTimestamp(element);
+        context.getTimestampManager().setTimestamp(outputCollector.getLatestTimestamp());
         userFunction.processRecord(element.getValue(), outputCollector, context);
+        context.getTimestampManager().resetTimestamp();
     }
 
     protected TimestampCollector<OUT> getOutputCollector() {

@@ -21,6 +21,8 @@ package org.apache.flink.process.impl.common;
 import org.apache.flink.process.api.common.Collector;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+import java.util.Optional;
+
 /** The base {@link Collector} which take care of records timestamp. */
 public abstract class TimestampCollector<OUT> implements Collector<OUT> {
     protected final StreamRecord<OUT> reuse = new StreamRecord<>(null);
@@ -39,5 +41,14 @@ public abstract class TimestampCollector<OUT> implements Collector<OUT> {
 
     public void eraseTimestamp() {
         reuse.eraseTimestamp();
+    }
+
+    /** Get the timestamp of the latest seen record. */
+    public Optional<Long> getLatestTimestamp() {
+        if (reuse.hasTimestamp()) {
+            return Optional.of(reuse.getTimestamp());
+        } else {
+            return Optional.empty();
+        }
     }
 }

@@ -88,7 +88,9 @@ public class TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE>
     public void processElement(StreamRecord<IN> element) throws Exception {
         mainCollector.setTimestamp(element);
         sideCollector.setTimestamp(element);
+        context.getTimestampManager().setTimestamp(mainCollector.getLatestTimestamp());
         userFunction.processRecord(element.getValue(), mainCollector, sideCollector, context);
+        context.getTimestampManager().resetTimestamp();
     }
 
     @Override

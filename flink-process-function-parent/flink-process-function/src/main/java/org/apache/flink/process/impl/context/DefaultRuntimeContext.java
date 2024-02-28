@@ -38,6 +38,8 @@ public class DefaultRuntimeContext implements RuntimeContext {
 
     private final ProcessingTimeManager processingTimeManager;
 
+    private final DefaultTimestampManager timestampManager;
+
     public DefaultRuntimeContext(
             StreamingRuntimeContext operatorContext,
             int parallelism,
@@ -50,6 +52,7 @@ public class DefaultRuntimeContext implements RuntimeContext {
         this.taskInfo = new DefaultTaskInfo(parallelism, maxParallelism, taskName);
         this.stateManager = new DefaultStateManager(currentKeySupplier, currentKeySetter);
         this.processingTimeManager = processingTimeManager;
+        this.timestampManager = new DefaultTimestampManager();
     }
 
     @Override
@@ -69,5 +72,10 @@ public class DefaultRuntimeContext implements RuntimeContext {
 
     public ProcessingTimeManager getProcessingTimeManager() {
         return processingTimeManager;
+    }
+
+    @Override
+    public DefaultTimestampManager getTimestampManager() {
+        return timestampManager;
     }
 }

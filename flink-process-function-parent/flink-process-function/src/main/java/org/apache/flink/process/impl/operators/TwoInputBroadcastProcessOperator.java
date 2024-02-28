@@ -76,13 +76,17 @@ public class TwoInputBroadcastProcessOperator<IN1, IN2, OUT>
     @Override
     public void processElement1(StreamRecord<IN1> element) throws Exception {
         collector.setTimestamp(element);
+        context.getTimestampManager().setTimestamp(collector.getLatestTimestamp());
         userFunction.processRecordFromNonBroadcastInput(element.getValue(), collector, context);
+        context.getTimestampManager().resetTimestamp();
     }
 
     @Override
     public void processElement2(StreamRecord<IN2> element) throws Exception {
         collector.setTimestamp(element);
+        context.getTimestampManager().setTimestamp(collector.getLatestTimestamp());
         userFunction.processRecordFromBroadcastInput(element.getValue(), nonPartitionedContext);
+        context.getTimestampManager().resetTimestamp();
     }
 
     protected TimestampCollector<OUT> getOutputCollector() {

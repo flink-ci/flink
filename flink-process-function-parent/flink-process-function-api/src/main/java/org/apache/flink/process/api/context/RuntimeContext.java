@@ -40,4 +40,7 @@ public interface RuntimeContext {
 
     /** Get the {@link ProcessingTimeManager} of this process function. */
     ProcessingTimeManager getProcessingTimeManager();
+
+    /** Get the {@link TimestampManager} of this process function. */
+    TimestampManager getTimestampManager();
 }
