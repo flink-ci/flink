@@ -19,18 +19,23 @@
 package org.apache.flink.process.impl.operators;
 
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.process.api.context.NonPartitionedContext;
 import org.apache.flink.process.api.context.ProcessingTimeManager;
 import org.apache.flink.process.api.function.TwoInputBroadcastStreamProcessFunction;
 import org.apache.flink.process.api.stream.KeyedPartitionStream;
 import org.apache.flink.process.impl.common.KeyCheckedOutputCollector;
 import org.apache.flink.process.impl.common.OutputCollector;
 import org.apache.flink.process.impl.common.TimestampCollector;
+import org.apache.flink.process.impl.context.AllKeysContext;
+import org.apache.flink.process.impl.context.DefaultKeyedNonPartitionedContext;
 import org.apache.flink.process.impl.context.DefaultProcessingTimeManager;
+import org.apache.flink.process.impl.context.StoreAllKeysContext;
 import org.apache.flink.runtime.state.VoidNamespace;
 import org.apache.flink.runtime.state.VoidNamespaceSerializer;
 import org.apache.flink.streaming.api.operators.InternalTimer;
 import org.apache.flink.streaming.api.operators.InternalTimerService;
 import org.apache.flink.streaming.api.operators.Triggerable;
+import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
 import javax.annotation.Nullable;
 
@@ -41,6 +46,8 @@ public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
         extends TwoInputBroadcastProcessOperator<IN1, IN2, OUT>
         implements Triggerable<KEY, VoidNamespace> {
     private transient InternalTimerService<VoidNamespace> timerService;
+
+    private transient AllKeysContext allKeysContext;
 
     @Nullable private final KeySelector<OUT, KEY> outKeySelector;
 
@@ -60,6 +67,7 @@ public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
     public void open() throws Exception {
         this.timerService =
                 getInternalTimerService("processing timer", VoidNamespaceSerializer.INSTANCE, this);
+        this.allKeysContext = new StoreAllKeysContext();
         super.open();
     }
 
@@ -69,6 +77,11 @@ public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
                 ? new OutputCollector<>(output)
                 : new KeyCheckedOutputCollector<>(
                         new OutputCollector<>(output), outKeySelector, () -> (KEY) getCurrentKey());
+    }
+
+    @Override
+    protected NonPartitionedContext<OUT> getNonPartitionedContext() {
+        return new DefaultKeyedNonPartitionedContext<>(allKeysContext, context, collector);
     }
 
     @Override
@@ -91,5 +104,22 @@ public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
         context.getStateManager().setCurrentKey(timer.getKey());
         userFunction.onProcessingTimer(timer.getTimestamp(), getOutputCollector(), context);
         context.getStateManager().resetCurrentKey();
+    }
+
+    @Override
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    // Only element from input1 should be considered as the other side is broadcast input.
+    public void setKeyContextElement1(StreamRecord record) throws Exception {
+        setKeyContextElement(record, getStateKeySelector1());
+    }
+
+    private <T> void setKeyContextElement(StreamRecord<T> record, KeySelector<T, ?> selector)
+            throws Exception {
+        if (selector == null) {
+            return;
+        }
+        Object key = selector.getKey(record.getValue());
+        setCurrentKey(key);
+        allKeysContext.onKeySelected(key);
     }
 }

@@ -81,7 +81,7 @@ public class TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE>
                         this::currentKey,
                         this::setCurrentKey,
                         getProcessingTimeManager());
-        this.nonPartitionedContext = new DefaultTwoOutputNonPartitionedContext<>(context);
+        this.nonPartitionedContext = getNonPartitionedContext();
     }
 
     @Override
@@ -104,6 +104,10 @@ public class TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE>
 
     public TimestampCollector<OUT_SIDE> getSideCollector() {
         return new SideOutputCollector(output);
+    }
+
+    protected TwoOutputNonPartitionedContext<OUT_MAIN, OUT_SIDE> getNonPartitionedContext() {
+        return new DefaultTwoOutputNonPartitionedContext<>(context, mainCollector, sideCollector);
     }
 
     protected Optional<Object> currentKey() {

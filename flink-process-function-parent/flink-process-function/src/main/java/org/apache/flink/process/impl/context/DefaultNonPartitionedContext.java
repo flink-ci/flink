@@ -19,6 +19,7 @@
 package org.apache.flink.process.impl.context;
 
 import org.apache.flink.metrics.groups.OperatorMetricGroup;
+import org.apache.flink.process.api.common.Collector;
 import org.apache.flink.process.api.context.JobInfo;
 import org.apache.flink.process.api.context.NonPartitionedContext;
 import org.apache.flink.process.api.context.ProcessingTimeManager;
@@ -29,15 +30,20 @@ import org.apache.flink.process.api.function.ApplyPartitionFunction;
 
 /** The default implementation of {@link NonPartitionedContext}. */
 public class DefaultNonPartitionedContext<OUT> implements NonPartitionedContext<OUT> {
-    private final DefaultRuntimeContext context;
+    protected final DefaultRuntimeContext context;
 
-    public DefaultNonPartitionedContext(DefaultRuntimeContext context) {
+    protected final Collector<OUT> collector;
+
+    public DefaultNonPartitionedContext(DefaultRuntimeContext context, Collector<OUT> collector) {
         this.context = context;
+        this.collector = collector;
     }
 
     @Override
-    public void applyToAllPartitions(ApplyPartitionFunction<OUT> applyPartitionFunction) {
-        // TODO implements this method.
+    public void applyToAllPartitions(ApplyPartitionFunction<OUT> applyPartitionFunction)
+            throws Exception {
+        // non-keyed operator has only one partition.
+        applyPartitionFunction.apply(collector, context);
     }
 
     @Override

@@ -18,8 +18,6 @@
 
 package org.apache.flink.process.impl.context;
 
-import org.apache.flink.process.api.context.ProcessingTimeManager;
-import org.apache.flink.process.api.context.StateManager;
 import org.apache.flink.process.impl.common.TestingTimestampCollector;
 
 import org.junit.jupiter.api.Test;
@@ -30,31 +28,9 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Tests for {@link DefaultTwoOutputNonPartitionedContext}. */
-class DefaultTwoOutputNonPartitionedContextTest {
-    @Test
-    void testGetStateManager() {
-        DefaultTwoOutputNonPartitionedContext<Void, Void> context =
-                new DefaultTwoOutputNonPartitionedContext<>(null, null, null);
-        StateManager stateManager = context.getStateManager();
-        assertThat(stateManager.getCurrentKey()).isEmpty();
-    }
-
-    @Test
-    void testGetProcessingTimeManager() {
-        DefaultTwoOutputNonPartitionedContext<Void, Void> context =
-                new DefaultTwoOutputNonPartitionedContext<>(null, null, null);
-        ProcessingTimeManager processingTimeManager = context.getProcessingTimeManager();
-        assertThatThrownBy(processingTimeManager::currentProcessingTime)
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> processingTimeManager.registerProcessingTimer(1L))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> processingTimeManager.deleteProcessingTimeTimer(1L))
-                .isInstanceOf(UnsupportedOperationException.class);
-    }
-
+/** Tests for {@link DefaultKeyedTwoOutputNonPartitionedContext}. */
+class DefaultKeyedTwoOutputNonPartitionedContextTest {
     @Test
     void testApplyToAllPartitions() throws Exception {
         AtomicInteger counter = new AtomicInteger(0);
@@ -69,27 +45,42 @@ class DefaultTwoOutputNonPartitionedContextTest {
                 TestingTimestampCollector.<Long>builder()
                         .setCollectConsumer(collectedFromSecondOutput::add)
                         .build();
-        DefaultTwoOutputNonPartitionedContext<Integer, Long> nonPartitionedContext =
-                new DefaultTwoOutputNonPartitionedContext<>(
+        // put all keys
+        List<Object> allKeys = new ArrayList<>();
+        allKeys.add(1);
+        allKeys.add(2);
+        allKeys.add(3);
+        TestingAllKeysContext keysContext =
+                TestingAllKeysContext.builder()
+                        .setGetAllKeysIterSupplier(allKeys::iterator)
+                        .build();
+
+        AtomicInteger currentKey = new AtomicInteger(-1);
+        DefaultKeyedTwoOutputNonPartitionedContext<Integer, Long> nonPartitionedContext =
+                new DefaultKeyedTwoOutputNonPartitionedContext<>(
+                        keysContext,
                         new DefaultRuntimeContext(
                                 ContextTestUtils.createStreamingRuntimeContext(),
                                 1,
                                 2,
                                 "mock-task",
-                                Optional::empty,
-                                (ignore) -> {},
+                                () -> Optional.of(currentKey.get()),
+                                (key) -> currentKey.set((Integer) key),
                                 UnsupportedProcessingTimeManager.INSTANCE),
                         firstCollector,
                         secondCollector);
         nonPartitionedContext.applyToAllPartitions(
-                (firstOutput, secondOutput, ctx) -> {
+                (firstOut, secondOut, ctx) -> {
                     counter.incrementAndGet();
-                    assertThat(ctx.getStateManager().getCurrentKey()).isEmpty();
-                    firstOutput.collect(10);
-                    secondOutput.collect(20L);
+                    Optional<Integer> key = ctx.getStateManager().getCurrentKey();
+                    assertThat(key)
+                            .isPresent()
+                            .hasValueSatisfying(v -> assertThat(v).isIn(allKeys));
+                    firstOut.collect(key.get());
+                    secondOut.collect(Long.valueOf(key.get()));
                 });
-        assertThat(counter.get()).isEqualTo(1);
-        assertThat(collectedFromFirstOutput).containsExactly(10);
-        assertThat(collectedFromSecondOutput).containsExactly(20L);
+        assertThat(counter.get()).isEqualTo(allKeys.size());
+        assertThat(collectedFromFirstOutput).containsExactlyInAnyOrder(1, 2, 3);
+        assertThat(collectedFromSecondOutput).containsExactlyInAnyOrder(1L, 2L, 3L);
     }
 }

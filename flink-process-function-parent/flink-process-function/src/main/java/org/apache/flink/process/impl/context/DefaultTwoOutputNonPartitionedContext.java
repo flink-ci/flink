@@ -19,6 +19,7 @@
 package org.apache.flink.process.impl.context;
 
 import org.apache.flink.metrics.groups.OperatorMetricGroup;
+import org.apache.flink.process.api.common.Collector;
 import org.apache.flink.process.api.context.JobInfo;
 import org.apache.flink.process.api.context.ProcessingTimeManager;
 import org.apache.flink.process.api.context.StateManager;
@@ -30,16 +31,25 @@ import org.apache.flink.process.api.function.TwoOutputApplyPartitionFunction;
 /** The default implementation of {@link TwoOutputNonPartitionedContext}. */
 public class DefaultTwoOutputNonPartitionedContext<OUT1, OUT2>
         implements TwoOutputNonPartitionedContext<OUT1, OUT2> {
-    private final DefaultRuntimeContext context;
+    protected final DefaultRuntimeContext context;
 
-    public DefaultTwoOutputNonPartitionedContext(DefaultRuntimeContext context) {
+    protected final Collector<OUT1> firstCollector;
+
+    protected final Collector<OUT2> secondCollector;
+
+    public DefaultTwoOutputNonPartitionedContext(
+            DefaultRuntimeContext context,
+            Collector<OUT1> firstCollector,
+            Collector<OUT2> secondCollector) {
         this.context = context;
+        this.firstCollector = firstCollector;
+        this.secondCollector = secondCollector;
     }
 
     @Override
     public void applyToAllPartitions(
-            TwoOutputApplyPartitionFunction<OUT1, OUT2> applyPartitionFunction) {
-        // TODO implements this method.
+            TwoOutputApplyPartitionFunction<OUT1, OUT2> applyPartitionFunction) throws Exception {
+        applyPartitionFunction.apply(firstCollector, secondCollector, context);
     }
 
     @Override

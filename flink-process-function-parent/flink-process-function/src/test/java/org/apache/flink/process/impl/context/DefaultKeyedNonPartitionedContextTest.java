@@ -18,8 +18,6 @@
 
 package org.apache.flink.process.impl.context;
 
-import org.apache.flink.process.api.context.ProcessingTimeManager;
-import org.apache.flink.process.api.context.StateManager;
 import org.apache.flink.process.impl.common.TestingTimestampCollector;
 
 import org.junit.jupiter.api.Test;
@@ -30,29 +28,9 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Tests for {@link DefaultNonPartitionedContext}. */
-class DefaultNonPartitionedContextTest {
-    @Test
-    void testGetStateManager() {
-        DefaultNonPartitionedContext<Void> context = new DefaultNonPartitionedContext<>(null, null);
-        StateManager stateManager = context.getStateManager();
-        assertThat(stateManager.getCurrentKey()).isEmpty();
-    }
-
-    @Test
-    void testGetProcessingTimeManager() {
-        DefaultNonPartitionedContext<Void> context = new DefaultNonPartitionedContext<>(null, null);
-        ProcessingTimeManager processingTimeManager = context.getProcessingTimeManager();
-        assertThatThrownBy(processingTimeManager::currentProcessingTime)
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> processingTimeManager.registerProcessingTimer(1L))
-                .isInstanceOf(UnsupportedOperationException.class);
-        assertThatThrownBy(() -> processingTimeManager.deleteProcessingTimeTimer(1L))
-                .isInstanceOf(UnsupportedOperationException.class);
-    }
-
+/** Tests for {@link DefaultKeyedNonPartitionedContext}. */
+class DefaultKeyedNonPartitionedContextTest {
     @Test
     void testApplyToAllPartitions() throws Exception {
         AtomicInteger counter = new AtomicInteger(0);
@@ -62,24 +40,39 @@ class DefaultNonPartitionedContextTest {
                 TestingTimestampCollector.<Integer>builder()
                         .setCollectConsumer(collectedData::add)
                         .build();
-        DefaultNonPartitionedContext<Integer> nonPartitionedContext =
-                new DefaultNonPartitionedContext<>(
+        // put all keys
+        List<Object> allKeys = new ArrayList<>();
+        allKeys.add(1);
+        allKeys.add(2);
+        allKeys.add(3);
+        TestingAllKeysContext keysContext =
+                TestingAllKeysContext.builder()
+                        .setGetAllKeysIterSupplier(allKeys::iterator)
+                        .build();
+
+        AtomicInteger currentKey = new AtomicInteger(-1);
+        DefaultKeyedNonPartitionedContext<Integer> nonPartitionedContext =
+                new DefaultKeyedNonPartitionedContext<>(
+                        keysContext,
                         new DefaultRuntimeContext(
                                 ContextTestUtils.createStreamingRuntimeContext(),
                                 1,
                                 2,
                                 "mock-task",
-                                Optional::empty,
-                                (ignore) -> {},
+                                () -> Optional.of(currentKey.get()),
+                                (key) -> currentKey.set((Integer) key),
                                 UnsupportedProcessingTimeManager.INSTANCE),
                         collector);
         nonPartitionedContext.applyToAllPartitions(
                 (out, ctx) -> {
                     counter.incrementAndGet();
-                    assertThat(ctx.getStateManager().getCurrentKey()).isEmpty();
-                    out.collect(10);
+                    Optional<Integer> key = ctx.getStateManager().getCurrentKey();
+                    assertThat(key)
+                            .isPresent()
+                            .hasValueSatisfying(v -> assertThat(v).isIn(allKeys));
+                    out.collect(key.get());
                 });
-        assertThat(counter.get()).isEqualTo(1);
-        assertThat(collectedData).containsExactly(10);
+        assertThat(counter.get()).isEqualTo(allKeys.size());
+        assertThat(collectedData).containsExactlyInAnyOrder(1, 2, 3);
     }
 }

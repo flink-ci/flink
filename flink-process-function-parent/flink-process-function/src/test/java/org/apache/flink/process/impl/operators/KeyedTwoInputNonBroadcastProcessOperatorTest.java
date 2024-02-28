@@ -30,7 +30,8 @@ import org.apache.flink.streaming.util.KeyedTwoInputStreamOperatorTestHarness;
 import org.junit.jupiter.api.Test;
 
 import java.util.Collection;
-import java.util.concurrent.CompletableFuture;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -78,8 +79,8 @@ class KeyedTwoInputNonBroadcastProcessOperatorTest {
 
     @Test
     void testEndInput() throws Exception {
-        CompletableFuture<Void> firstFuture = new CompletableFuture<>();
-        CompletableFuture<Void> secondFuture = new CompletableFuture<>();
+        AtomicInteger firstInputCounter = new AtomicInteger();
+        AtomicInteger secondInputCounter = new AtomicInteger();
         KeyedTwoInputNonBroadcastProcessOperator<Long, Integer, Long, Long> processOperator =
                 new KeyedTwoInputNonBroadcastProcessOperator<>(
                         new TwoInputNonBroadcastStreamProcessFunction<Integer, Long, Long>() {
@@ -97,12 +98,34 @@ class KeyedTwoInputNonBroadcastProcessOperatorTest {
 
                             @Override
                             public void endFirstInput(NonPartitionedContext<Long> ctx) {
-                                firstFuture.complete(null);
+                                try {
+                                    ctx.applyToAllPartitions(
+                                            (out, context) -> {
+                                                firstInputCounter.incrementAndGet();
+                                                Optional<Long> currentKey =
+                                                        context.getStateManager().getCurrentKey();
+                                                assertThat(currentKey).isPresent();
+                                                out.collect(currentKey.get());
+                                            });
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
                             }
 
                             @Override
                             public void endSecondInput(NonPartitionedContext<Long> ctx) {
-                                secondFuture.complete(null);
+                                try {
+                                    ctx.applyToAllPartitions(
+                                            (out, context) -> {
+                                                secondInputCounter.incrementAndGet();
+                                                Optional<Long> currentKey =
+                                                        context.getStateManager().getCurrentKey();
+                                                assertThat(currentKey).isPresent();
+                                                out.collect(currentKey.get());
+                                            });
+                                } catch (Exception e) {
+                                    throw new RuntimeException(e);
+                                }
                             }
                         });
 
@@ -113,10 +136,21 @@ class KeyedTwoInputNonBroadcastProcessOperatorTest {
                         (KeySelector<Long, Long>) value -> value,
                         Types.LONG)) {
             testHarness.open();
+            testHarness.processElement1(new StreamRecord<>(1)); // key is 1L
+            testHarness.processElement2(new StreamRecord<>(2L)); // key is 2L
             testHarness.endInput1();
-            assertThat(firstFuture).isCompleted();
+            assertThat(firstInputCounter).hasValue(2);
+            Collection<StreamRecord<Long>> recordOutput = testHarness.getRecordOutput();
+            assertThat(recordOutput)
+                    .containsExactly(new StreamRecord<>(1L), new StreamRecord<>(2L));
+            testHarness.processElement2(new StreamRecord<>(3L)); // key is 3L
+            testHarness.getOutput().clear();
             testHarness.endInput2();
-            assertThat(secondFuture).isCompleted();
+            assertThat(secondInputCounter).hasValue(3);
+            recordOutput = testHarness.getRecordOutput();
+            assertThat(recordOutput)
+                    .containsExactly(
+                            new StreamRecord<>(1L), new StreamRecord<>(2L), new StreamRecord<>(3L));
         }
     }
 
