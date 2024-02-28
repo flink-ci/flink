@@ -18,11 +18,13 @@
 
 package org.apache.flink.process.impl.context;
 
+import org.apache.flink.process.api.context.ProcessingTimeManager;
 import org.apache.flink.process.api.context.StateManager;
 
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** Tests for {@link DefaultTwoOutputNonPartitionedContext} */
 class DefaultTwoOutputNonPartitionedContextTest {
@@ -32,5 +34,18 @@ class DefaultTwoOutputNonPartitionedContextTest {
                 new DefaultTwoOutputNonPartitionedContext<>(null);
         StateManager stateManager = context.getStateManager();
         assertThat(stateManager.getCurrentKey()).isEmpty();
+    }
+
+    @Test
+    void testGetProcessingTimeManager() {
+        DefaultTwoOutputNonPartitionedContext<Void, Void> context =
+                new DefaultTwoOutputNonPartitionedContext<>(null);
+        ProcessingTimeManager processingTimeManager = context.getProcessingTimeManager();
+        assertThatThrownBy(processingTimeManager::currentProcessingTime)
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> processingTimeManager.registerProcessingTimer(1L))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> processingTimeManager.deleteProcessingTimeTimer(1L))
+                .isInstanceOf(UnsupportedOperationException.class);
     }
 }

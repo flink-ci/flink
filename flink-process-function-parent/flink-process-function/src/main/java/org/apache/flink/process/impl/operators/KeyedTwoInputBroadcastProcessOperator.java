@@ -19,11 +19,18 @@
 package org.apache.flink.process.impl.operators;
 
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.process.api.context.ProcessingTimeManager;
 import org.apache.flink.process.api.function.TwoInputBroadcastStreamProcessFunction;
 import org.apache.flink.process.api.stream.KeyedPartitionStream;
 import org.apache.flink.process.impl.common.KeyCheckedOutputCollector;
 import org.apache.flink.process.impl.common.OutputCollector;
 import org.apache.flink.process.impl.common.TimestampCollector;
+import org.apache.flink.process.impl.context.DefaultProcessingTimeManager;
+import org.apache.flink.runtime.state.VoidNamespace;
+import org.apache.flink.runtime.state.VoidNamespaceSerializer;
+import org.apache.flink.streaming.api.operators.InternalTimer;
+import org.apache.flink.streaming.api.operators.InternalTimerService;
+import org.apache.flink.streaming.api.operators.Triggerable;
 
 import javax.annotation.Nullable;
 
@@ -31,7 +38,10 @@ import java.util.Optional;
 
 /** Operator for {@link TwoInputBroadcastStreamProcessFunction} in {@link KeyedPartitionStream}. */
 public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
-        extends TwoInputBroadcastProcessOperator<IN1, IN2, OUT> {
+        extends TwoInputBroadcastProcessOperator<IN1, IN2, OUT>
+        implements Triggerable<KEY, VoidNamespace> {
+    private transient InternalTimerService<VoidNamespace> timerService;
+
     @Nullable private final KeySelector<OUT, KEY> outKeySelector;
 
     public KeyedTwoInputBroadcastProcessOperator(
@@ -47,6 +57,13 @@ public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
     }
 
     @Override
+    public void open() throws Exception {
+        this.timerService =
+                getInternalTimerService("processing timer", VoidNamespaceSerializer.INSTANCE, this);
+        super.open();
+    }
+
+    @Override
     protected TimestampCollector<OUT> getOutputCollector() {
         return outKeySelector == null
                 ? new OutputCollector<>(output)
@@ -57,5 +74,22 @@ public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
     @Override
     protected Optional<Object> currentKey() {
         return Optional.ofNullable(getCurrentKey());
+    }
+
+    protected ProcessingTimeManager getProcessingTimeManager() {
+        return new DefaultProcessingTimeManager(timerService);
+    }
+
+    @Override
+    public void onEventTime(InternalTimer<KEY, VoidNamespace> timer) throws Exception {
+        // do nothing at the moment.
+    }
+
+    @Override
+    public void onProcessingTime(InternalTimer<KEY, VoidNamespace> timer) throws Exception {
+        // align the key context with the registered timer.
+        context.getStateManager().setCurrentKey(timer.getKey());
+        userFunction.onProcessingTimer(timer.getTimestamp(), getOutputCollector(), context);
+        context.getStateManager().resetCurrentKey();
     }
 }

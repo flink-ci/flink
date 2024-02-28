@@ -20,6 +20,7 @@ package org.apache.flink.process.impl.context;
 
 import org.apache.flink.process.api.context.JobInfo;
 import org.apache.flink.process.api.context.NonPartitionedContext;
+import org.apache.flink.process.api.context.ProcessingTimeManager;
 import org.apache.flink.process.api.context.StateManager;
 import org.apache.flink.process.api.context.TaskInfo;
 import org.apache.flink.process.api.function.ApplyPartitionFunction;
@@ -51,5 +52,11 @@ public class DefaultNonPartitionedContext<OUT> implements NonPartitionedContext<
     public StateManager getStateManager() {
         // state is partition-aware, so it's always empty in non-partitioned context.
         return EmptyStateManager.INSTANCE;
+    }
+
+    @Override
+    public ProcessingTimeManager getProcessingTimeManager() {
+        // processing timer is partition-aware, so it's not supported in non-partitioned context.
+        return UnsupportedProcessingTimeManager.INSTANCE;
     }
 }
