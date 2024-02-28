@@ -27,6 +27,8 @@ import org.apache.flink.process.impl.common.TimestampCollector;
 
 import javax.annotation.Nullable;
 
+import java.util.Optional;
+
 /** Operator for {@link OneInputStreamProcessFunction} in {@link KeyedPartitionStream}. */
 public class KeyedProcessOperator<KEY, IN, OUT> extends ProcessOperator<IN, OUT> {
 
@@ -49,5 +51,10 @@ public class KeyedProcessOperator<KEY, IN, OUT> extends ProcessOperator<IN, OUT>
                 ? new KeyCheckedOutputCollector<>(
                         new OutputCollector<>(output), outKeySelector, () -> (KEY) getCurrentKey())
                 : new OutputCollector<>(output);
+    }
+
+    @Override
+    protected Optional<Object> currentKey() {
+        return Optional.ofNullable(getCurrentKey());
     }
 }

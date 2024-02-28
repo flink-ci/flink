@@ -31,6 +31,8 @@ import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+import java.util.Optional;
+
 import static org.apache.flink.util.Preconditions.checkState;
 
 /** Operator for {@link TwoInputNonBroadcastStreamProcessFunction}. */
@@ -62,7 +64,9 @@ public class TwoInputNonBroadcastProcessOperator<IN1, IN2, OUT>
                         operatorContext,
                         taskInfo.getNumberOfParallelSubtasks(),
                         taskInfo.getMaxNumberOfParallelSubtasks(),
-                        taskInfo.getTaskName());
+                        taskInfo.getTaskName(),
+                        this::currentKey,
+                        this::setCurrentKey);
         this.nonPartitionedContext = new DefaultNonPartitionedContext<>(context);
     }
 
@@ -91,5 +95,10 @@ public class TwoInputNonBroadcastProcessOperator<IN1, IN2, OUT>
         } else {
             userFunction.endSecondInput(nonPartitionedContext);
         }
+    }
+
+    protected Optional<Object> currentKey() {
+        // non-keyed operator always return empty key.
+        return Optional.empty();
     }
 }

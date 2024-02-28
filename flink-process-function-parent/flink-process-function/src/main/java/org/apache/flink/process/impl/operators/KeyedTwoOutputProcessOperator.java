@@ -27,6 +27,8 @@ import org.apache.flink.util.OutputTag;
 
 import javax.annotation.Nullable;
 
+import java.util.Optional;
+
 /** */
 public class KeyedTwoOutputProcessOperator<KEY, IN, OUT_MAIN, OUT_SIDE>
         extends TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE> {
@@ -64,6 +66,11 @@ public class KeyedTwoOutputProcessOperator<KEY, IN, OUT_MAIN, OUT_SIDE>
                 ? new KeyCheckedOutputCollector<>(
                         new SideOutputCollector(output), sideOutKeySelector)
                 : new SideOutputCollector(output);
+    }
+
+    @Override
+    protected Optional<Object> currentKey() {
+        return Optional.ofNullable(getCurrentKey());
     }
 
     private class KeyCheckedOutputCollector<T> extends TimestampCollector<T> {

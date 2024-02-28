@@ -31,6 +31,8 @@ import org.apache.flink.streaming.api.operators.OneInputStreamOperator;
 import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 
+import java.util.Optional;
+
 /** Operator for {@link OneInputStreamProcessFunction}. */
 public class ProcessOperator<IN, OUT>
         extends AbstractUdfStreamOperator<OUT, OneInputStreamProcessFunction<IN, OUT>>
@@ -58,7 +60,9 @@ public class ProcessOperator<IN, OUT>
                         operatorContext,
                         taskInfo.getNumberOfParallelSubtasks(),
                         taskInfo.getMaxNumberOfParallelSubtasks(),
-                        taskInfo.getTaskName());
+                        taskInfo.getTaskName(),
+                        this::currentKey,
+                        this::setCurrentKey);
         nonPartitionedContext = new DefaultNonPartitionedContext<>(context);
         outputCollector = getOutputCollector();
     }
@@ -76,5 +80,10 @@ public class ProcessOperator<IN, OUT>
     @Override
     public void endInput() throws Exception {
         userFunction.endInput(nonPartitionedContext);
+    }
+
+    protected Optional<Object> currentKey() {
+        // non-keyed operator always return empty key.
+        return Optional.empty();
     }
 }

@@ -34,4 +34,7 @@ public interface RuntimeContext {
 
     /** Get the {@link TaskInfo} of this process function. */
     TaskInfo getTaskInfo();
+
+    /** Get the {@link StateManager} of this process function. */
+    StateManager getStateManager();
 }

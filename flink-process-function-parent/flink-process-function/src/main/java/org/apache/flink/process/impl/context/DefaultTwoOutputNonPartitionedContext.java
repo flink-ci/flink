@@ -19,6 +19,7 @@
 package org.apache.flink.process.impl.context;
 
 import org.apache.flink.process.api.context.JobInfo;
+import org.apache.flink.process.api.context.StateManager;
 import org.apache.flink.process.api.context.TaskInfo;
 import org.apache.flink.process.api.context.TwoOutputNonPartitionedContext;
 import org.apache.flink.process.api.function.TwoOutputApplyPartitionFunction;
@@ -46,5 +47,11 @@ public class DefaultTwoOutputNonPartitionedContext<OUT1, OUT2>
     @Override
     public TaskInfo getTaskInfo() {
         return context.getTaskInfo();
+    }
+
+    @Override
+    public StateManager getStateManager() {
+        // state is partition-aware, so it's always empty in non-partitioned context.
+        return EmptyStateManager.INSTANCE;
     }
 }

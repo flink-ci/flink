@@ -34,6 +34,8 @@ import org.apache.flink.streaming.api.operators.StreamingRuntimeContext;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.util.OutputTag;
 
+import java.util.Optional;
+
 /**
  * Operator for {@link TwoOutputStreamProcessFunction}.
  *
@@ -73,7 +75,9 @@ public class TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE>
                         operatorContext,
                         taskInfo.getNumberOfParallelSubtasks(),
                         taskInfo.getMaxNumberOfParallelSubtasks(),
-                        taskInfo.getTaskName());
+                        taskInfo.getTaskName(),
+                        this::currentKey,
+                        this::setCurrentKey);
         this.nonPartitionedContext = new DefaultTwoOutputNonPartitionedContext<>(context);
     }
 
@@ -95,6 +99,11 @@ public class TwoOutputProcessOperator<IN, OUT_MAIN, OUT_SIDE>
 
     public TimestampCollector<OUT_SIDE> getSideCollector() {
         return new SideOutputCollector(output);
+    }
+
+    protected Optional<Object> currentKey() {
+        // non-keyed operator always return empty key.
+        return Optional.empty();
     }
 
     /**

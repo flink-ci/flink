@@ -27,6 +27,8 @@ import org.apache.flink.process.impl.common.TimestampCollector;
 
 import javax.annotation.Nullable;
 
+import java.util.Optional;
+
 /** Operator for {@link TwoInputBroadcastStreamProcessFunction} in {@link KeyedPartitionStream}. */
 public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
         extends TwoInputBroadcastProcessOperator<IN1, IN2, OUT> {
@@ -50,5 +52,10 @@ public class KeyedTwoInputBroadcastProcessOperator<KEY, IN1, IN2, OUT>
                 ? new OutputCollector<>(output)
                 : new KeyCheckedOutputCollector<>(
                         new OutputCollector<>(output), outKeySelector, () -> (KEY) getCurrentKey());
+    }
+
+    @Override
+    protected Optional<Object> currentKey() {
+        return Optional.ofNullable(getCurrentKey());
     }
 }
