@@ -19,9 +19,9 @@
 package org.apache.flink.runtime.operators.coordination;
 
 import org.apache.flink.api.common.JobID;
-import org.apache.flink.api.common.eventtime.WatermarkStrategyTest;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.testutils.OneShotLatch;
+import org.apache.flink.metrics.groups.UnregisteredMetricsGroup;
 import org.apache.flink.runtime.checkpoint.CheckpointCoordinator;
 import org.apache.flink.runtime.checkpoint.CheckpointFailureManager;
 import org.apache.flink.runtime.checkpoint.CheckpointPlanCalculatorContext;
@@ -574,8 +574,7 @@ class OperatorCoordinatorHolderTest {
                                 },
                                 IteratorChain::new,
                                 false),
-                        new CheckpointStatsTracker(
-                                1, new WatermarkStrategyTest.DummyMetricGroup(), jobId)));
+                        new CheckpointStatsTracker(1, new UnregisteredMetricsGroup(), jobId)));
         holder.start();
 
         return holder;
