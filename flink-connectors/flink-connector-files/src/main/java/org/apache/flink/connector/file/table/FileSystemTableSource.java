@@ -45,6 +45,7 @@ import org.apache.flink.table.connector.source.SourceProvider;
 import org.apache.flink.table.connector.source.abilities.SupportsFilterPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsLimitPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsPartitionPushDown;
+import org.apache.flink.table.connector.source.abilities.SupportsPartitioning;
 import org.apache.flink.table.connector.source.abilities.SupportsProjectionPushDown;
 import org.apache.flink.table.connector.source.abilities.SupportsReadingMetadata;
 import org.apache.flink.table.connector.source.abilities.SupportsStatisticReport;
@@ -62,6 +63,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 
+import java.io.IOException;
 import java.io.Serializable;
 import java.nio.file.Paths;
 import java.time.Duration;
@@ -89,7 +91,8 @@ public class FileSystemTableSource extends AbstractFileSystemTable
                 SupportsPartitionPushDown,
                 SupportsFilterPushDown,
                 SupportsReadingMetadata,
-                SupportsStatisticReport {
+                SupportsStatisticReport,
+                SupportsPartitioning<Path> {
 
     private static final Logger LOG = LoggerFactory.getLogger(FileSystemTableSource.class);
 
@@ -103,6 +106,8 @@ public class FileSystemTableSource extends AbstractFileSystemTable
     private int[][] projectFields;
     private List<String> metadataKeys;
     private DataType producedDataType;
+
+    private boolean forcePartitionedRead = false;
 
     public FileSystemTableSource(
             ObjectIdentifier tableIdentifier,
@@ -283,7 +288,10 @@ public class FileSystemTableSource extends AbstractFileSystemTable
                                                 : () ->
                                                         new NonSplittingRecursiveAllDirEnumerator(
                                                                 regex)));
-
+        if (forcePartitionedRead && sourcePartitions().isPresent()) {
+            fileSourceBuilder.withPartitionedAssigner(sourcePartitions().get());
+        }
+        //        sourcePartitions().ifPresent(fileSourceBuilder::withPartitionedAssigner);
         return SourceProvider.of(fileSourceBuilder.build());
     }
 
@@ -479,6 +487,30 @@ public class FileSystemTableSource extends AbstractFileSystemTable
     public Map<String, DataType> listReadableMetadata() {
         return Arrays.stream(ReadableFileInfo.values())
                 .collect(Collectors.toMap(ReadableFileInfo::getKey, ReadableFileInfo::getDataType));
+    }
+
+    @Override
+    public Optional<List<Path>> sourcePartitions() {
+        try {
+            return Optional.of(
+                    PartitionPathUtils.searchPartSpecAndPaths(
+                                    path.getFileSystem(), path, partitionKeys.size())
+                            .stream()
+                            .map(p -> p.f1)
+                            .collect(Collectors.toList()));
+        } catch (IOException e) {
+            throw new TableException("Fetch partitions fail.", e);
+        }
+    }
+
+    @Override
+    public Optional<List<String>> partitionKeys() {
+        return Optional.ofNullable(partitionKeys);
+    }
+
+    @Override
+    public void applyPartitionedRead() {
+        this.forcePartitionedRead = true;
     }
 
     interface FileInfoAccessor extends Serializable {

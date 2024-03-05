@@ -43,6 +43,15 @@ public interface FileSplitAssigner {
     Optional<FileSourceSplit> getNext(@Nullable String hostname);
 
     /**
+     * Gets the next split.
+     *
+     * <p>When this method returns an empty {@code Optional}, then the set of splits is assumed to
+     * be done and the source will finish once the readers finished their current splits.
+     */
+    Optional<FileSourceSplit> getNext(
+            @Nullable String hostname, int subtaskID, int registeredTasks);
+
+    /**
      * Adds a set of splits to this assigner. This happens for example when some split processing
      * failed and the splits need to be re-added, or when new splits got discovered.
      */

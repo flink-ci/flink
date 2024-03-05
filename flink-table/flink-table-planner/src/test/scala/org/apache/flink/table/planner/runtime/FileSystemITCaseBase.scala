@@ -461,6 +461,64 @@ trait FileSystemITCaseBase {
   }
 
   @TestTemplate
+  def jey(): Unit = {
+
+//    tableEnv.executeSql(
+//      s"""
+//         |CREATE TABLE T (
+//         |  a INT,
+//         |  b STRING,
+//         |  d STRING,
+//         |  e BIGINT
+//         |) partitioned by(d,e) with (
+//         |  'connector' = 'filesystem',
+//         |  'path' = '/Users/jeyhunkarimov/tmp',
+//         |  'format' = 'testcsv'
+//         |)
+//         """.stripMargin
+//    )
+//
+//    tableEnv.executeSql("select * from originalT").print()
+
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='1', b='1') select x, y from originalT where a=1 and b=1")
+      .await()
+
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='1', b='2') select x, y from originalT where a=1 and b=2")
+      .await()
+
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='2', b='1') select x, y from originalT where a=2 and b=1")
+      .await()
+
+    tableEnv
+      .executeSql(
+        "insert into partitionedTable " +
+          "partition(a='2', b='2') select x, y from originalT where a=2 and b=2")
+      .await()
+
+//    tableEnv.executeSql("select * from partitionedTable").print()
+//    tableEnv.executeSql("select * from originalT").print()
+
+    check(
+      "select a,b, sum(c) from partitionedTable group by a,b",
+      Seq(
+        row(1, 1, 10),
+        row(1, 2, 15),
+        row(2, 1, 10),
+        row(2, 2, 3)
+      )
+    )
+  }
+
+  @TestTemplate
   def testLimitPushDown(): Unit = {
     tableEnv.getConfig
       .set(ExecutionConfigOptions.TABLE_EXEC_RESOURCE_DEFAULT_PARALLELISM, Int.box(1))
