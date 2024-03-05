@@ -492,6 +492,7 @@ public class FileSystemTableSource extends AbstractFileSystemTable
                 .collect(Collectors.toMap(ReadableFileInfo::getKey, ReadableFileInfo::getDataType));
     }
 
+    @Override
     public Optional<List<Path>> sourcePartitions() {
         try {
             return Optional.of(
@@ -501,7 +502,7 @@ public class FileSystemTableSource extends AbstractFileSystemTable
                             .map(p -> p.f1)
                             .collect(Collectors.toList()));
         } catch (IOException e) {
-            throw new TableException("Fetch partitions fail.", e);
+            throw new TableException("Fetch partitions failed.", e);
         }
     }
 
