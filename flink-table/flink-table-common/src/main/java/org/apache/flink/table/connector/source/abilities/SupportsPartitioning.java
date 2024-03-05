@@ -63,7 +63,7 @@ public interface SupportsPartitioning<T> {
      * <p>If {@link Optional#empty()} is returned, the list of partitions is queried from the
      * catalog.
      */
-    Optional<List<T>> sourcePartitions();
+    //    Optional<List<T>> sourcePartitions();
 
     Optional<List<String>> partitionKeys();
 

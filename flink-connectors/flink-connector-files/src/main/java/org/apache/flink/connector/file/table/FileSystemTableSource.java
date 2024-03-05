@@ -492,7 +492,6 @@ public class FileSystemTableSource extends AbstractFileSystemTable
                 .collect(Collectors.toMap(ReadableFileInfo::getKey, ReadableFileInfo::getDataType));
     }
 
-    @Override
     public Optional<List<Path>> sourcePartitions() {
         try {
             return Optional.of(
