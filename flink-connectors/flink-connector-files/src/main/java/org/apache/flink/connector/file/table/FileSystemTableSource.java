@@ -288,8 +288,11 @@ public class FileSystemTableSource extends AbstractFileSystemTable
                                                 : () ->
                                                         new NonSplittingRecursiveAllDirEnumerator(
                                                                 regex)));
-        if (forcePartitionedRead && sourcePartitions().isPresent()) {
-            fileSourceBuilder.withPartitionedAssigner(sourcePartitions().get());
+        Optional<List<Path>> maybeSourcePartitions = sourcePartitions();
+        if (forcePartitionedRead
+                && maybeSourcePartitions.isPresent()
+                && !maybeSourcePartitions.get().isEmpty()) {
+            fileSourceBuilder.withPartitionedAssigner(maybeSourcePartitions.get());
         }
         //        sourcePartitions().ifPresent(fileSourceBuilder::withPartitionedAssigner);
         return SourceProvider.of(fileSourceBuilder.build());

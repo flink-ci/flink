@@ -169,7 +169,8 @@ public class RemoveRedundantShuffleRule extends PushLocalAggIntoScanRuleBase {
 
         Optional<List<String>> maybeCurrentPartitionColumns =
                 ((SupportsPartitioning<?>) tableSource).partitionKeys();
-        if (!(maybeCurrentPartitionColumns.isPresent())) {
+        if (!(maybeCurrentPartitionColumns.isPresent())
+                || maybeCurrentPartitionColumns.get().isEmpty()) {
             return false;
         }
         List<String> currentPartitionColumns = maybeCurrentPartitionColumns.get();
