@@ -18,7 +18,7 @@
 
 package org.apache.flink.table.utils;
 
-import org.apache.flink.annotation.PublicEvolving;
+import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.core.fs.FileStatus;
 import org.apache.flink.core.fs.FileSystem;
@@ -43,7 +43,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /** Utils for file system. */
-@PublicEvolving
+@Internal
 public class PartitionPathUtils {
 
     private static final Pattern PARTITION_NAME_PATTERN = Pattern.compile("([^/]+)=([^/]+)");

@@ -21,6 +21,7 @@ package org.apache.flink.connector.file.table;
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.serialization.DeserializationSchema;
 import org.apache.flink.api.java.io.CollectionInputFormat;
+import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.connector.file.src.FileSource;
 import org.apache.flink.connector.file.src.FileSourceSplit;
@@ -29,6 +30,8 @@ import org.apache.flink.connector.file.src.enumerate.NonSplittingRecursiveAllDir
 import org.apache.flink.connector.file.src.enumerate.NonSplittingRecursiveEnumerator;
 import org.apache.flink.connector.file.src.reader.BulkFormat;
 import org.apache.flink.connector.file.table.format.BulkDecodingFormat;
+import org.apache.flink.core.fs.FileStatus;
+import org.apache.flink.core.fs.FileSystem;
 import org.apache.flink.core.fs.Path;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.TableException;
@@ -76,6 +79,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -496,14 +501,112 @@ public class FileSystemTableSource extends AbstractFileSystemTable
     public Optional<List<Path>> sourcePartitions() {
         try {
             return Optional.of(
-                    PartitionPathUtils.searchPartSpecAndPaths(
-                                    path.getFileSystem(), path, partitionKeys.size())
+                    searchPartSpecAndPaths(path.getFileSystem(), path, partitionKeys.size())
                             .stream()
                             .map(p -> p.f1)
                             .collect(Collectors.toList()));
         } catch (IOException e) {
             throw new TableException("Fetch partitions failed.", e);
         }
+    }
+
+    private List<Tuple2<LinkedHashMap<String, String>, Path>> searchPartSpecAndPaths(
+            FileSystem fs, Path path, int partitionNumber) {
+        FileStatus[] generatedParts = getFileStatusRecurse(path, partitionNumber, fs);
+        List<Tuple2<LinkedHashMap<String, String>, Path>> ret = new ArrayList<>();
+        for (FileStatus part : generatedParts) {
+            // ignore hidden file
+            if (isHiddenFile(part)) {
+                continue;
+            }
+            ret.add(new Tuple2<>(extractPartitionSpecFromPath(part.getPath()), part.getPath()));
+        }
+        return ret;
+    }
+
+    private boolean isHiddenFile(FileStatus fileStatus) {
+        String name = fileStatus.getPath().getName();
+        return name.startsWith("_") || name.startsWith(".");
+    }
+
+    private void listStatusRecursively(
+            FileSystem fs,
+            FileStatus fileStatus,
+            int level,
+            int expectLevel,
+            List<FileStatus> results)
+            throws IOException {
+        if (expectLevel == level) {
+            results.add(fileStatus);
+            return;
+        }
+
+        if (fileStatus.isDir()) {
+            for (FileStatus stat : fs.listStatus(fileStatus.getPath())) {
+                listStatusRecursively(fs, stat, level + 1, expectLevel, results);
+            }
+        }
+    }
+
+    private FileStatus[] getFileStatusRecurse(Path path, int expectLevel, FileSystem fs) {
+        ArrayList<FileStatus> result = new ArrayList<>();
+
+        try {
+            FileStatus fileStatus = fs.getFileStatus(path);
+            listStatusRecursively(fs, fileStatus, 0, expectLevel, result);
+        } catch (IOException ignore) {
+            return new FileStatus[0];
+        }
+
+        return result.toArray(new FileStatus[0]);
+    }
+
+    private String unescapePathName(String path) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < path.length(); i++) {
+            char c = path.charAt(i);
+            if (c == '%' && i + 2 < path.length()) {
+                int code = -1;
+                try {
+                    code = Integer.parseInt(path.substring(i + 1, i + 3), 16);
+                } catch (Exception ignored) {
+                }
+                if (code >= 0) {
+                    sb.append((char) code);
+                    i += 2;
+                    continue;
+                }
+            }
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+
+    private LinkedHashMap<String, String> extractPartitionSpecFromPath(Path currPath) {
+        final Pattern pattern = Pattern.compile("([^/]+)=([^/]+)");
+
+        LinkedHashMap<String, String> fullPartSpec = new LinkedHashMap<>();
+        List<String[]> kvs = new ArrayList<>();
+        do {
+            String component = currPath.getName();
+            Matcher m = pattern.matcher(component);
+            if (m.matches()) {
+                String k = unescapePathName(m.group(1));
+                String v = unescapePathName(m.group(2));
+                String[] kv = new String[2];
+                kv[0] = k;
+                kv[1] = v;
+                kvs.add(kv);
+            }
+            currPath = currPath.getParent();
+        } while (currPath != null && !currPath.getName().isEmpty());
+
+        // reverse the list since we checked the part from leaf dir to table's base dir
+        for (int i = kvs.size(); i > 0; i--) {
+            fullPartSpec.put(kvs.get(i - 1)[0], kvs.get(i - 1)[1]);
+        }
+
+        return fullPartSpec;
     }
 
     @Override
