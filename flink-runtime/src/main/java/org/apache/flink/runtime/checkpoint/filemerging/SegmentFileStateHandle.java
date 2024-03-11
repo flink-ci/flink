@@ -136,7 +136,7 @@ public class SegmentFileStateHandle implements StreamStateHandle {
 
         SegmentFileStateHandle that = (SegmentFileStateHandle) o;
 
-        return super.equals(that)
+        return filePath.equals(that.filePath)
                 && startPos == that.startPos
                 && stateSize == that.stateSize
                 && scope.equals(that.scope);
