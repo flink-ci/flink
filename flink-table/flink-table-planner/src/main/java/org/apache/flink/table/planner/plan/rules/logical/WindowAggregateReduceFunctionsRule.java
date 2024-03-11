@@ -36,7 +36,7 @@ import java.util.List;
 
 /**
  * Rule to convert complex aggregation functions into simpler ones. Have a look at
- * [[AggregateReduceFunctionsRule]] for details.
+ * {@link AggregateReduceFunctionsRule} for details.
  */
 public class WindowAggregateReduceFunctionsRule extends AggregateReduceFunctionsRule {
     private static final RelBuilderFactory LOGICAL_BUILDER_WITHOUT_AGG_INPUT_PRUNE =
