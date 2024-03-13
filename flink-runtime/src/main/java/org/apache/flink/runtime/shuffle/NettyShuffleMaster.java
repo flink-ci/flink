@@ -24,6 +24,7 @@ import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.hybrid.tiered.shuffle.TieredInternalShuffleMaster;
+import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor.LocalExecutionPartitionConnectionInfo;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor.NetworkPartitionConnectionInfo;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor.PartitionConnectionInfo;
@@ -31,6 +32,9 @@ import org.apache.flink.runtime.util.ConfigurationParserUtils;
 
 import javax.annotation.Nullable;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
@@ -57,6 +61,8 @@ public class NettyShuffleMaster implements ShuffleMaster<NettyShuffleDescriptor>
     private final int networkBufferSize;
 
     @Nullable private final TieredInternalShuffleMaster tieredInternalShuffleMaster;
+
+    private final Map<JobID, JobMasterGateway> jobMasters = new HashMap<>();
 
     public NettyShuffleMaster(Configuration conf) {
         checkNotNull(conf);
@@ -164,5 +170,21 @@ public class NettyShuffleMaster implements ShuffleMaster<NettyShuffleDescriptor>
         return (conf.get(BATCH_SHUFFLE_MODE) == ALL_EXCHANGES_HYBRID_FULL
                         || conf.get(BATCH_SHUFFLE_MODE) == ALL_EXCHANGES_HYBRID_SELECTIVE)
                 && conf.get(NETWORK_HYBRID_SHUFFLE_ENABLE_NEW_MODE);
+    }
+
+    @Override
+    public CompletableFuture<Collection<PartitionWithMetrics>> getAllPartitionWithMetrics(
+            JobID jobId) {
+        return checkNotNull(jobMasters.get(jobId)).getAllPartitionWithMetrics();
+    }
+
+    @Override
+    public void registerJob(JobShuffleContext context) {
+        jobMasters.put(context.getJobId(), context.getJobMasterGateway());
+    }
+
+    @Override
+    public void unregisterJob(JobID jobId) {
+        jobMasters.remove(jobId);
     }
 }
