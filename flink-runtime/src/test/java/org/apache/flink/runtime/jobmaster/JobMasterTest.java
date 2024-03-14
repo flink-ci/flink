@@ -2116,7 +2116,6 @@ class JobMasterTest {
                             resourceManagerGateway.getJobMasterRegistrationSuccess());
                 });
 
-        // the scheduler close logic should be handled outside the main thread
         final OneShotLatch schedulerCloseLatch = new OneShotLatch();
         final CompletableFuture<Void> schedulerCloseFuture = new CompletableFuture<>();
         final TestingSchedulerNG scheduler =
