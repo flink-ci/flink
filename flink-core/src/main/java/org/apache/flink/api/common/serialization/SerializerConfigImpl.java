@@ -40,6 +40,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /** The default implement of {@link SerializerConfig}. */
@@ -203,25 +204,25 @@ public final class SerializerConfigImpl implements SerializerConfig {
 
     /** Returns the registered types with Kryo Serializers. */
     public LinkedHashMap<Class<?>, ExecutionConfig.SerializableSerializer<?>>
-            getRegisteredTypesWithKryoSerializers() {
+    getRegisteredTypesWithKryoSerializers() {
         return registeredTypesWithKryoSerializers;
     }
 
     /** Returns the registered types with their Kryo Serializer classes. */
     public LinkedHashMap<Class<?>, Class<? extends Serializer<?>>>
-            getRegisteredTypesWithKryoSerializerClasses() {
+    getRegisteredTypesWithKryoSerializerClasses() {
         return registeredTypesWithKryoSerializerClasses;
     }
 
     /** Returns the registered default Kryo Serializers. */
     public LinkedHashMap<Class<?>, ExecutionConfig.SerializableSerializer<?>>
-            getDefaultKryoSerializers() {
+    getDefaultKryoSerializers() {
         return defaultKryoSerializers;
     }
 
     /** Returns the registered default Kryo Serializer classes. */
     public LinkedHashMap<Class<?>, Class<? extends Serializer<?>>>
-            getDefaultKryoSerializerClasses() {
+    getDefaultKryoSerializerClasses() {
         return defaultKryoSerializerClasses;
     }
 
@@ -300,9 +301,9 @@ public final class SerializerConfigImpl implements SerializerConfig {
 
             return Objects.equals(configuration, other.configuration)
                     && registeredTypesWithKryoSerializers.equals(
-                            other.registeredTypesWithKryoSerializers)
+                    other.registeredTypesWithKryoSerializers)
                     && registeredTypesWithKryoSerializerClasses.equals(
-                            other.registeredTypesWithKryoSerializerClasses)
+                    other.registeredTypesWithKryoSerializerClasses)
                     && defaultKryoSerializers.equals(other.defaultKryoSerializers)
                     && defaultKryoSerializerClasses.equals(other.defaultKryoSerializerClasses)
                     && registeredKryoTypes.equals(other.registeredKryoTypes)
@@ -407,8 +408,8 @@ public final class SerializerConfigImpl implements SerializerConfig {
     }
 
     private LinkedHashMap<Class<?>, Class<? extends Serializer<?>>>
-            parseKryoSerializersWithExceptionHandling(
-                    ClassLoader classLoader, List<String> kryoSerializers) {
+    parseKryoSerializersWithExceptionHandling(
+            ClassLoader classLoader, List<String> kryoSerializers) {
         try {
             return parseKryoSerializers(classLoader, kryoSerializers);
         } catch (Exception e) {
@@ -573,5 +574,32 @@ public final class SerializerConfigImpl implements SerializerConfig {
      */
     public ExecutionConfig getExecutionConfig() {
         return executionConfig;
+    }
+
+    @Override
+    public SerializerConfigImpl copy() {
+        final SerializerConfigImpl newSerializerConfig = new SerializerConfigImpl();
+        newSerializerConfig.configure(configuration, this.getClass().getClassLoader());
+
+        getRegisteredTypesWithKryoSerializers()
+                .forEach(
+                        (c, s) ->
+                                newSerializerConfig.registerTypeWithKryoSerializer(
+                                        c, s.getSerializer()));
+        getRegisteredTypesWithKryoSerializerClasses()
+                .forEach(newSerializerConfig::registerTypeWithKryoSerializer);
+        getDefaultKryoSerializers()
+                .forEach(
+                        (c, s) ->
+                                newSerializerConfig.addDefaultKryoSerializer(c, s.getSerializer()));
+        Optional.ofNullable(isForceKryoAvroEnabled().getAsBoolean())
+                .ifPresent(this::setForceKryoAvro);
+        getDefaultKryoSerializerClasses().forEach(newSerializerConfig::addDefaultKryoSerializer);
+        getRegisteredKryoTypes().forEach(newSerializerConfig::registerKryoType);
+        getRegisteredPojoTypes().forEach(newSerializerConfig::registerPojoType);
+        getRegisteredTypeInfoFactories()
+                .forEach(newSerializerConfig::registerTypeWithTypeInfoFactory);
+
+        return newSerializerConfig;
     }
 }
