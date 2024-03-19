@@ -204,25 +204,25 @@ public final class SerializerConfigImpl implements SerializerConfig {
 
     /** Returns the registered types with Kryo Serializers. */
     public LinkedHashMap<Class<?>, ExecutionConfig.SerializableSerializer<?>>
-    getRegisteredTypesWithKryoSerializers() {
+            getRegisteredTypesWithKryoSerializers() {
         return registeredTypesWithKryoSerializers;
     }
 
     /** Returns the registered types with their Kryo Serializer classes. */
     public LinkedHashMap<Class<?>, Class<? extends Serializer<?>>>
-    getRegisteredTypesWithKryoSerializerClasses() {
+            getRegisteredTypesWithKryoSerializerClasses() {
         return registeredTypesWithKryoSerializerClasses;
     }
 
     /** Returns the registered default Kryo Serializers. */
     public LinkedHashMap<Class<?>, ExecutionConfig.SerializableSerializer<?>>
-    getDefaultKryoSerializers() {
+            getDefaultKryoSerializers() {
         return defaultKryoSerializers;
     }
 
     /** Returns the registered default Kryo Serializer classes. */
     public LinkedHashMap<Class<?>, Class<? extends Serializer<?>>>
-    getDefaultKryoSerializerClasses() {
+            getDefaultKryoSerializerClasses() {
         return defaultKryoSerializerClasses;
     }
 
@@ -301,9 +301,9 @@ public final class SerializerConfigImpl implements SerializerConfig {
 
             return Objects.equals(configuration, other.configuration)
                     && registeredTypesWithKryoSerializers.equals(
-                    other.registeredTypesWithKryoSerializers)
+                            other.registeredTypesWithKryoSerializers)
                     && registeredTypesWithKryoSerializerClasses.equals(
-                    other.registeredTypesWithKryoSerializerClasses)
+                            other.registeredTypesWithKryoSerializerClasses)
                     && defaultKryoSerializers.equals(other.defaultKryoSerializers)
                     && defaultKryoSerializerClasses.equals(other.defaultKryoSerializerClasses)
                     && registeredKryoTypes.equals(other.registeredKryoTypes)
@@ -408,8 +408,8 @@ public final class SerializerConfigImpl implements SerializerConfig {
     }
 
     private LinkedHashMap<Class<?>, Class<? extends Serializer<?>>>
-    parseKryoSerializersWithExceptionHandling(
-            ClassLoader classLoader, List<String> kryoSerializers) {
+            parseKryoSerializersWithExceptionHandling(
+                    ClassLoader classLoader, List<String> kryoSerializers) {
         try {
             return parseKryoSerializers(classLoader, kryoSerializers);
         } catch (Exception e) {
