@@ -132,22 +132,22 @@ public interface SerializerConfig extends Serializable {
      * Returns the registered types with Kryo Serializers.
      *
      * @deprecated The method is deprecated because instance-type Kryo serializer definition based
-     *     on {@link ExecutionConfig.SerializableSerializer} is deprecated. Use class-type Kryo
-     *     serializers instead.
+     *         on {@link ExecutionConfig.SerializableSerializer} is deprecated. Use class-type Kryo
+     *         serializers instead.
      */
     @Deprecated
     LinkedHashMap<Class<?>, ExecutionConfig.SerializableSerializer<?>>
-            getRegisteredTypesWithKryoSerializers();
+    getRegisteredTypesWithKryoSerializers();
 
     /** Returns the registered types with their Kryo Serializer classes. */
     LinkedHashMap<Class<?>, Class<? extends Serializer<?>>>
-            getRegisteredTypesWithKryoSerializerClasses();
+    getRegisteredTypesWithKryoSerializerClasses();
 
     /**
      * Returns the registered default Kryo Serializers.
      *
      * @deprecated The method is deprecated because {@link ExecutionConfig.SerializableSerializer}
-     *     is deprecated.
+     *         is deprecated.
      */
     @Deprecated
     LinkedHashMap<Class<?>, ExecutionConfig.SerializableSerializer<?>> getDefaultKryoSerializers();
@@ -221,5 +221,5 @@ public interface SerializerConfig extends Serializable {
      */
     void configure(ReadableConfig configuration, ClassLoader classLoader);
 
-    SerializerConfigImpl copy();
+    SerializerConfig copy();
 }
