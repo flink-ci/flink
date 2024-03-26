@@ -27,9 +27,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.File;
 
 /** Tests for the {@link LocalRecoverableWriter}. */
-public class LocalFileSystemRecoverableWriterTest extends AbstractRecoverableWriterTest {
+class LocalFileSystemRecoverableWriterTest extends AbstractRecoverableWriterTest {
 
-    @TempDir protected static File tempFolder;
+    @TempDir private static File tempFolder;
 
     @Override
     public Path getBasePath() throws Exception {

@@ -37,7 +37,7 @@ import java.time.Duration;
 import java.util.Locale;
 
 /** {@code MinioTestContainer} provides a {@code Minio} test instance. */
-public class MinioTestContainer extends GenericContainer<MinioTestContainer> {
+class MinioTestContainer extends GenericContainer<MinioTestContainer> {
 
     private static final String FLINK_CONFIG_S3_ENDPOINT = "s3.endpoint";
 
