@@ -311,12 +311,15 @@ public abstract class AbstractRecoverableWriterTest extends TestLogger {
         final RecoverableWriter writer = getNewFileSystemWriter();
         final Path path = new Path(testDir, "part-0");
 
-        try (RecoverableFsDataOutputStream stream = writer.open(path)) {
+        RecoverableFsDataOutputStream stream = writer.open(path);
+        try {
             stream.write(testData1.getBytes(StandardCharsets.UTF_8));
 
             stream.closeForCommit().getRecoverable();
             assertThatThrownBy(() -> stream.write(testData2.getBytes(StandardCharsets.UTF_8)))
                     .isInstanceOf(IOException.class);
+        } finally {
+            IOUtils.closeQuietly(stream);
         }
     }
 
