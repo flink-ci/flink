@@ -158,7 +158,7 @@ class SplitAssignmentTrackerTest {
     }
 
     @Test
-    public void testGetAndRemoveSplitsAfterSomeCheckpoint() throws Exception {
+    void testGetAndRemoveSplitsAfterSomeCheckpoint() throws Exception {
         final long checkpointId1 = 100L;
         final long checkpointId2 = 101L;
         SplitAssignmentTracker<MockSourceSplit> tracker = new SplitAssignmentTracker<>();
