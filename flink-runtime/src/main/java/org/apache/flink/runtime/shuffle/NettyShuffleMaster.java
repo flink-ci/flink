@@ -24,7 +24,6 @@ import org.apache.flink.configuration.MemorySize;
 import org.apache.flink.configuration.NettyShuffleEnvironmentOptions;
 import org.apache.flink.runtime.io.network.partition.ResultPartitionID;
 import org.apache.flink.runtime.io.network.partition.hybrid.tiered.shuffle.TieredInternalShuffleMaster;
-import org.apache.flink.runtime.jobmaster.JobMasterGateway;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor.LocalExecutionPartitionConnectionInfo;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor.NetworkPartitionConnectionInfo;
 import org.apache.flink.runtime.shuffle.NettyShuffleDescriptor.PartitionConnectionInfo;
@@ -62,7 +61,7 @@ public class NettyShuffleMaster implements ShuffleMaster<NettyShuffleDescriptor>
 
     @Nullable private final TieredInternalShuffleMaster tieredInternalShuffleMaster;
 
-    private final Map<JobID, JobMasterGateway> jobMasters = new HashMap<>();
+    private final Map<JobID, JobShuffleContext> jobMasterShuffleMasters = new HashMap<>();
 
     public NettyShuffleMaster(Configuration conf) {
         checkNotNull(conf);
@@ -175,16 +174,17 @@ public class NettyShuffleMaster implements ShuffleMaster<NettyShuffleDescriptor>
     @Override
     public CompletableFuture<Collection<PartitionWithMetrics>> getAllPartitionWithMetrics(
             JobID jobId) {
-        return checkNotNull(jobMasters.get(jobId)).getAllPartitionWithMetrics();
+        return checkNotNull(jobMasterShuffleMasters.get(jobId))
+                .getAllPartitionWithMetricsOnTaskManagers();
     }
 
     @Override
     public void registerJob(JobShuffleContext context) {
-        jobMasters.put(context.getJobId(), context.getJobMasterGateway());
+        jobMasterShuffleMasters.put(context.getJobId(), context);
     }
 
     @Override
     public void unregisterJob(JobID jobId) {
-        jobMasters.remove(jobId);
+        jobMasterShuffleMasters.remove(jobId);
     }
 }

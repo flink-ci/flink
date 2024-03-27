@@ -960,7 +960,8 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
     }
 
     @Override
-    public CompletableFuture<Collection<PartitionWithMetrics>> getAllPartitionWithMetrics() {
+    public CompletableFuture<Collection<PartitionWithMetrics>>
+            getAllPartitionWithMetricsOnTaskManagers() {
         final List<CompletableFuture<Collection<PartitionWithMetrics>>> allFutures =
                 new ArrayList<>();
         registeredTaskManagers

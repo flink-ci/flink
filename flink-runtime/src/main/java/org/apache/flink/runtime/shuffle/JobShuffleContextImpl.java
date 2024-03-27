@@ -51,7 +51,8 @@ public class JobShuffleContextImpl implements JobShuffleContext {
     }
 
     @Override
-    public JobMasterGateway getJobMasterGateway() {
-        return jobMasterGateway;
+    public CompletableFuture<Collection<PartitionWithMetrics>>
+            getAllPartitionWithMetricsOnTaskManagers() {
+        return jobMasterGateway.getAllPartitionWithMetricsOnTaskManagers();
     }
 }

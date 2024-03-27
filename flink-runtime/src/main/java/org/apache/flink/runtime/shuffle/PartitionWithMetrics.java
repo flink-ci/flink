@@ -20,10 +20,7 @@ package org.apache.flink.runtime.shuffle;
 
 import java.io.Serializable;
 
-/**
- * Interface representing a partition with associated shuffle metrics. It provides access to shuffle
- * metrics as well as the partition data.
- */
+/** Interface representing the description and metrics of a result partition. */
 public interface PartitionWithMetrics extends Serializable {
     ShuffleMetrics getPartitionMetrics();
 

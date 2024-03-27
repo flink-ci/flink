@@ -111,8 +111,8 @@ public interface ShuffleMaster<T extends ShuffleDescriptor> extends AutoCloseabl
     }
 
     /**
-     * Get all partitions and their metrics, the metrics mainly includes the meta information of
-     * partition(partition bytes, etc).
+     * Get all partitions and their metrics, the metrics include sizes of sub-partitions in a result
+     * partition.
      *
      * @param jobId ID of the target job
      * @return All partitions belong to the target job and their metrics

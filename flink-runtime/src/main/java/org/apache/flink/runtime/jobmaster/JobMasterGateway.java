@@ -303,7 +303,8 @@ public interface JobMasterGateway
     CompletableFuture<?> stopTrackingAndReleasePartitions(
             Collection<ResultPartitionID> partitionIds);
 
-    default CompletableFuture<Collection<PartitionWithMetrics>> getAllPartitionWithMetrics() {
+    default CompletableFuture<Collection<PartitionWithMetrics>>
+            getAllPartitionWithMetricsOnTaskManagers() {
         return CompletableFuture.completedFuture(Collections.emptyList());
     }
 

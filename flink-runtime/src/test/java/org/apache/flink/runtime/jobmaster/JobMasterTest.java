@@ -1956,7 +1956,11 @@ class JobMasterTest {
             waitUntilAllExecutionsAreScheduledOrDeployed(jobMasterGateway);
 
             PartitionWithMetrics metrics =
-                    jobMasterGateway.getAllPartitionWithMetrics().get().iterator().next();
+                    jobMasterGateway
+                            .getAllPartitionWithMetricsOnTaskManagers()
+                            .get()
+                            .iterator()
+                            .next();
             PartitionWithMetrics expectedMetrics = defaultPartitionWithMetrics.iterator().next();
 
             assertThat(metrics.getPartitionMetrics().getPartitionBytes().getSubpartitionBytes())
