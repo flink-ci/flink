@@ -765,9 +765,14 @@ class CatalogBaseTable(object):
         assert properties is not None
 
         gateway = get_gateway()
+
         return CatalogBaseTable(
-            gateway.jvm.org.apache.flink.table.catalog.CatalogViewImpl(
-                original_query, expanded_query, schema._j_table_schema, properties, comment))
+            gateway.jvm.org.apache.flink.table.catalog.CatalogView.of(
+                schema._j_table_schema.toSchema(),
+                comment,
+                original_query,
+                expanded_query,
+                properties))
 
     @staticmethod
     def _get(j_catalog_base_table):
