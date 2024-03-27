@@ -153,7 +153,10 @@ public class BatchExecutionOptions {
             key("execution.batch.job-recovery.enabled")
                     .booleanType()
                     .defaultValue(false)
-                    .withDescription("A flag to enable or disable the job recovery.");
+                    .withDescription(
+                            "A flag to enable or disable the job recovery. If enabled, batch jobs "
+                                    + "can resume with previously generated intermediate results "
+                                    + "after job master restarts due to failures, thereby preserving the progress.");
 
     @Documentation.Section({Documentation.Sections.EXPERT_SCHEDULING})
     public static final ConfigOption<Duration> JOB_RECOVERY_PREVIOUS_WORKER_RECOVERY_TIMEOUT =
@@ -161,7 +164,9 @@ public class BatchExecutionOptions {
                     .durationType()
                     .defaultValue(Duration.ofSeconds(30))
                     .withDescription(
-                            "The timeout for a new job master to wait for the previous worker to reconnect.");
+                            "The timeout for a new job master to wait for the previous worker to reconnect."
+                                    + "A reconnected worker will transmit the details of its produced intermediate "
+                                    + "results to the new job master, enabling the job master to reuse these results.");
 
     @Documentation.Section({Documentation.Sections.EXPERT_SCHEDULING})
     public static final ConfigOption<Duration> JOB_RECOVERY_SNAPSHOT_MIN_PAUSE =
@@ -169,8 +174,8 @@ public class BatchExecutionOptions {
                     .durationType()
                     .defaultValue(Duration.ofMinutes(3))
                     .withDescription(
-                            "The minimal pause between snapshots. To avoid performance issues caused by too frequent snapshots. "
-                                    + "Used to take snapshots for operator coordinator or other components.");
+                            "The minimal pause between snapshots taken by operator coordinator or other components. "
+                                    + "It is used to avoid performance degradation due to excessive snapshot frequency.");
 
     private BatchExecutionOptions() {
         throw new UnsupportedOperationException("This class should never be instantiated.");

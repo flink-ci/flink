@@ -35,8 +35,8 @@ public class JobEventStoreOptions {
                     .memoryType()
                     .defaultValue(MemorySize.parse("1MB"))
                     .withDescription(
-                            "The size of the write buffer of JobEventStore, "
-                                    + "the content will be flushed to external file system once it's full");
+                            "The size of the write buffer of JobEventStore. "
+                                    + "The content will be flushed to external file system once the buffer is full");
 
     @Documentation.Section({Documentation.Sections.EXPERT_SCHEDULING})
     public static final ConfigOption<Duration> FLUSH_INTERVAL =
@@ -44,8 +44,8 @@ public class JobEventStoreOptions {
                     .durationType()
                     .defaultValue(Duration.ofSeconds(1))
                     .withDescription(
-                            "The flush interval of write buffer of JobEventStore, over this time, "
-                                    + "the content will be flushed to external file system.");
+                            "The flush interval of JobEventStore write buffers. Buffer contents will "
+                                    + "be flushed to external file system regularly with regard to this value.");
 
     private JobEventStoreOptions() {
         throw new UnsupportedOperationException("This class should never be instantiated.");
