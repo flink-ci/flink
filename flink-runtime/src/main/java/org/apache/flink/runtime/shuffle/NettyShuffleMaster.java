@@ -61,7 +61,7 @@ public class NettyShuffleMaster implements ShuffleMaster<NettyShuffleDescriptor>
 
     @Nullable private final TieredInternalShuffleMaster tieredInternalShuffleMaster;
 
-    private final Map<JobID, JobShuffleContext> jobMasterShuffleMasters = new HashMap<>();
+    private final Map<JobID, JobShuffleContext> jobShuffleContexts = new HashMap<>();
 
     public NettyShuffleMaster(Configuration conf) {
         checkNotNull(conf);
@@ -174,17 +174,17 @@ public class NettyShuffleMaster implements ShuffleMaster<NettyShuffleDescriptor>
     @Override
     public CompletableFuture<Collection<PartitionWithMetrics>> getAllPartitionWithMetrics(
             JobID jobId) {
-        return checkNotNull(jobMasterShuffleMasters.get(jobId))
+        return checkNotNull(jobShuffleContexts.get(jobId))
                 .getAllPartitionWithMetricsOnTaskManagers();
     }
 
     @Override
     public void registerJob(JobShuffleContext context) {
-        jobMasterShuffleMasters.put(context.getJobId(), context);
+        jobShuffleContexts.put(context.getJobId(), context);
     }
 
     @Override
     public void unregisterJob(JobID jobId) {
-        jobMasterShuffleMasters.remove(jobId);
+        jobShuffleContexts.remove(jobId);
     }
 }
