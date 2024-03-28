@@ -60,7 +60,7 @@ function get_total_number_of_valid_lines {
 }
 
 if [ "${OUT_TYPE}" == "local" ]; then
-  echo "[INFO] Test run in local environment: No S3 environment is not loaded."
+  echo "[INFO] Test run in local environment: No S3 environment is loaded."
 elif [ "${OUT_TYPE}" == "s3" ]; then
   source "$(dirname "$0")"/common_s3_minio.sh
   s3_setup hadoop
