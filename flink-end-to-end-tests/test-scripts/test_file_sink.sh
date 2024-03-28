@@ -22,34 +22,34 @@ SINK_TO_TEST="${2:-"StreamingFileSink"}"
 
 source "$(dirname "$0")"/common.sh
 
-# OUTPUT_PATH is a local folder that can be used as a download folder for remote data
+# LOCAL_JOB_OUTPUT_PATH is a local folder that can be used as a download folder for remote data
 # the helper functions will access this folder
 RANDOM_PREFIX="temp/test_file_sink-$(uuidgen)"
-OUTPUT_PATH="$TEST_DATA_DIR/${RANDOM_PREFIX}"
-mkdir -p $OUTPUT_PATH
+LOCAL_JOB_OUTPUT_PATH="$TEST_DATA_DIR/${RANDOM_PREFIX}"
+mkdir -p $LOCAL_JOB_OUTPUT_PATH
 
 # JOB_OUTPUT_PATH is the location where the job writes its data to
-JOB_OUTPUT_PATH="${OUTPUT_PATH}"
+JOB_OUTPUT_PATH="${LOCAL_JOB_OUTPUT_PATH}"
 
 ###################################
 # Get all lines in part files and sort them numerically.
 #
 # Globals:
-#   OUTPUT_PATH
+#   LOCAL_JOB_OUTPUT_PATH
 # Arguments:
 #   None
 # Returns:
 #   sorted content of part files
 ###################################
 function get_complete_result {
-  find "${OUTPUT_PATH}" -type f \( -iname "part-*" \) -exec cat {} + | sort -g
+  find "${LOCAL_JOB_OUTPUT_PATH}" -type f \( -iname "part-*" \) -exec cat {} + | sort -g
 }
 
 ###################################
 # Get total number of lines in part files.
 #
 # Globals:
-#   OUTPUT_PATH
+#   LOCAL_JOB_OUTPUT_PATH
 # Arguments:
 #   None
 # Returns:
@@ -73,11 +73,11 @@ elif [ "${OUT_TYPE}" == "s3" ]; then
 
   # overwrites implementation for local runs
   function get_complete_result {
-    # copies the data from S3 to the local OUTPUT_PATH
-    s3_get_by_full_path_and_filename_prefix "$OUTPUT_PATH" "$S3_DATA_PREFIX" "part-" true
+    # copies the data from S3 to the local LOCAL_JOB_OUTPUT_PATH
+    s3_get_by_full_path_and_filename_prefix "$LOCAL_JOB_OUTPUT_PATH" "$S3_DATA_PREFIX" "part-" true
 
     # and prints the sorted output
-    find "${OUTPUT_PATH}" -type f \( -iname "part-*" \) -exec cat {} + | sort -g
+    find "${LOCAL_JOB_OUTPUT_PATH}" -type f \( -iname "part-*" \) -exec cat {} + | sort -g
   }
 
   # overwrites implementation for local runs
