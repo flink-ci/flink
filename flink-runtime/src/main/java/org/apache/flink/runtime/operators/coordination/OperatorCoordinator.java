@@ -86,6 +86,9 @@ public interface OperatorCoordinator extends CheckpointListener, AutoCloseable {
      */
     long NO_CHECKPOINT = -1L;
 
+    /** The checkpoint ID passed to the restore methods when batch scenarios. */
+    long BATCH_CHECKPOINT_ID = -1L;
+
     // ------------------------------------------------------------------------
 
     /**
@@ -236,9 +239,10 @@ public interface OperatorCoordinator extends CheckpointListener, AutoCloseable {
 
     /**
      * Whether the operator coordinator supports taking snapshot in no-checkpoint/batch scenarios.
-     * If it returns true, it's {@link OperatorCoordinator#checkpointCoordinator} and {@link
-     * OperatorCoordinator#resetToCheckpoint} methods need to accept {@link
-     * OperatorCoordinator#NO_CHECKPOINT} as the value of checkpoint id. Otherwise, returns false.
+     * If it returns true, the {@link OperatorCoordinator#checkpointCoordinator} and {@link
+     * OperatorCoordinator#resetToCheckpoint} methods supports taking snapshot and restoring from a
+     * snapshot in batch processing scenarios. In such scenarios, the checkpointId will always be
+     * -1.
      */
     default boolean supportsBatchSnapshot() {
         return false;

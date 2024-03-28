@@ -179,12 +179,12 @@ class SourceCoordinatorTest extends SourceCoordinatorTestBase {
 
         final CompletableFuture<byte[]> checkpointFuture = new CompletableFuture<>();
         sourceCoordinator.checkpointCoordinator(
-                OperatorCoordinator.NO_CHECKPOINT, checkpointFuture);
+                OperatorCoordinator.BATCH_CHECKPOINT_ID, checkpointFuture);
         final byte[] bytes = checkpointFuture.get();
 
         // restore from the batch snapshot.
         SourceCoordinator<?, ?> restoredCoordinator = getNewSourceCoordinator();
-        restoredCoordinator.resetToCheckpoint(OperatorCoordinator.NO_CHECKPOINT, bytes);
+        restoredCoordinator.resetToCheckpoint(OperatorCoordinator.BATCH_CHECKPOINT_ID, bytes);
         TestingSplitEnumerator<?> restoredEnumerator =
                 (TestingSplitEnumerator<?>) restoredCoordinator.getEnumerator();
         SourceCoordinatorContext<?> restoredContext = restoredCoordinator.getContext();

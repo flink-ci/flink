@@ -63,14 +63,12 @@ public class SourceCoordinatorSerdeUtils {
         return bytes;
     }
 
-    /** Serialize the assignment by checkpoint ids. */
-    static <SplitT> byte[] writeAssignments(
+    static <SplitT> byte[] serializeAssignments(
             Map<Integer, LinkedHashSet<SplitT>> assignments,
             SimpleVersionedSerializer<SplitT> splitSerializer)
             throws IOException {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
                 DataOutputStream out = new DataOutputViewStreamWrapper(baos)) {
-            // SplitSerializer version.
             out.writeInt(splitSerializer.getVersion());
 
             int numSubtasks = assignments.size();
@@ -92,8 +90,7 @@ public class SourceCoordinatorSerdeUtils {
         }
     }
 
-    /** Deserialize the assignment by checkpoint ids. */
-    static <SplitT> Map<Integer, LinkedHashSet<SplitT>> readAssignments(
+    static <SplitT> Map<Integer, LinkedHashSet<SplitT>> deserializeAssignments(
             byte[] assignmentData, SimpleVersionedSerializer<SplitT> splitSerializer)
             throws IOException {
 

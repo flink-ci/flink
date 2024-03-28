@@ -20,7 +20,6 @@ package org.apache.flink.runtime.source.coordinator;
 
 import org.apache.flink.api.connector.source.mocks.MockSourceSplit;
 import org.apache.flink.api.connector.source.mocks.MockSourceSplitSerializer;
-import org.apache.flink.runtime.operators.coordination.OperatorCoordinator;
 
 import org.junit.jupiter.api.Test;
 
@@ -55,9 +54,7 @@ class SplitAssignmentTrackerTest {
         tracker.recordSplitAssignment(getSplitsAssignment(3, 0));
         tracker.recordSplitAssignment(getSplitsAssignment(2, 6));
 
-        byte[] snapshotState =
-                tracker.snapshotState(
-                        OperatorCoordinator.NO_CHECKPOINT, new MockSourceSplitSerializer());
+        byte[] snapshotState = tracker.snapshotState(new MockSourceSplitSerializer());
 
         SplitAssignmentTracker<MockSourceSplit> trackerToRestore = new SplitAssignmentTracker<>();
         assertThat(trackerToRestore.uncheckpointedAssignments()).isEmpty();

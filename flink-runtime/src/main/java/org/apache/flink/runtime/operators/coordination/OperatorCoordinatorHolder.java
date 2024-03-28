@@ -104,6 +104,7 @@ public class OperatorCoordinatorHolder
     private static final Logger LOG = LoggerFactory.getLogger(OperatorCoordinatorHolder.class);
 
     private final OperatorCoordinator coordinator;
+    private boolean supportsBatchSnapshot;
     private final OperatorID operatorId;
     private final LazyInitializedCoordinatorContext context;
     private final SubtaskAccess.SubtaskAccessFactory taskAccesses;
@@ -179,6 +180,10 @@ public class OperatorCoordinatorHolder
         return coordinator;
     }
 
+    public boolean supportsBatchSnapshot() {
+        return supportsBatchSnapshot;
+    }
+
     @Override
     public OperatorID operatorId() {
         return operatorId;
@@ -202,6 +207,7 @@ public class OperatorCoordinatorHolder
         mainThreadExecutor.assertRunningInMainThread();
         checkState(context.isInitialized(), "Coordinator Context is not yet initialized");
         coordinator.start();
+        supportsBatchSnapshot = coordinator.supportsBatchSnapshot();
     }
 
     @Override
@@ -314,7 +320,7 @@ public class OperatorCoordinatorHolder
                         (success, failure) -> {
                             if (failure != null) {
                                 result.completeExceptionally(failure);
-                            } else if (checkpointId == OperatorCoordinator.NO_CHECKPOINT
+                            } else if (checkpointId == OperatorCoordinator.BATCH_CHECKPOINT_ID
                                     || closeGateways(checkpointId)) {
                                 completeCheckpointOnceEventsAreDone(checkpointId, result, success);
                             } else {

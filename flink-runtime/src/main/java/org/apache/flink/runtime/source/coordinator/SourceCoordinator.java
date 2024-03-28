@@ -77,6 +77,7 @@ import static org.apache.flink.runtime.source.coordinator.SourceCoordinatorSerde
 import static org.apache.flink.runtime.source.coordinator.SourceCoordinatorSerdeUtils.writeCoordinatorSerdeVersion;
 import static org.apache.flink.util.IOUtils.closeQuietly;
 import static org.apache.flink.util.Preconditions.checkArgument;
+import static org.apache.flink.util.Preconditions.checkNotNull;
 import static org.apache.flink.util.Preconditions.checkState;
 
 /**
@@ -376,8 +377,13 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
                 attemptNumber);
     }
 
+    /**
+     * Whether the enumerator supports batch snapshot. Note the enumerator is created either during
+     * resetting the coordinator to a checkpoint, or when the coordinator is started.
+     */
     @Override
     public boolean supportsBatchSnapshot() {
+        checkNotNull(enumerator);
         return enumerator instanceof SupportsBatchSnapshot;
     }
 
@@ -390,15 +396,14 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
                             operatorName,
                             checkpointId);
                     try {
-                        if (checkpointId == NO_CHECKPOINT) {
+                        if (checkpointId == BATCH_CHECKPOINT_ID) {
                             checkState(supportsBatchSnapshot());
                             try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
                                     DataOutputStream out = new DataOutputViewStreamWrapper(baos)) {
                                 // assignments
                                 byte[] assignmentData =
                                         context.getAssignmentTracker()
-                                                .snapshotState(
-                                                        checkpointId, source.getSplitSerializer());
+                                                .snapshotState(source.getSplitSerializer());
                                 out.writeInt(assignmentData.length);
                                 out.write(assignmentData);
 
@@ -474,7 +479,7 @@ public class SourceCoordinator<SplitT extends SourceSplit, EnumChkT>
         final ClassLoader userCodeClassLoader =
                 context.getCoordinatorContext().getUserCodeClassloader();
 
-        if (checkpointId == NO_CHECKPOINT) {
+        if (checkpointId == BATCH_CHECKPOINT_ID) {
             try (TemporaryClassLoaderContext ignored =
                     TemporaryClassLoaderContext.of(userCodeClassLoader)) {
                 try (ByteArrayInputStream bais = new ByteArrayInputStream(checkpointData);

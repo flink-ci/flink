@@ -37,6 +37,8 @@ import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 
+import static org.apache.flink.runtime.operators.coordination.OperatorCoordinator.BATCH_CHECKPOINT_ID;
+
 /**
  * Implementation of the {@link OperatorCoordinator.SubtaskGateway} interface that access to
  * subtasks for status and event sending via {@link SubtaskAccess}.
@@ -185,6 +187,11 @@ class SubtaskGatewayImpl implements OperatorCoordinator.SubtaskGateway {
         if (checkpointId > latestAttemptedCheckpointId) {
             currentMarkedCheckpointIds.add(checkpointId);
             latestAttemptedCheckpointId = checkpointId;
+        } else if (checkpointId != BATCH_CHECKPOINT_ID) {
+            throw new IllegalStateException(
+                    String.format(
+                            "Regressing checkpoint IDs. Previous checkpointId = %d, new checkpointId = %d",
+                            latestAttemptedCheckpointId, checkpointId));
         }
     }
 

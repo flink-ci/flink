@@ -21,10 +21,9 @@ package org.apache.flink.api.connector.source;
 import org.apache.flink.annotation.PublicEvolving;
 
 /**
- * An identifier interface for {@link SplitEnumerator}, which is used to support taking snapshot in
- * no-checkpoint/batch scenarios (for example to support job recovery in batch jobs). Once a {@link
- * SplitEnumerator} implements this interface, its {@link SplitEnumerator#snapshotState} method
- * needs to accept -1 (NO_CHECKPOINT) as the argument.
+ * A decorative interface {@link SplitEnumerator}. Implementing it means the split enumerator {@link
+ * SplitEnumerator#snapshotState} method supports taking snapshot in batch processing scenarios. In
+ * such scenarios, the checkpointId will always be -1.
  */
 @PublicEvolving
 public interface SupportsBatchSnapshot {}

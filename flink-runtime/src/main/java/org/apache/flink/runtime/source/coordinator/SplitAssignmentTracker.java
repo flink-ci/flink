@@ -35,9 +35,6 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import static org.apache.flink.runtime.operators.coordination.OperatorCoordinator.NO_CHECKPOINT;
-import static org.apache.flink.util.Preconditions.checkState;
-
 /**
  * A class that is responsible for tracking the past split assignments made by {@link
  * SplitEnumerator}.
@@ -69,15 +66,10 @@ public class SplitAssignmentTracker<SplitT extends SourceSplit> {
         uncheckpointedAssignments = new HashMap<>();
     }
 
-    /**
-     * Take a snapshot of the split assignments.
-     *
-     * @param checkpointId the id of the ongoing checkpoint
-     */
-    public byte[] snapshotState(
-            long checkpointId, SimpleVersionedSerializer<SplitT> splitSerializer) throws Exception {
-        checkState(checkpointId == NO_CHECKPOINT);
-        return SourceCoordinatorSerdeUtils.writeAssignments(
+    /** Take a snapshot of the split assignments. */
+    public byte[] snapshotState(SimpleVersionedSerializer<SplitT> splitSerializer)
+            throws Exception {
+        return SourceCoordinatorSerdeUtils.serializeAssignments(
                 uncheckpointedAssignments, splitSerializer);
     }
 
@@ -91,9 +83,8 @@ public class SplitAssignmentTracker<SplitT extends SourceSplit> {
     public void restoreState(
             SimpleVersionedSerializer<SplitT> splitSerializer, byte[] assignmentData)
             throws Exception {
-        // Read the split assignments by checkpoint id.
         uncheckpointedAssignments =
-                SourceCoordinatorSerdeUtils.readAssignments(assignmentData, splitSerializer);
+                SourceCoordinatorSerdeUtils.deserializeAssignments(assignmentData, splitSerializer);
     }
 
     /**
