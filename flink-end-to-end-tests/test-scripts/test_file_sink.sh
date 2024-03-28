@@ -74,7 +74,7 @@ elif [ "${OUT_TYPE}" == "s3" ]; then
   # overwrites implementation for local runs
   function get_complete_result {
     # copies the data from S3 to the local OUTPUT_PATH
-    s3_get_by_full_path_and_filename_prefix "$OUTPUT_PATH" "$FILE_SINK_TEST_TEMP_SUBFOLDER" "part-" true
+    s3_get_by_full_path_and_filename_prefix "$OUTPUT_PATH" "$S3_DATA_PREFIX" "part-" true
 
     # and prints the sorted output
     find "${OUTPUT_PATH}" -type f \( -iname "part-*" \) -exec cat {} + | sort -g
@@ -82,7 +82,7 @@ elif [ "${OUT_TYPE}" == "s3" ]; then
 
   # overwrites implementation for local runs
   function get_total_number_of_valid_lines {
-    s3_get_number_of_lines_by_prefix "${FILE_SINK_TEST_TEMP_SUBFOLDER}" "part-"
+    s3_get_number_of_lines_by_prefix "${S3_DATA_PREFIX}" "part-"
   }
 
   # make sure we delete the file at the end
