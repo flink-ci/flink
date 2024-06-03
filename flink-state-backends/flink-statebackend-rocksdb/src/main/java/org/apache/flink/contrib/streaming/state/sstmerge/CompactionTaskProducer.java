@@ -18,6 +18,8 @@
 
 package org.apache.flink.contrib.streaming.state.sstmerge;
 
+import org.apache.flink.shaded.guava31.com.google.common.primitives.UnsignedBytes;
+
 import org.rocksdb.ColumnFamilyHandle;
 import org.rocksdb.LiveFileMetaData;
 import org.rocksdb.RocksDB;
@@ -48,11 +50,12 @@ class CompactionTaskProducer {
 
     private static final Comparator<SstFileMetaData> SST_COMPARATOR =
             (o1, o2) -> {
-                int cfCmp = Arrays.compare(o1.columnFamilyName(), o2.columnFamilyName());
+                Comparator<byte[]> cmp = UnsignedBytes.lexicographicalComparator();
+                int cfCmp = cmp.compare(o1.columnFamilyName(), o2.columnFamilyName());
                 if (cfCmp != 0) {
                     return cfCmp;
                 } else {
-                    return Arrays.compare(o1.smallestKey(), o2.smallestKey());
+                    return cmp.compare(o1.smallestKey(), o2.smallestKey());
                 }
             };
 
