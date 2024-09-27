@@ -31,7 +31,7 @@ import java.io.File;
  * HashMapStateBackend}.
  */
 @ExtendWith(NoOpTestExtension.class)
-public class FileStateBackendMigrationTest
+public class HashMapStateBackendWithFsStorageMigrationTest
         extends StateBackendMigrationTestBase<HashMapStateBackend> {
 
     @Override
