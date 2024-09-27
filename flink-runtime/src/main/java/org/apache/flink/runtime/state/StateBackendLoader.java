@@ -82,7 +82,8 @@ public class StateBackendLoader {
      * factory is instantiated (via its zero-argument constructor) and its {@link
      * StateBackendFactory#createFromConfig(ReadableConfig, ClassLoader)} method is called.
      *
-     * <p>Recognized shortcut names are '{@value StateBackendLoader#HASHMAP_STATE_BACKEND_NAME}'
+     * <p>Recognized shortcut names are '{@value StateBackendLoader#HASHMAP_STATE_BACKEND_NAME}',
+     * '{@value StateBackendLoader#ROCKSDB_STATE_BACKEND_NAME}'
      *
      * @param config The configuration to load the state backend from
      * @param classLoader The class loader that should be used to load the state backend
