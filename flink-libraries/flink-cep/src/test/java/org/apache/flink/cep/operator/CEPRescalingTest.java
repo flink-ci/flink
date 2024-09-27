@@ -427,7 +427,7 @@ public class CEPRescalingTest {
                         maxParallelism,
                         taskParallelism,
                         subtaskIdx);
-        harness.setStateBackend(new EmbeddedRocksDBStateBackend(TernaryBoolean.TRUE));
+        harness.setStateBackend(new EmbeddedRocksDBStateBackend());
         harness.setCheckpointStorage(new JobManagerCheckpointStorage());
         return harness;
     }
