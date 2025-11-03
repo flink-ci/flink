@@ -71,6 +71,8 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
 
     private final boolean enableCheckpointsAfterTasksFinish;
 
+    private final boolean unalignedAllowOnRecovery;
+
     /**
      * @deprecated use {@link #builder()}.
      */
@@ -98,6 +100,7 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
                 isUnalignedCheckpoint,
                 0,
                 checkpointIdOfIgnoredInFlightData,
+                false,
                 false);
     }
 
@@ -113,7 +116,8 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
             boolean isUnalignedCheckpointsEnabled,
             long alignedCheckpointTimeout,
             long checkpointIdOfIgnoredInFlightData,
-            boolean enableCheckpointsAfterTasksFinish) {
+            boolean enableCheckpointsAfterTasksFinish,
+            boolean unalignedAllowOnRecovery) {
 
         if (checkpointIntervalDuringBacklog < MINIMAL_CHECKPOINT_TIME) {
             // interval of max value means disable periodic checkpoint
@@ -144,6 +148,7 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
         this.alignedCheckpointTimeout = alignedCheckpointTimeout;
         this.checkpointIdOfIgnoredInFlightData = checkpointIdOfIgnoredInFlightData;
         this.enableCheckpointsAfterTasksFinish = enableCheckpointsAfterTasksFinish;
+        this.unalignedAllowOnRecovery = unalignedAllowOnRecovery;
     }
 
     public long getCheckpointInterval() {
@@ -198,6 +203,10 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
         return enableCheckpointsAfterTasksFinish;
     }
 
+    public boolean isUnalignedAllowOnRecovery() {
+        return unalignedAllowOnRecovery;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -217,7 +226,8 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
                 && checkpointRetentionPolicy == that.checkpointRetentionPolicy
                 && tolerableCheckpointFailureNumber == that.tolerableCheckpointFailureNumber
                 && checkpointIdOfIgnoredInFlightData == that.checkpointIdOfIgnoredInFlightData
-                && enableCheckpointsAfterTasksFinish == that.enableCheckpointsAfterTasksFinish;
+                && enableCheckpointsAfterTasksFinish == that.enableCheckpointsAfterTasksFinish
+                && unalignedAllowOnRecovery == that.unalignedAllowOnRecovery;
     }
 
     @Override
@@ -233,7 +243,8 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
                 alignedCheckpointTimeout,
                 tolerableCheckpointFailureNumber,
                 checkpointIdOfIgnoredInFlightData,
-                enableCheckpointsAfterTasksFinish);
+                enableCheckpointsAfterTasksFinish,
+                unalignedAllowOnRecovery);
     }
 
     @Override
@@ -261,6 +272,8 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
                 + checkpointIdOfIgnoredInFlightData
                 + ", enableCheckpointsAfterTasksFinish="
                 + enableCheckpointsAfterTasksFinish
+                + ", unalignedAllowOnRecovery="
+                + unalignedAllowOnRecovery
                 + '}';
     }
 
@@ -283,6 +296,7 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
         private long alignedCheckpointTimeout = 0;
         private long checkpointIdOfIgnoredInFlightData;
         private boolean enableCheckpointsAfterTasksFinish;
+        private boolean unalignedAllowOnRecovery;
 
         public CheckpointCoordinatorConfiguration build() {
             return new CheckpointCoordinatorConfiguration(
@@ -297,7 +311,8 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
                     isUnalignedCheckpointsEnabled,
                     alignedCheckpointTimeout,
                     checkpointIdOfIgnoredInFlightData,
-                    enableCheckpointsAfterTasksFinish);
+                    enableCheckpointsAfterTasksFinish,
+                    unalignedAllowOnRecovery);
         }
 
         public CheckpointCoordinatorConfigurationBuilder setCheckpointInterval(
@@ -368,6 +383,12 @@ public class CheckpointCoordinatorConfiguration implements Serializable {
         public CheckpointCoordinatorConfigurationBuilder setEnableCheckpointsAfterTasksFinish(
                 boolean enableCheckpointsAfterTasksFinish) {
             this.enableCheckpointsAfterTasksFinish = enableCheckpointsAfterTasksFinish;
+            return this;
+        }
+
+        public CheckpointCoordinatorConfigurationBuilder setUnalignedAllowOnRecovery(
+                boolean unalignedAllowOnRecovery) {
+            this.unalignedAllowOnRecovery = unalignedAllowOnRecovery;
             return this;
         }
     }

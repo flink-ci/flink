@@ -64,6 +64,7 @@ import static org.apache.flink.changelog.fs.FsStateChangelogOptions.PREEMPTIVE_P
 import static org.apache.flink.configuration.CheckpointingOptions.CHECKPOINTS_DIRECTORY;
 import static org.apache.flink.configuration.CheckpointingOptions.CHECKPOINT_STORAGE;
 import static org.apache.flink.configuration.CheckpointingOptions.FILE_MERGING_ENABLED;
+import static org.apache.flink.configuration.CheckpointingOptions.UNALIGNED_RECOVER_OUTPUT_ON_DOWNSTREAM;
 import static org.apache.flink.configuration.CoreOptions.DEFAULT_PARALLELISM;
 import static org.apache.flink.configuration.ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION;
 import static org.apache.flink.configuration.RestartStrategyOptions.RESTART_STRATEGY;
@@ -95,6 +96,9 @@ public class ChangelogRecoveryCachingITCase extends TestLogger {
 
         Configuration configuration = new Configuration();
         configuration.set(CACHE_IDLE_TIMEOUT, Duration.ofDays(365)); // cache forever
+        // Disable UNALIGNED_ALLOW_ON_RECOVERY since the output buffer states file may be opened
+        // from multiple subtasks
+        configuration.set(UNALIGNED_RECOVER_OUTPUT_ON_DOWNSTREAM, false);
 
         FsStateChangelogStorageFactory.configure(
                 configuration, tmpFolder, Duration.ofMinutes(1), 10);
