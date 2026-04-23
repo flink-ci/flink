@@ -20,6 +20,8 @@ package org.apache.flink.test.plugin;
 
 import org.apache.flink.core.plugin.DefaultPluginManager;
 import org.apache.flink.core.plugin.DirectoryBasedPluginFinder;
+import org.apache.flink.core.plugin.Plugin;
+import org.apache.flink.core.plugin.PluginContext;
 import org.apache.flink.core.plugin.PluginDescriptor;
 import org.apache.flink.core.plugin.PluginFinder;
 import org.apache.flink.core.plugin.PluginManager;
@@ -102,6 +104,104 @@ class DefaultPluginManagerTest extends PluginTestBase {
         for (OtherTestSpi otherTestSpi : otherServiceImplList) {
             assertThat(otherTestSpi.otherTestMethod()).isNotNull();
             assertThat(classLoaders.add(otherTestSpi.getClass().getClassLoader())).isFalse();
+        }
+    }
+
+    @Test
+    void testLoadReturnsSingletonInstances() {
+        String[] parentPatterns = {TestSpi.class.getName(), OtherTestSpi.class.getName()};
+        final DefaultPluginManager pluginManager =
+                new DefaultPluginManager(descriptors, PARENT_CLASS_LOADER, parentPatterns);
+
+        final List<TestSpi> firstLoad = Lists.newArrayList(pluginManager.load(TestSpi.class));
+        final List<TestSpi> secondLoad = Lists.newArrayList(pluginManager.load(TestSpi.class));
+
+        assertThat(firstLoad).hasSize(2);
+        assertThat(secondLoad).hasSize(2);
+
+        final Set<TestSpi> firstLoadIdentitySet = Collections.newSetFromMap(new IdentityHashMap<>());
+        firstLoadIdentitySet.addAll(firstLoad);
+        for (TestSpi instance : secondLoad) {
+            assertThat(firstLoadIdentitySet).contains(instance);
+        }
+    }
+
+    @Test
+    void testOpenDispatchesContextToCachedPlugins() {
+        final DefaultPluginManager pluginManager =
+                new DefaultPluginManager(Collections.emptyList(), new String[0]);
+
+        final TrackingPlugin plugin = new TrackingPlugin();
+        pluginManager.injectForTesting(Plugin.class, plugin);
+
+        final PluginContext context = new PluginContext("test-task-manager-id");
+        pluginManager.open(context);
+
+        assertThat(plugin.openCalled).isTrue();
+        assertThat(plugin.openContext).isSameAs(context);
+    }
+
+    @Test
+    void testCloseDispatchesToCachedPlugins() {
+        final DefaultPluginManager pluginManager =
+                new DefaultPluginManager(Collections.emptyList(), new String[0]);
+
+        final TrackingPlugin plugin = new TrackingPlugin();
+        pluginManager.injectForTesting(Plugin.class, plugin);
+
+        pluginManager.close();
+
+        assertThat(plugin.closeCalled).isTrue();
+    }
+
+    @Test
+    void testOpenAndCloseOnEmptyCache() {
+        final DefaultPluginManager pluginManager =
+                new DefaultPluginManager(Collections.emptyList(), new String[0]);
+        final PluginContext context = new PluginContext("test-task-manager-id");
+        // should complete without exception when cache is empty
+        pluginManager.open(context);
+        pluginManager.close();
+    }
+
+    @Test
+    void testOpenAndCloseDispatchToAllCachedInstances() {
+        final DefaultPluginManager pluginManager =
+                new DefaultPluginManager(Collections.emptyList(), new String[0]);
+
+        final TrackingPlugin pluginA = new TrackingPlugin();
+        final TrackingPlugin pluginB = new TrackingPlugin();
+        pluginManager.injectForTesting(Plugin.class, pluginA);
+        pluginManager.injectForTesting(Plugin.class, pluginB);
+
+        final PluginContext context = new PluginContext("test-task-manager-id");
+        pluginManager.open(context);
+
+        assertThat(pluginA.openCalled).isTrue();
+        assertThat(pluginA.openContext).isSameAs(context);
+        assertThat(pluginB.openCalled).isTrue();
+        assertThat(pluginB.openContext).isSameAs(context);
+
+        pluginManager.close();
+
+        assertThat(pluginA.closeCalled).isTrue();
+        assertThat(pluginB.closeCalled).isTrue();
+    }
+
+    private static class TrackingPlugin implements Plugin {
+        boolean openCalled;
+        PluginContext openContext;
+        boolean closeCalled;
+
+        @Override
+        public void open(PluginContext context) {
+            openCalled = true;
+            openContext = context;
+        }
+
+        @Override
+        public void close() {
+            closeCalled = true;
         }
     }
 
