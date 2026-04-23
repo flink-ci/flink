@@ -25,7 +25,6 @@ import org.apache.flink.util.Preconditions;
  * Context information provided to plugins at initialization time, including the ID of the task
  * manager that hosts the plugin.
  */
-@PublicEvolving
 public class PluginContext {
     private final String taskManagerId;
 

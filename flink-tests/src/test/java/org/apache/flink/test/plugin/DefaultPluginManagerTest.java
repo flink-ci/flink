@@ -119,7 +119,8 @@ class DefaultPluginManagerTest extends PluginTestBase {
         assertThat(firstLoad).hasSize(2);
         assertThat(secondLoad).hasSize(2);
 
-        final Set<TestSpi> firstLoadIdentitySet = Collections.newSetFromMap(new IdentityHashMap<>());
+        final Set<TestSpi> firstLoadIdentitySet =
+                Collections.newSetFromMap(new IdentityHashMap<>());
         firstLoadIdentitySet.addAll(firstLoad);
         for (TestSpi instance : secondLoad) {
             assertThat(firstLoadIdentitySet).contains(instance);
