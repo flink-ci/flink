@@ -321,7 +321,7 @@ object FlinkStreamRuleSets {
     FlinkSemiAntiJoinFilterTransposeRule.INSTANCE,
 
     // set operators
-    ReplaceIntersectWithSemiJoinRule.INSTANCE,
+    CoreRules.INTERSECT_TO_SEMI_JOIN,
     RewriteIntersectAllRule.INSTANCE,
     MinusToAntiJoinRule.Config.DEFAULT.withOperandFor(classOf[LogicalMinus]).toRule,
     RewriteMinusAllRule.INSTANCE
