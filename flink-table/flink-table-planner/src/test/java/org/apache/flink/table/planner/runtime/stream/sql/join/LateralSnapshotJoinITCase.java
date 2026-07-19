@@ -35,7 +35,6 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -45,16 +44,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThatList;
 
 /**
- * End-to-end result tests for the {@code LATERAL SNAPSHOT} processing-time temporal table join.
+ * Result tests for the {@code LATERAL SNAPSHOT} processing-time temporal join that are
+ * non-deterministic or benefit from dual-backend (HEAP/ROCKSDB) coverage. Deterministic,
+ * backend-agnostic cases live in {@code LateralSnapshotJoinSemanticTests}; time-driven behavior
+ * (idle-timeout flip, state-TTL eviction) in {@code LateralSnapshotJoinOperatorTest}.
  *
- * <p>Processing-time semantics make the join non-deterministic in general. To get stable results,
- * each build source appends a non-matching "flip-trigger" row at the flip timestamp ({@link
- * #MID_FLIP}) while all real build rows are earlier. With per-record ({@code on-event}) watermarks
- * the operator flips to the JOIN phase.
- *
- * <p>Some tests throttle source emission ({@code source.sleep-*}) to place probes deterministically
- * around the flip. Purely processing-time-driven behavior (idle-timeout flip, state-TTL eviction)
- * is covered deterministically by {@code LateralSnapshotJoinOperatorTest}.
+ * <p>To stabilize results, each build source appends a non-matching "flip-trigger" row at {@link
+ * #MID_FLIP} (after all real rows); its per-record watermark flips the operator to the JOIN phase.
  */
 @ExtendWith(ParameterizedTestExtension.class)
 public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
@@ -63,11 +59,6 @@ public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
     private static final String MID_FLIP =
             "load_completed_condition => 'user_time', "
                     + "load_completed_time => CAST(TIMESTAMP '2020-01-01 00:00:10' AS TIMESTAMP_LTZ(3))";
-
-    /** A far-future flip condition: the flip happens only at end of all input. */
-    private static final String END_FLIP =
-            "load_completed_condition => 'user_time', "
-                    + "load_completed_time => CAST(TIMESTAMP '2100-01-01 00:00:00' AS TIMESTAMP_LTZ(3))";
 
     /** Event time of the flip-trigger row; equal to the {@link #MID_FLIP} timestamp. */
     private static final String FLIP_TRIGGER_TS = "00:00:10";
@@ -94,144 +85,6 @@ public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
                     {StreamingWithStateTestBase.HEAP_BACKEND()},
                     {StreamingWithStateTestBase.ROCKSDB_BACKEND()}
                 });
-    }
-
-    // ------------------------------------------------------------------------------------------
-    // Core join semantics
-    // ------------------------------------------------------------------------------------------
-
-    @TestTemplate
-    void testInnerJoin() {
-        // Throttle the probe so the fast build flips first; the probes are then joined live in the
-        // JOIN phase (the build-side is finalized, so buffered-vs-live does not change the result).
-        createProbe(defaultProbe(), 40L);
-        createAppendBuild(defaultBuild());
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pk, probe.pv, s.bk, s.bv "
-                                + "FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-
-        assertThatList(actual)
-                .containsExactlyInAnyOrder(
-                        Row.of("a", 100, "a", 10),
-                        Row.of("a", 100, "a", 11),
-                        Row.of("b", 200, "b", 20));
-    }
-
-    @TestTemplate
-    void testLeftJoin() {
-        createProbe(defaultProbe(), 40L);
-        createAppendBuild(defaultBuild());
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pk, probe.pv, s.bk, s.bv "
-                                + "FROM probe LEFT JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-
-        assertThatList(actual)
-                .containsExactlyInAnyOrder(
-                        Row.of("a", 100, "a", 10),
-                        Row.of("a", 100, "a", 11),
-                        Row.of("b", 200, "b", 20),
-                        Row.of("c", 300, null, null));
-    }
-
-    @TestTemplate
-    void testSelectStarMaterializesBuildRowtime() {
-        createProbe(List.of(Row.of("a", 100, ts("00:01:00"))));
-        createAppendBuild(List.of(Row.of("a", 10, ts("00:00:01"))));
-
-        // SELECT * yields probe columns then build columns; the build rowtime is materialized as a
-        // regular TIMESTAMP(3), not a time attribute.
-        final List<Row> actual =
-                collect(
-                        "SELECT * FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-
-        assertThatList(actual)
-                .containsExactlyInAnyOrder(
-                        Row.of(
-                                "a",
-                                100,
-                                LocalDateTime.parse("2020-01-01T00:01:00"),
-                                "a",
-                                10,
-                                LocalDateTime.parse("2020-01-01T00:00:01")));
-    }
-
-    @TestTemplate
-    void testCompositeKeys() {
-        createProbe(
-                Arrays.asList(
-                        Row.of("a", 10, ts("00:01:00")),
-                        Row.of("a", 11, ts("00:01:01")),
-                        Row.of("z", 10, ts("00:01:01")),
-                        Row.of("b", 20, ts("00:01:02"))));
-        createAppendBuild(
-                Arrays.asList(
-                        Row.of("a", 10, ts("00:00:01")),
-                        Row.of("a", 99, ts("00:00:02")),
-                        Row.of("b", 20, ts("00:00:03"))));
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pk, probe.pv, s.bk, s.bv "
-                                + "FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk AND probe.pv = s.bv");
-
-        assertThatList(actual)
-                .containsExactlyInAnyOrder(Row.of("a", 10, "a", 10), Row.of("b", 20, "b", 20));
-    }
-
-    @TestTemplate
-    void testNonEquiCondition() {
-        createProbe(Arrays.asList(Row.of("a", 15, ts("00:01:00")), Row.of("a", 5, ts("00:01:01"))));
-        createAppendBuild(
-                Arrays.asList(Row.of("a", 10, ts("00:00:01")), Row.of("a", 20, ts("00:00:02"))));
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pk, probe.pv, s.bv "
-                                + "FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk AND probe.pv > s.bv");
-
-        assertThatList(actual).containsExactlyInAnyOrder(Row.of("a", 15, 10));
-    }
-
-    @TestTemplate
-    void testEmptyBuildSide() {
-        createProbe(defaultProbe());
-        createAppendBuild(Collections.emptyList());
-
-        final List<Row> inner =
-                collect(
-                        "SELECT probe.pk, s.bk FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-        assertThatList(inner).isEmpty();
-
-        final List<Row> left =
-                collect(
-                        "SELECT probe.pk, s.bk FROM probe LEFT JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-        assertThatList(left)
-                .containsExactlyInAnyOrder(Row.of("a", null), Row.of("b", null), Row.of("c", null));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -284,115 +137,8 @@ public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
     }
 
     // ------------------------------------------------------------------------------------------
-    // Flip timing (when LOAD flips to JOIN, and probe placement around the flip)
+    // Non-deterministic behavior (asserted with tolerant checks)
     // ------------------------------------------------------------------------------------------
-
-    @TestTemplate
-    void testInnerJoinFlipsAtEndOfInput() {
-        // Far-future flip condition: the operator stays in LOAD and flips only at end-of-input,
-        // buffering and draining every probe. The frozen snapshot and result match the mid-flip
-        // case.
-        createProbe(defaultProbe());
-        createAppendBuild(defaultBuild());
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pk, probe.pv, s.bk, s.bv "
-                                + "FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + END_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-
-        assertThatList(actual)
-                .containsExactlyInAnyOrder(
-                        Row.of("a", 100, "a", 10),
-                        Row.of("a", 100, "a", 11),
-                        Row.of("b", 200, "b", 20));
-    }
-
-    @TestTemplate
-    void testDefaultCompileTimeCondition() {
-        // No options: 'load_completed_condition' defaults to 'compile_time', so the flip ts is the
-        // wall-clock time at planning. The 2020 build watermarks never reach it, so the flip
-        // happens at end-of-input.
-        createProbe(defaultProbe());
-        createAppendBuild(defaultBuild());
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pk, probe.pv, s.bk, s.bv "
-                                + "FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b"
-                                + ")) AS s ON probe.pk = s.bk");
-
-        assertThatList(actual)
-                .containsExactlyInAnyOrder(
-                        Row.of("a", 100, "a", 10),
-                        Row.of("a", 100, "a", 11),
-                        Row.of("b", 200, "b", 20));
-    }
-
-    @TestTemplate
-    void testProbesJoinedLiveInJoinPhase() {
-        // Fast build flips almost immediately; the throttled probe stream is consumed entirely in
-        // the JOIN phase, exercising the live per-record path (including a non-matching key). The
-        // snapshot is static after the flip, so the result is deterministic.
-        final List<Row> probes =
-                Arrays.asList(
-                        Row.of("a", 1, ts("00:00:01")),
-                        Row.of("b", 2, ts("00:00:02")),
-                        Row.of("c", 3, ts("00:00:03")), // non-matching
-                        Row.of("a", 4, ts("00:00:04")),
-                        Row.of("b", 5, ts("00:00:05")),
-                        Row.of("c", 6, ts("00:00:06"))); // non-matching
-        createProbe(probes, 40L);
-        createAppendBuild(
-                Arrays.asList(Row.of("a", 10, ts("00:00:01")), Row.of("b", 20, ts("00:00:02"))));
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pv, probe.pk, s.bv FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-
-        assertThatList(actual)
-                .containsExactlyInAnyOrder(
-                        Row.of(1, "a", 10),
-                        Row.of(4, "a", 10),
-                        Row.of(2, "b", 20),
-                        Row.of(5, "b", 20));
-    }
-
-    @TestTemplate
-    void testManyProbesBufferedDuringLoadThenDrained() {
-        // Throttled build flips at ~240 ms, by which time the un-throttled probe stream is fully
-        // buffered in LOAD. The flip drains all buffered probes against the final loaded version;
-        // all must match and none may be lost.
-        final int probeCount = 20;
-        final List<Row> probes = new ArrayList<>();
-        for (int i = 1; i <= probeCount; i++) {
-            probes.add(Row.of("k", i, ts(String.format("00:00:%02d", i))));
-        }
-        createProbe(probes); // un-throttled: buffered within a few ms, long before the flip
-        createUpsertBuild(
-                Arrays.asList(
-                        Row.ofKind(RowKind.INSERT, "k", 1, ts("00:00:01")),
-                        Row.ofKind(RowKind.UPDATE_AFTER, "k", 2, ts("00:00:02")),
-                        Row.ofKind(RowKind.UPDATE_AFTER, "k", 3, ts("00:00:05")),
-                        Row.ofKind(RowKind.INSERT, FLIP_TRIGGER_KEY, 0, ts(FLIP_TRIGGER_TS))),
-                80L); // ~240 ms until the flip trigger row is emitted
-
-        final List<Row> actual =
-                collect(
-                        "SELECT probe.pv, s.bv FROM probe JOIN LATERAL TABLE(SNAPSHOT("
-                                + "input => TABLE b, "
-                                + MID_FLIP
-                                + ")) AS s ON probe.pk = s.bk");
-
-        assertThat(actual).hasSize(probeCount);
-        assertThat(actual).allSatisfy(r -> assertThat(r.getField(1)).isEqualTo(3));
-    }
 
     @TestTemplate
     void testProbesObserveProgressiveBuildVersions() {
@@ -433,20 +179,6 @@ public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
     // Helpers
     // ------------------------------------------------------------------------------------------
 
-    private List<Row> defaultProbe() {
-        return Arrays.asList(
-                Row.of("a", 100, ts("00:01:00")),
-                Row.of("b", 200, ts("00:01:01")),
-                Row.of("c", 300, ts("00:01:02")));
-    }
-
-    private List<Row> defaultBuild() {
-        return Arrays.asList(
-                Row.of("a", 10, ts("00:00:01")),
-                Row.of("b", 20, ts("00:00:02")),
-                Row.of("a", 11, ts("00:00:03")));
-    }
-
     private List<Row> collect(String query) {
         return CollectionUtil.iteratorToList(tEnv().executeSql(query).collect());
     }
@@ -475,19 +207,6 @@ public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
                                 + "  WATERMARK FOR pts AS pts"
                                 + ") WITH ("
                                 + valuesOptions(id, sleepMillis)
-                                + ")");
-    }
-
-    private void createAppendBuild(List<Row> data) {
-        final String id = TestValuesTableFactory.registerData(withFlipTrigger(data));
-        tEnv().executeSql(
-                        "CREATE TABLE b ("
-                                + "  bk STRING,"
-                                + "  bv INT,"
-                                + "  bts TIMESTAMP(3),"
-                                + "  WATERMARK FOR bts AS bts"
-                                + ") WITH ("
-                                + valuesOptions(id, 0L)
                                 + ")");
     }
 
