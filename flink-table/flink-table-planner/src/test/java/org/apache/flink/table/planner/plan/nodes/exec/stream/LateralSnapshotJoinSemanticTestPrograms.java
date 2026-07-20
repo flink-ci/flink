@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.planner.plan.nodes.exec.stream;
 
-import org.apache.flink.table.api.config.TableConfigOptions;
 import org.apache.flink.table.test.program.SinkTestStep;
 import org.apache.flink.table.test.program.SourceTestStep;
 import org.apache.flink.table.test.program.TableTestProgram;
@@ -76,7 +75,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
 
     public static final TableTestProgram INNER_JOIN =
             TableTestProgram.of("lateral-snapshot-inner-join", "LATERAL SNAPSHOT inner join")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     // Throttle the probe so the fast build flips first; the probes are then joined
                     // live in the JOIN phase (the build-side is finalized, so buffered-vs-live does
                     // not change the result).
@@ -96,7 +94,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
 
     public static final TableTestProgram LEFT_JOIN =
             TableTestProgram.of("lateral-snapshot-left-join", "LATERAL SNAPSHOT left join")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(throttledProbe(defaultProbe(), 40L))
                     .setupTableSource(appendBuild(withFlipTrigger(defaultBuild())))
                     .setupTableSink(
@@ -114,7 +111,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-select-star",
                             "SELECT * materializes the build-side rowtime as a regular TIMESTAMP")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(probe(List.of(Row.of("a", 100, ts("00:01:00")))))
                     .setupTableSource(
                             appendBuild(withFlipTrigger(List.of(Row.of("a", 10, ts("00:00:01"))))))
@@ -140,7 +136,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
 
     public static final TableTestProgram COMPOSITE_KEYS =
             TableTestProgram.of("lateral-snapshot-composite-keys", "join on composite keys")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(
                             probe(
                                     Arrays.asList(
@@ -168,7 +163,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
 
     public static final TableTestProgram NON_EQUI =
             TableTestProgram.of("lateral-snapshot-non-equi", "join with a non-equi condition")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(
                             probe(
                                     Arrays.asList(
@@ -197,7 +191,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-empty-build-inner",
                             "inner join over an empty build side yields no rows")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(probe(defaultProbe()))
                     .setupTableSource(appendBuild(withFlipTrigger(List.of())))
                     .setupTableSink(
@@ -213,7 +206,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-empty-build-left",
                             "left join over an empty build side preserves the probe rows")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(probe(defaultProbe()))
                     .setupTableSource(appendBuild(withFlipTrigger(List.of())))
                     .setupTableSink(
@@ -233,7 +225,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-flip-at-end",
                             "far-future flip condition: the operator flips only at end-of-input")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(probe(defaultProbe()))
                     .setupTableSource(appendBuild(withFlipTrigger(defaultBuild())))
                     .setupTableSink(
@@ -252,7 +243,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-default-compile-time",
                             "default 'compile_time' condition flips at end-of-input for 2020 data")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(probe(defaultProbe()))
                     .setupTableSource(appendBuild(withFlipTrigger(defaultBuild())))
                     .setupTableSink(
@@ -274,7 +264,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-live-join",
                             "probes are joined live per-record in the JOIN phase")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     // Fast build flips almost immediately; the throttled probe stream is consumed
                     // entirely in the JOIN phase (including non-matching keys c). The snapshot is
                     // static after the flip, so the result is deterministic.
@@ -311,7 +300,6 @@ public class LateralSnapshotJoinSemanticTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-buffered-then-drained",
                             "probes buffered during LOAD are drained against the final version")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     // Un-throttled: buffered within a few ms, long before the flip.
                     .setupTableSource(probe(manyProbes(20)))
                     // Throttled build flips at ~240 ms, by which time the probe stream is fully

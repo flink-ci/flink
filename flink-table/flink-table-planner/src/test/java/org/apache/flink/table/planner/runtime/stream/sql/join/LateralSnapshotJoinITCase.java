@@ -18,6 +18,9 @@
 
 package org.apache.flink.table.planner.runtime.stream.sql.join;
 
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.Schema;
+import org.apache.flink.table.api.TableDescriptor;
 import org.apache.flink.table.planner.factories.TestValuesTableFactory;
 import org.apache.flink.table.planner.runtime.utils.StreamingWithStateTestBase;
 import org.apache.flink.testutils.junit.extensions.parameterized.ParameterizedTestExtension;
@@ -199,28 +202,30 @@ public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
 
     private void createProbe(List<Row> data, long sleepMillis) {
         final String id = TestValuesTableFactory.registerData(data);
-        tEnv().executeSql(
-                        "CREATE TABLE probe ("
-                                + "  pk STRING,"
-                                + "  pv INT,"
-                                + "  pts TIMESTAMP(3),"
-                                + "  WATERMARK FOR pts AS pts"
-                                + ") WITH ("
-                                + valuesOptions(id, sleepMillis)
-                                + ")");
+        final Schema schema =
+                Schema.newBuilder()
+                        .column("pk", DataTypes.STRING())
+                        .column("pv", DataTypes.INT())
+                        .column("pts", DataTypes.TIMESTAMP(3))
+                        .watermark("pts", "pts")
+                        .build();
+        tEnv().createTable("probe", valuesDescriptor(schema, id, sleepMillis).build());
     }
 
     private void createChangelogBuild(List<Row> data) {
         final String id = TestValuesTableFactory.registerData(withFlipTrigger(data));
-        tEnv().executeSql(
-                        "CREATE TABLE b ("
-                                + "  bk STRING,"
-                                + "  bv INT,"
-                                + "  bts TIMESTAMP(3),"
-                                + "  WATERMARK FOR bts AS bts"
-                                + ") WITH ("
-                                + valuesOptions(id, 0L, "'changelog-mode' = 'I,UB,UA,D'")
-                                + ")");
+        final Schema schema =
+                Schema.newBuilder()
+                        .column("bk", DataTypes.STRING())
+                        .column("bv", DataTypes.INT())
+                        .column("bts", DataTypes.TIMESTAMP(3))
+                        .watermark("bts", "bts")
+                        .build();
+        tEnv().createTable(
+                        "b",
+                        valuesDescriptor(schema, id, 0L)
+                                .option("changelog-mode", "I,UB,UA,D")
+                                .build());
     }
 
     private void createUpsertBuild(List<Row> data) {
@@ -229,34 +234,37 @@ public class LateralSnapshotJoinITCase extends StreamingWithStateTestBase {
 
     private void createUpsertBuild(List<Row> data, long sleepMillis) {
         final String id = TestValuesTableFactory.registerData(data);
-        tEnv().executeSql(
-                        "CREATE TABLE b ("
-                                + "  bk STRING,"
-                                + "  bv INT,"
-                                + "  bts TIMESTAMP(3),"
-                                + "  WATERMARK FOR bts AS bts,"
-                                + "  PRIMARY KEY (bk) NOT ENFORCED"
-                                + ") WITH ("
-                                + valuesOptions(id, sleepMillis, "'changelog-mode' = 'I,UA,D'")
-                                + ")");
+        final Schema schema =
+                Schema.newBuilder()
+                        .column("bk", DataTypes.STRING().notNull())
+                        .column("bv", DataTypes.INT())
+                        .column("bts", DataTypes.TIMESTAMP(3))
+                        .watermark("bts", "bts")
+                        .primaryKey("bk")
+                        .build();
+        tEnv().createTable(
+                        "b",
+                        valuesDescriptor(schema, id, sleepMillis)
+                                .option("changelog-mode", "I,UA,D")
+                                .build());
     }
 
-    private static String valuesOptions(String id, long sleepMillis, String... extraOptions) {
-        final StringBuilder options =
-                new StringBuilder()
-                        .append("  'connector' = 'values',")
-                        .append("  'bounded' = 'false',")
-                        .append("  'disable-lookup' = 'true',")
-                        .append("  'enable-watermark-push-down' = 'true',")
-                        .append("  'scan.watermark.emit.strategy' = 'on-event',");
-        for (String extra : extraOptions) {
-            options.append(String.format("  %s,", extra));
-        }
+    private static TableDescriptor.Builder valuesDescriptor(
+            Schema schema, String id, long sleepMillis) {
+        final TableDescriptor.Builder descriptor =
+                TableDescriptor.forConnector("values")
+                        .schema(schema)
+                        .option("bounded", "false")
+                        .option("disable-lookup", "true")
+                        .option("enable-watermark-push-down", "true")
+                        .option("scan.watermark.emit.strategy", "on-event")
+                        .option("data-id", id);
         if (sleepMillis > 0) {
-            options.append("  'source.sleep-after-elements' = '1',")
-                    .append(String.format("  'source.sleep-time' = '%sms',", sleepMillis));
+            descriptor
+                    .option("source.sleep-after-elements", "1")
+                    .option("source.sleep-time", sleepMillis + "ms");
         }
-        return options.append(String.format("  'data-id' = '%s'", id)).toString();
+        return descriptor;
     }
 
     /** Sorts join results (pv, bv) by the probe id pv, i.e. into probe processing order. */

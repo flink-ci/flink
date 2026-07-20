@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.planner.plan.nodes.exec.stream;
 
-import org.apache.flink.table.api.config.TableConfigOptions;
 import org.apache.flink.table.test.program.SinkTestStep;
 import org.apache.flink.table.test.program.SourceTestStep;
 import org.apache.flink.table.test.program.TableTestProgram;
@@ -111,7 +110,6 @@ public class LateralSnapshotJoinTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-join-load-phase",
                             "validates a LATERAL SNAPSHOT inner join restored from a LOAD-phase savepoint")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(
                             SourceTestStep.newBuilder("probe")
                                     .addSchema(PROBE_SCHEMA)
@@ -150,7 +148,6 @@ public class LateralSnapshotJoinTestPrograms {
             TableTestProgram.of(
                             "lateral-snapshot-join-inner",
                             "validates a LATERAL SNAPSHOT inner join across a restore")
-                    .setupConfig(TableConfigOptions.LOCAL_TIME_ZONE, "UTC")
                     .setupTableSource(
                             SourceTestStep.newBuilder("probe")
                                     .addSchema(PROBE_SCHEMA)
