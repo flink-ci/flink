@@ -334,18 +334,18 @@ public final class StateTableUtils {
         }
         if (windowType == null) {
             schemaBuilder.primaryKeyNamed("PK_state_key", "state_key");
+        } else {
+            schemaBuilder.primaryKeyNamed("PK_state_key_state_window", "state_key", "state_window");
         }
-        // No formal PK on the window table: Flink's PK validation for arbitrary (including
-        // zero-field) ROW columns like state_window is unreliable. Row identity is still
-        // conceptually (state_key, state_window).
         Schema schema = schemaBuilder.build();
 
-        Map<String, String> options = buildBaseConnectorOptions(statePath, operatorIdentifier);
-        if (windowType != null) {
-            options.put(
-                    SavepointConnectorOptions.STATE_READER_MODE.key(),
-                    SavepointConnectorOptions.StateReaderMode.WINDOWED.toString());
-        }
+        Map<String, String> options =
+                buildBaseConnectorOptions(
+                        statePath,
+                        operatorIdentifier,
+                        windowType == null
+                                ? SavepointConnectorOptions.StateReaderMode.KEYED
+                                : SavepointConnectorOptions.StateReaderMode.WINDOWED);
         withStateBackendType(options, metadata, operatorIdentifier);
 
         return CatalogTable.newBuilder().schema(schema).options(options).build();
@@ -423,13 +423,13 @@ public final class StateTableUtils {
         }
         Schema schema = schemaBuilder.build();
 
-        Map<String, String> options = buildBaseConnectorOptions(statePath, operatorIdentifier);
-        options.put(
-                SavepointConnectorOptions.STATE_READER_MODE.key(),
-                (windowed
+        Map<String, String> options =
+                buildBaseConnectorOptions(
+                        statePath,
+                        operatorIdentifier,
+                        windowed
                                 ? SavepointConnectorOptions.StateReaderMode.WINDOWED_FLAT
-                                : SavepointConnectorOptions.StateReaderMode.KEYED_FLAT)
-                        .toString());
+                                : SavepointConnectorOptions.StateReaderMode.KEYED_FLAT);
         options.put(SavepointConnectorOptions.FLATTENED_STATE_NAME.key(), stateName);
         withStateBackendType(options, metadata, operatorIdentifier);
 
@@ -498,14 +498,21 @@ public final class StateTableUtils {
 
     /**
      * Returns the base connector options ({@link FactoryUtil#CONNECTOR}, {@link
-     * SavepointConnectorOptions#STATE_PATH}, and the operator identifier option) shared by every
-     * savepoint-backed {@link CatalogTable}.
+     * SavepointConnectorOptions#STATE_PATH}, {@link SavepointConnectorOptions#STATE_READER_MODE},
+     * and the operator identifier option) shared by every savepoint-backed {@link CatalogTable}.
+     *
+     * <p>{@code readerMode} is always set explicitly rather than relying on {@link
+     * SavepointConnectorOptions#STATE_READER_MODE}'s default value, so that every catalog table's
+     * options unambiguously reflect its schema.
      */
     private static Map<String, String> buildBaseConnectorOptions(
-            String statePath, OperatorIdentifier operatorIdentifier) {
+            String statePath,
+            OperatorIdentifier operatorIdentifier,
+            SavepointConnectorOptions.StateReaderMode readerMode) {
         Map<String, String> options = new HashMap<>();
         options.put(FactoryUtil.CONNECTOR.key(), "savepoint");
         options.put(SavepointConnectorOptions.STATE_PATH.key(), statePath);
+        options.put(SavepointConnectorOptions.STATE_READER_MODE.key(), readerMode.toString());
         operatorIdentifier
                 .getUid()
                 .ifPresentOrElse(

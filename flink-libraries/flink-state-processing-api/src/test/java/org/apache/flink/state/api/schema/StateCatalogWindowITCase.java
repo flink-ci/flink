@@ -44,8 +44,11 @@ import org.apache.flink.streaming.api.windowing.assigners.GlobalWindows;
 import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 import org.apache.flink.streaming.api.windowing.triggers.CountTrigger;
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow;
+import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
 import org.apache.flink.table.api.TableEnvironment;
+import org.apache.flink.table.catalog.CatalogTable;
+import org.apache.flink.table.catalog.ObjectPath;
 import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.Row;
@@ -165,6 +168,7 @@ public abstract class StateCatalogWindowITCase extends SavepointTestBase {
                     StateCatalog.OPERATOR_UID_PREFIX
                             + SESSION_REDUCE_UID
                             + StateCatalog.WINDOW_TABLE_SUFFIX;
+            assertWindowTablePrimaryKey(catalog, dbName, windowTable);
             List<Row> rows =
                     StateCatalogTestUtils.collect(tableEnv, "SELECT * FROM `" + windowTable + "`");
             assertEquals(1, rows.size());
@@ -433,6 +437,7 @@ public abstract class StateCatalogWindowITCase extends SavepointTestBase {
                     StateCatalog.OPERATOR_UID_PREFIX
                             + GLOBAL_REDUCE_UID
                             + StateCatalog.WINDOW_TABLE_SUFFIX;
+            assertWindowTablePrimaryKey(catalog, dbName, windowTable);
             List<Row> rows =
                     StateCatalogTestUtils.collect(tableEnv, "SELECT * FROM `" + windowTable + "`");
             assertEquals(1, rows.size());
@@ -664,6 +669,19 @@ public abstract class StateCatalogWindowITCase extends SavepointTestBase {
         assertTrue(windowLogicalType instanceof RowType);
         List<String> fieldNames = ((RowType) windowLogicalType).getFieldNames();
         assertEquals(List.of("window_start", "window_end"), fieldNames);
+    }
+
+    // Row identity in a window table is (state_key, state_window); asserts the catalog declares
+    // that composite primary key, including for zero-field ROW window types (e.g. GlobalWindow).
+    private static void assertWindowTablePrimaryKey(
+            StateCatalog catalog, String dbName, String windowTable) throws Exception {
+        CatalogTable catalogTable =
+                (CatalogTable) catalog.getTable(new ObjectPath(dbName, windowTable));
+        Schema schema = catalogTable.getUnresolvedSchema();
+        assertTrue(schema.getPrimaryKey().isPresent(), "Expected the window table to have a PK");
+        assertEquals(
+                List.of("state_key", "state_window"),
+                schema.getPrimaryKey().get().getColumnNames());
     }
 
     private static long toEpochMilli(LocalDateTime dateTime) {

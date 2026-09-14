@@ -44,8 +44,10 @@ import static org.apache.flink.state.table.SavepointConnectorOptions.STATE_NAME;
  * in the output row, for the general namespaced (e.g. window-scoped) keyed state table.
  *
  * <p>The key and window columns are identified by name ({@link #KEY_COLUMN_NAME}, {@link
- * #WINDOW_COLUMN_NAME}) rather than by primary key constraint or position, since namespaced
- * (window) tables never declare a primary key (see {@link #validateAndExtractKeyAndWindowColumns}).
+ * #WINDOW_COLUMN_NAME}) rather than by primary key position: the table declares a composite primary
+ * key over both columns (see {@link org.apache.flink.state.api.StateTableUtils}), but {@link
+ * StateTableMapping#validateAndExtractKeyColumn} only supports a single-column primary key, so the
+ * window table resolves its columns by name instead of reusing that logic.
  *
  * <p>Projection push-down remaps column indices exactly as in {@link StateTableMapping}.
  */
@@ -147,10 +149,10 @@ public class WindowStateTableMapping implements Serializable, MultiColumnStateMa
      * windowColumnIndex}} in the physical row data type.
      *
      * <p>Unlike {@link StateTableMapping}, the key and window columns are identified by name
-     * ({@link #KEY_COLUMN_NAME}, {@link #WINDOW_COLUMN_NAME}) rather than by primary key
-     * constraint: Flink's primary-key validation for arbitrary (including zero-field) {@code
-     * ROW}-typed columns such as {@code state_window} is not reliable, so namespaced (window)
-     * tables never declare one.
+     * ({@link #KEY_COLUMN_NAME}, {@link #WINDOW_COLUMN_NAME}) rather than by primary key position:
+     * the window table's primary key spans both columns, and {@link
+     * StateTableMapping#validateAndExtractKeyColumn}'s single-primary-key-column assumption doesn't
+     * apply here.
      *
      * <p>This is a purely structural operation: it analyses the table schema but performs no class
      * loading or type resolution. Call this eagerly so that option validation passes, then wrap
