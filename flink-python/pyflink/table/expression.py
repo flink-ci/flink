@@ -2456,6 +2456,40 @@ class Expression(Generic[T]):
         else:
             return _binary_op("tryParseXml")(self, force_array)
 
+    def variant_get(self, path, return_type: DataType = None) -> 'Expression':
+        """
+        Returns the value of a VARIANT at a path, cast to return_type. Without return_type, the
+        value is returned as a VARIANT. If the VARIANT or the path is None, or nothing is at the
+        path, None is returned. A variant null at the path gives None, unless return_type is
+        omitted or VARIANT, which keeps it as a variant null. If the value cannot be cast to
+        return_type, an error is thrown. To return None instead, use
+        :func:`~Expression.try_variant_get`.
+
+        Array indices in a path such as '$.items[0].qty' start at 0. See the SQL function
+        VARIANT_GET for the path syntax. Only the logical type of return_type is used.
+
+        Example:
+        ::
+
+            >>> lit('{"a": {"b": 1}}').parse_json().variant_get('$.a.b', DataTypes.INT()) # 1
+            >>> lit('{"a": 1}').parse_json().variant_get('$.b', DataTypes.INT()) # None
+        """
+        if return_type is None:
+            return _binary_op("variantGet")(self, path)
+        else:
+            return _ternary_op("variantGet")(self, path, _to_java_data_type(return_type))
+
+    def try_variant_get(self, path, return_type: DataType = None) -> 'Expression':
+        """
+        Returns the value of a VARIANT at a path, cast to return_type. Unlike
+        :func:`~Expression.variant_get`, None is returned instead of an error if the value cannot
+        be cast to return_type or a path that is not a literal is malformed.
+        """
+        if return_type is None:
+            return _binary_op("tryVariantGet")(self, path)
+        else:
+            return _ternary_op("tryVariantGet")(self, path, _to_java_data_type(return_type))
+
     def json_length(self, path=None) -> 'Expression':
         """
         Returns the number of elements in a JSON document, or the length of the value at the
