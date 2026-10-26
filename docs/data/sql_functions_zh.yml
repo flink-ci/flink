@@ -1549,12 +1549,16 @@ variant:
   - sql: variant '[' INT ']'
     table: VARIANT.at(INT)
     description: |
-      如果这是一个 ARRAY 类型的 VARIANT，则返回一个 VARIANT，其值为指定索引处的元素。索引从 1 开始，如果索引超出范围，则返回 NULL。
+      If the VARIANT is an array, returns a VARIANT holding the element at the index. The index
+      starts at 1. If the index is out of range, returns NULL. If the VARIANT is not an array, an
+      error is thrown.
 
   - sql: variant '[' STRING ']'
     table: VARIANT.at(STRING)
     description: |
-      如果这是一个 MAP 类型的 VARIANT，则返回一个 VARIANT，其值为指定 key 对应的值。否则返回 NULL。
+      If the VARIANT is an object that has a field with this key, returns a VARIANT holding the
+      value of the field. If the object has no such field, returns NULL. If the VARIANT is not an
+      object, an error is thrown.
 
 
 valueconstruction:
