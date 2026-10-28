@@ -252,13 +252,14 @@ with `$`, the whole value, followed by steps: `.name`, `['name']` or `["name"]` 
 | `$.items[1]`        | nothing, the index is past the end |
 | `$.user[0]`         | nothing, `user` is not an array    |
 
-- Array indices start at 0, as in `JSON_VALUE`, while `variant[INT]` starts at 1. So `$.items[0]`
-  and `v['items'][1]` are the same element.
-- Use brackets for a name with whitespace or one of the characters `. [ ] ( ) * ' " \`, for example
-  `$['first name']`. Inside the quotes, `\\`, `\'` and `\"` stand for a backslash and a quote.
+- Array indices start at 0, as in `JSON_VALUE`, while `variant[INT]` starts at 1. So
+  `VARIANT_GET(v, '$.items[0]')` and `v['items'][1]` are the same element.
+- Use brackets with single or double quotes for a name with whitespace or one of the characters
+  `. [ ] ( ) * ' " \`, for example `$['first name']` or `$["first name"]`. Inside the quotes, `\\`,
+  `\'` and `\"` stand for a backslash and a quote.
 - Wildcards, filters, slices, negative indices and the `lax` and `strict` modes are not supported,
   so a path always names one place.
-- Trailing spaces are ignored, so a path read from a `CHAR(n)` column works.
+- Trailing spaces are ignored.
 - A malformed path literal fails at planning time. Any other malformed path fails when the function
   runs.
 

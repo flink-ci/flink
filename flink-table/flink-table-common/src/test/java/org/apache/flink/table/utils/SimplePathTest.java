@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.utils;
 
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.utils.SimplePath.Step;
 import org.apache.flink.util.InstantiationUtil;
 
@@ -26,6 +27,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.List;
 import java.util.stream.Stream;
@@ -43,6 +45,7 @@ class SimplePathTest {
         return Stream.of(
                 arguments("$", List.of()),
                 arguments("$.items[0].qty", List.of(field("items"), index(0), field("qty"))),
+                arguments("$.a.b", List.of(field("a"), field("b"))),
                 arguments("$[007]", List.of(index(7))),
                 arguments("$[2147483647]", List.of(index(Integer.MAX_VALUE))),
                 arguments("$[\"a.b\"]", List.of(field("a.b"))),
@@ -64,7 +67,6 @@ class SimplePathTest {
             value = {
                 "` $.a`         | it must start with '$'",
                 "lax $.a        | the 'lax' and 'strict' modes are not supported",
-                "$.length()     | unexpected '(' after '$.length'",
                 "$.*            | expected a field name after '$.'",
                 "$[-1]          | expected an index or a quoted name after '$['",
                 "$[0,1]         | expected ']' after '$[0'",
@@ -74,8 +76,18 @@ class SimplePathTest {
             })
     void testParseFails(final String path, final String reason) {
         assertThatThrownBy(() -> SimplePath.parse(path))
-                .isInstanceOf(IllegalArgumentException.class)
+                .isInstanceOf(ValidationException.class)
                 .hasMessageStartingWith(String.format("Invalid path '%s': %s.", path, reason));
+    }
+
+    @ParameterizedTest(name = "[{index}] U+{0}")
+    @ValueSource(chars = {']', '(', ')', '*', '\'', '"', '\\', ' ', '\t', '\u00A0', '\u0001'})
+    void testFieldNameStopsAt(final char c) {
+        final String path = "$.a" + c + "b";
+        assertThatThrownBy(() -> SimplePath.parse(path))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageStartingWith(
+                        String.format("Invalid path '%s': unexpected '%s' after '$.a'.", path, c));
     }
 
     @Test

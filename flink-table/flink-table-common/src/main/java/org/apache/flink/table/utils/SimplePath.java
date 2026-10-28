@@ -19,6 +19,7 @@
 package org.apache.flink.table.utils;
 
 import org.apache.flink.annotation.Internal;
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.util.Preconditions;
 
 import javax.annotation.Nullable;
@@ -77,8 +78,8 @@ public final class SimplePath implements Serializable {
     /**
      * Parses a path.
      *
-     * @throws IllegalArgumentException if the path is malformed or uses syntax that can point at
-     *     more than one place
+     * @throws ValidationException if the path is malformed or uses syntax that can point at more
+     *     than one place
      */
     public static SimplePath parse(final String path) {
         Preconditions.checkNotNull(path, "Path must not be null.");
@@ -112,11 +113,11 @@ public final class SimplePath implements Serializable {
             this.index = index;
         }
 
-        public static Step field(final String fieldName) {
+        static Step field(final String fieldName) {
             return new Step(Preconditions.checkNotNull(fieldName), -1);
         }
 
-        public static Step index(final int index) {
+        static Step index(final int index) {
             Preconditions.checkArgument(index >= 0, "Index must not be negative.");
             return new Step(null, index);
         }
@@ -283,8 +284,8 @@ public final class SimplePath implements Serializable {
             return path.substring(0, pos);
         }
 
-        private IllegalArgumentException error(final String reason) {
-            return new IllegalArgumentException(
+        private ValidationException error(final String reason) {
+            return new ValidationException(
                     String.format("Invalid path '%s': %s. %s", path, reason, SYNTAX));
         }
 

@@ -2459,20 +2459,20 @@ class Expression(Generic[T]):
     def variant_get(self, path, return_type: DataType = None) -> 'Expression':
         """
         Returns the value of a VARIANT at a path, cast to return_type. Without return_type, the
-        value is returned as a VARIANT. If the VARIANT or the path is None, or nothing is at the
-        path, None is returned. A variant null at the path gives None, unless return_type is
-        omitted or VARIANT, which keeps it as a variant null. If the value cannot be cast to
-        return_type, an error is thrown. To return None instead, use
+        value is returned as a VARIANT. If the VARIANT or the path is NULL, or nothing is at the
+        path, NULL is returned. A variant null at the path gives NULL, unless return_type is
+        omitted or DataTypes.VARIANT(), which keeps it as a variant null. If the value cannot be
+        cast to return_type, an error is thrown. To return NULL instead, use
         :func:`~Expression.try_variant_get`.
 
         Array indices in a path such as '$.items[0].qty' start at 0. See the SQL function
-        VARIANT_GET for the path syntax. Only the logical type of return_type is used.
+        VARIANT_GET for the path syntax.
 
         Example:
         ::
 
             >>> lit('{"a": {"b": 1}}').parse_json().variant_get('$.a.b', DataTypes.INT()) # 1
-            >>> lit('{"a": 1}').parse_json().variant_get('$.b', DataTypes.INT()) # None
+            >>> lit('{"a": 1}').parse_json().variant_get('$.b', DataTypes.INT()) # NULL
         """
         if return_type is None:
             return _binary_op("variantGet")(self, path)
@@ -2482,7 +2482,7 @@ class Expression(Generic[T]):
     def try_variant_get(self, path, return_type: DataType = None) -> 'Expression':
         """
         Returns the value of a VARIANT at a path, cast to return_type. Unlike
-        :func:`~Expression.variant_get`, None is returned instead of an error if the value cannot
+        :func:`~Expression.variant_get`, NULL is returned instead of an error if the value cannot
         be cast to return_type or a path that is not a literal is malformed.
         """
         if return_type is None:

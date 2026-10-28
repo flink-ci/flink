@@ -125,6 +125,8 @@ public class VariantSemanticTest extends SemanticTestBase {
                                             Row.of(JSON_OBJECT_A_AND_B, "$.c"),
                                             Row.of(JSON_OBJECT_A_AND_B, "$.b"),
                                             Row.of(JSON_OBJECT_A_AND_B, "$.a["),
+                                            // The path before the malformed one again, which a
+                                            // cache that keeps its key on an error gets wrong.
                                             Row.of(JSON_OBJECT_A_AND_B, "$.b"))
                                     .build())
                     .setupTableSink(

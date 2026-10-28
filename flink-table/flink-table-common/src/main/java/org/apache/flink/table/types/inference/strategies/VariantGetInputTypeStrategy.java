@@ -38,14 +38,14 @@ import static org.apache.flink.table.types.inference.InputTypeStrategies.and;
 import static org.apache.flink.table.types.inference.InputTypeStrategies.logical;
 import static org.apache.flink.table.types.inference.InputTypeStrategies.or;
 import static org.apache.flink.table.types.inference.InputTypeStrategies.sequence;
-import static org.apache.flink.table.types.inference.strategies.VariantGetTypeStrategy.ARG_TYPE;
+import static org.apache.flink.table.types.inference.strategies.VariantGetTypeStrategy.ARG_RETURN_TYPE;
 
 /**
- * Input strategy for {@code VARIANT_GET(variant, path [, type])} and {@code TRY_VARIANT_GET}.
+ * Input strategy for {@code VARIANT_GET(variant, path [, returnType])} and {@code TRY_VARIANT_GET}.
  *
  * <p>A literal path must be a {@link SimplePath}, so a malformed one fails at planning time. A path
- * that is not a literal is parsed when the function runs. The {@code type} must be a literal that
- * names a type {@code VARIANT} can be cast to, see {@link VariantGetTypeStrategy}.
+ * that is not a literal is parsed when the function runs. The {@code returnType} must be a literal
+ * that names a type {@code VARIANT} can be cast to, see {@link VariantGetTypeStrategy}.
  */
 @Internal
 public final class VariantGetInputTypeStrategy implements InputTypeStrategy {
@@ -60,7 +60,7 @@ public final class VariantGetInputTypeStrategy implements InputTypeStrategy {
                                     logical(LogicalTypeRoot.VARIANT),
                                     logical(LogicalTypeFamily.CHARACTER_STRING))),
                     sequence(
-                            List.of("variant", "path", "type"),
+                            List.of("variant", "path", "returnType"),
                             List.of(
                                     logical(LogicalTypeRoot.VARIANT),
                                     logical(LogicalTypeFamily.CHARACTER_STRING),
@@ -85,13 +85,13 @@ public final class VariantGetInputTypeStrategy implements InputTypeStrategy {
             if (path.isPresent()) {
                 try {
                     SimplePath.parse(path.get());
-                } catch (IllegalArgumentException e) {
+                } catch (ValidationException e) {
                     return callContext.fail(throwOnFailure, e.getMessage());
                 }
             }
         }
 
-        if (callContext.getArgumentDataTypes().size() > ARG_TYPE) {
+        if (callContext.getArgumentDataTypes().size() > ARG_RETURN_TYPE) {
             try {
                 VariantGetTypeStrategy.resolveTargetType(callContext);
             } catch (ValidationException e) {

@@ -1507,7 +1507,7 @@ public abstract class BaseExpressions<InType, OutType> {
      * <p>The value is cast like {@code CAST}, so a variant null gives {@code NULL} unless the type
      * is {@link DataTypes#VARIANT()}. See the SQL function {@code VARIANT_GET} for the path syntax.
      *
-     * @param returnType the type of the result, always nullable. Only its logical type is used.
+     * @param returnType the type of the result, always nullable.
      */
     public OutType variantGet(InType path, DataType returnType) {
         return toApiSpecificExpression(
@@ -1536,7 +1536,7 @@ public abstract class BaseExpressions<InType, OutType> {
      * {@link #variantGet(Object, DataType)}, {@code NULL} is returned instead of an error if the
      * value cannot be cast to the type or a path that is not a literal is malformed.
      *
-     * @param returnType the type of the result, always nullable. Only its logical type is used.
+     * @param returnType the type of the result, always nullable.
      */
     public OutType tryVariantGet(InType path, DataType returnType) {
         return toApiSpecificExpression(

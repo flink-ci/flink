@@ -20,9 +20,8 @@ package org.apache.flink.table.runtime.functions.scalar;
 
 import org.apache.flink.annotation.Internal;
 import org.apache.flink.annotation.VisibleForTesting;
-import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.table.api.TableRuntimeException;
-import org.apache.flink.table.api.config.TableConfigOptions;
+import org.apache.flink.table.api.ValidationException;
 import org.apache.flink.table.api.internal.TableConfigValidation;
 import org.apache.flink.table.data.StringData;
 import org.apache.flink.table.data.utils.FromVariantConverter;
@@ -37,7 +36,6 @@ import org.apache.flink.types.variant.Variant;
 
 import javax.annotation.Nullable;
 
-import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -67,7 +65,7 @@ public class VariantGetFunction extends BuiltInScalarFunction {
 
     private transient @Nullable SimplePath lastPath;
 
-    private transient @Nullable IllegalArgumentException lastPathError;
+    private transient @Nullable ValidationException lastPathError;
 
     public VariantGetFunction(SpecializedContext context) {
         this(BuiltInFunctionDefinitions.VARIANT_GET, context, false);
@@ -83,7 +81,8 @@ public class VariantGetFunction extends BuiltInScalarFunction {
                 outputType.is(LogicalTypeRoot.VARIANT)
                         ? null
                         : FromVariantConverter.create(
-                                outputType, getSessionTimeZone(context.getConfiguration()));
+                                outputType,
+                                TableConfigValidation.getLocalTimeZone(context.getConfiguration()));
         this.targetTypeName = outputType.asSummaryString();
     }
 
@@ -139,7 +138,7 @@ public class VariantGetFunction extends BuiltInScalarFunction {
         }
         try {
             return SimplePath.parse(path.get());
-        } catch (IllegalArgumentException e) {
+        } catch (ValidationException e) {
             return null;
         }
     }
@@ -152,7 +151,7 @@ public class VariantGetFunction extends BuiltInScalarFunction {
             try {
                 lastPath = SimplePath.parse(pathString);
                 lastPathError = null;
-            } catch (IllegalArgumentException e) {
+            } catch (ValidationException e) {
                 lastPath = null;
                 lastPathError = e;
             }
@@ -179,14 +178,5 @@ public class VariantGetFunction extends BuiltInScalarFunction {
             }
         }
         return current;
-    }
-
-    private static ZoneId getSessionTimeZone(ReadableConfig config) {
-        final String zone = config.get(TableConfigOptions.LOCAL_TIME_ZONE);
-        if (TableConfigOptions.LOCAL_TIME_ZONE.defaultValue().equals(zone)) {
-            return ZoneId.systemDefault();
-        }
-        TableConfigValidation.validateTimeZone(zone);
-        return ZoneId.of(zone);
     }
 }

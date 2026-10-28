@@ -39,8 +39,8 @@ import static org.apache.flink.table.api.Expressions.nullOf;
 /**
  * Tests for the VARIANT functions that are not covered by the JSON and XML function tests.
  *
- * <p>Path syntax is covered by {@code SimplePathTest} and {@code SimplePathJaywayConformanceTest}.
- * A path that changes from row to row is covered by {@code VariantSemanticTest}.
+ * <p>Path syntax is covered by {@code SimplePathTest}. A path that changes from row to row is
+ * covered by {@code VariantSemanticTest}.
  */
 class VariantFunctionsITCase extends BuiltInFunctionTestBase {
 
