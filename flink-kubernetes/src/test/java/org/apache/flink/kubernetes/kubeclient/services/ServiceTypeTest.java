@@ -20,6 +20,7 @@ package org.apache.flink.kubernetes.kubeclient.services;
 
 import org.apache.flink.kubernetes.KubernetesClientTestBase;
 import org.apache.flink.kubernetes.configuration.KubernetesConfigOptions;
+import org.apache.flink.kubernetes.utils.Constants;
 
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceBuilder;
@@ -48,29 +49,57 @@ class ServiceTypeTest extends KubernetesClientTestBase {
     void testGetRestPortFromExternalServiceWithDefaultName() {
         final int restPort =
                 ClusterIPService.INSTANCE.getRestPortFromExternalService(
-                        buildExternalServiceWithClusterIP());
+                        buildExternalServiceWithClusterIP(), Constants.REST_PORT_NAME);
         assertThat(restPort).isEqualTo(REST_PORT);
     }
 
     @Test
     void testGetRestPortFromExternalServiceWithCustomName() {
         final Service service =
-                new ServiceBuilder()
-                        .withNewMetadata()
-                        .withName("flink-cluster-rest")
-                        .endMetadata()
-                        .withNewSpec()
-                        .withType(KubernetesConfigOptions.ServiceExposedType.ClusterIP.name())
-                        .addNewPort()
-                        .withName("flink-rest")
-                        .withPort(REST_PORT)
-                        .withNewTargetPort(REST_PORT)
-                        .endPort()
+                buildExternalServiceWithClusterIP(buildServicePort("flink-rest", REST_PORT));
+
+        final int restPort =
+                ClusterIPService.INSTANCE.getRestPortFromExternalService(service, "flink-rest");
+        assertThat(restPort).isEqualTo(REST_PORT);
+    }
+
+    @Test
+    void testGetRestPortFromExternalServiceReadsSinglePortWithAnotherName() {
+        final Service service =
+                buildExternalServiceWithClusterIP(buildServicePort("flink-rest", REST_PORT));
+
+        final int restPort =
+                ClusterIPService.INSTANCE.getRestPortFromExternalService(
+                        service, Constants.REST_PORT_NAME);
+        assertThat(restPort).isEqualTo(REST_PORT);
+    }
+
+    @Test
+    void testGetRestPortFromExternalServiceSelectsPortByNameAmongMultiplePorts() {
+        final Service service =
+                buildExternalServiceWithClusterIP(
+                        buildServicePort("metrics", REST_PORT + 1),
+                        buildServicePort(Constants.REST_PORT_NAME, REST_PORT));
+
+        final int restPort =
+                ClusterIPService.INSTANCE.getRestPortFromExternalService(
+                        service, Constants.REST_PORT_NAME);
+        assertThat(restPort).isEqualTo(REST_PORT);
+    }
+
+    @Test
+    void testGetRestPortFromExternalServiceUsesNodePortOfTheNamedPort() {
+        final Service service =
+                new ServiceBuilder(buildExternalServiceWithNodePort())
+                        .editSpec()
+                        .addToPorts(0, buildServicePort("metrics", REST_PORT + 1))
                         .endSpec()
                         .build();
 
-        final int restPort = ClusterIPService.INSTANCE.getRestPortFromExternalService(service);
-        assertThat(restPort).isEqualTo(REST_PORT);
+        final int restPort =
+                NodePortService.INSTANCE.getRestPortFromExternalService(
+                        service, Constants.REST_PORT_NAME);
+        assertThat(restPort).isEqualTo(NODE_PORT);
     }
 
     @Test
@@ -85,38 +114,33 @@ class ServiceTypeTest extends KubernetesClientTestBase {
                         .endSpec()
                         .build();
 
-        assertThatThrownBy(() -> ClusterIPService.INSTANCE.getRestPortFromExternalService(service))
+        assertThatThrownBy(
+                        () ->
+                                ClusterIPService.INSTANCE.getRestPortFromExternalService(
+                                        service, Constants.REST_PORT_NAME))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Failed to find any port")
                 .hasMessageContaining("flink-cluster-rest");
     }
 
     @Test
-    void testGetRestPortFromExternalServiceFailsWhenMultiplePorts() {
+    void testGetRestPortFromExternalServiceFailsWhenNoPortHasTheName() {
         final Service service =
-                new ServiceBuilder()
-                        .withNewMetadata()
+                new ServiceBuilder(
+                                buildExternalServiceWithClusterIP(
+                                        buildServicePort("metrics", REST_PORT + 1),
+                                        buildServicePort("flink-rest", REST_PORT)))
+                        .editMetadata()
                         .withName("flink-cluster-rest")
                         .endMetadata()
-                        .withNewSpec()
-                        .withType(KubernetesConfigOptions.ServiceExposedType.ClusterIP.name())
-                        .addNewPort()
-                        .withName("rest")
-                        .withPort(REST_PORT)
-                        .withNewTargetPort(REST_PORT)
-                        .endPort()
-                        .addNewPort()
-                        .withName("extra")
-                        .withPort(REST_PORT + 1)
-                        .withNewTargetPort(REST_PORT + 1)
-                        .endPort()
-                        .endSpec()
                         .build();
 
-        assertThatThrownBy(() -> ClusterIPService.INSTANCE.getRestPortFromExternalService(service))
+        assertThatThrownBy(
+                        () ->
+                                ClusterIPService.INSTANCE.getRestPortFromExternalService(
+                                        service, Constants.REST_PORT_NAME))
                 .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Expected exactly one port")
-                .hasMessageContaining("flink-cluster-rest")
-                .hasMessageContaining("but found 2");
+                .hasMessageContaining("Failed to find port \"" + Constants.REST_PORT_NAME + "\"")
+                .hasMessageContaining("flink-cluster-rest");
     }
 }

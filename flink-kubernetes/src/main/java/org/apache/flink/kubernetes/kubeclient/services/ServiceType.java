@@ -86,12 +86,14 @@ public abstract class ServiceType {
      * @param targetService the target service to retrieve from.
      * @param internalClient the client to interact with api server.
      * @param nodePortAddressType the target address type of the node.
+     * @param restPortName the name of the rest port in the service.
      * @return the rest endpoint.
      */
     public abstract Optional<Endpoint> getRestEndpoint(
             Service targetService,
             NamespacedKubernetesClient internalClient,
-            KubernetesConfigOptions.NodePortAddressType nodePortAddressType);
+            KubernetesConfigOptions.NodePortAddressType nodePortAddressType,
+            String restPortName);
 
     /**
      * Gets the rest port from the service port.
@@ -109,12 +111,12 @@ public abstract class ServiceType {
     public abstract String getType();
 
     /**
-     * Get rest port from the external Service. The rest Service is built with exactly one port
-     * (whose name is configurable via {@link KubernetesConfigOptions#REST_SERVICE_PORT_NAME}), so
-     * the lookup does not depend on the port name. If the Service has zero or more than one port,
-     * this method throws — the invariant comes from {@link #buildUpExternalRestService}.
+     * Get rest port from the external Service. The port named {@code restPortName} is used, which
+     * keeps the lookup working when other ports were added to the Service. A Service with a single
+     * port is read as it is, because the cluster may have been deployed with another rest port name
+     * than the one configured where it is retrieved.
      */
-    public int getRestPortFromExternalService(Service externalService) {
+    public int getRestPortFromExternalService(Service externalService, String restPortName) {
         final List<ServicePort> ports = externalService.getSpec().getPorts();
         final String serviceName = externalService.getMetadata().getName();
 
@@ -122,15 +124,18 @@ public abstract class ServiceType {
             throw new RuntimeException(
                     "Failed to find any port in Service \"" + serviceName + "\"");
         }
-        if (ports.size() > 1) {
-            throw new RuntimeException(
-                    "Expected exactly one port in Service \""
-                            + serviceName
-                            + "\" but found "
-                            + ports.size());
+
+        final Optional<ServicePort> namedPort =
+                ports.stream().filter(port -> restPortName.equals(port.getName())).findFirst();
+        if (namedPort.isPresent()) {
+            return getRestPort(namedPort.get());
+        }
+        if (ports.size() == 1) {
+            return getRestPort(ports.get(0));
         }
 
-        return getRestPort(ports.get(0));
+        throw new RuntimeException(
+                "Failed to find port \"" + restPortName + "\" in Service \"" + serviceName + "\"");
     }
 
     // Helper method

@@ -33,6 +33,8 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.ResourceRequirements;
 import io.fabric8.kubernetes.api.model.Toleration;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -41,6 +43,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** General tests for the {@link InitJobManagerDecorator}. */
 class InitJobManagerDecoratorTest extends KubernetesJobManagerTestBase {
@@ -163,6 +166,34 @@ class InitJobManagerDecoratorTest extends KubernetesJobManagerTestBase {
                         customPortName,
                         Constants.JOB_MANAGER_RPC_PORT_NAME,
                         Constants.BLOB_SERVER_PORT_NAME);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {Constants.JOB_MANAGER_RPC_PORT_NAME, Constants.BLOB_SERVER_PORT_NAME})
+    void testRestPortNameCollidingWithAnotherContainerPortIsRejected(String collidingName) {
+        this.flinkConfig.set(KubernetesConfigOptions.REST_SERVICE_PORT_NAME, collidingName);
+        final InitJobManagerDecorator decorator =
+                new InitJobManagerDecorator(this.kubernetesJobManagerParameters);
+
+        assertThatThrownBy(() -> decorator.decorateFlinkPod(this.baseFlinkPod))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(KubernetesConfigOptions.REST_SERVICE_PORT_NAME.key())
+                .hasMessageContaining(collidingName);
+    }
+
+    @Test
+    void testRestPortNameCollisionDoesNotMatterWithHostNetwork() {
+        this.flinkConfig.set(KubernetesConfigOptions.KUBERNETES_HOSTNETWORK_ENABLED, true);
+        this.flinkConfig.set(
+                KubernetesConfigOptions.REST_SERVICE_PORT_NAME,
+                Constants.JOB_MANAGER_RPC_PORT_NAME);
+        final InitJobManagerDecorator decorator =
+                new InitJobManagerDecorator(this.kubernetesJobManagerParameters);
+
+        final Container mainContainer =
+                decorator.decorateFlinkPod(this.baseFlinkPod).getMainContainer();
+
+        assertThat(mainContainer.getPorts()).isEmpty();
     }
 
     @Test

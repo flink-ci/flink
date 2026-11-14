@@ -396,7 +396,11 @@ public class KubernetesConfigOptions {
                                     + "service meshes that route by port name); this option lets operators "
                                     + "align Flink's rest port name with such policies. "
                                     + "Must be a valid IANA service name (lowercase alphanumeric and '-', "
-                                    + "starting and ending alphanumeric, max 15 characters). "
+                                    + "starting and ending alphanumeric, max 15 characters) and must not be '"
+                                    + Constants.JOB_MANAGER_RPC_PORT_NAME
+                                    + "' or '"
+                                    + Constants.BLOB_SERVER_PORT_NAME
+                                    + "', the names of the JobManager container's other ports. "
                                     + "Defaults to '"
                                     + Constants.REST_PORT_NAME
                                     + "' to preserve backward compatibility.");
